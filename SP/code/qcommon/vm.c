@@ -574,6 +574,58 @@ vm_t *VM_Restart(vm_t *vm, qboolean unpure)
 	return vm;
 }
 
+#ifdef USE_STATIC_VM
+/*
+================
+Static game modules
+
+When USE_STATIC_VM is defined, qagame/cgame/ui are linked into the
+executable instead of being loaded as shared libraries. The build
+renames each module's dllEntry/vmMain to <module>_dllEntry/<module>_vmMain.
+================
+*/
+typedef void (*staticDllEntry_t)( intptr_t (QDECL *syscallptr)( intptr_t arg, ... ) );
+
+#define STATIC_VM_HANDLE ( (void *)1 )
+
+#define STATIC_VM_DECL( mod ) \
+	extern void mod##_dllEntry( intptr_t (QDECL *syscallptr)( intptr_t arg, ... ) ); \
+	extern intptr_t mod##_vmMain( intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t );
+
+STATIC_VM_DECL( qagame )
+#ifndef DEDICATED
+STATIC_VM_DECL( cgame )
+STATIC_VM_DECL( ui )
+#endif
+
+static const struct {
+	const char			*name;
+	staticDllEntry_t	dllEntry;
+	vmMainProc			vmMain;
+} staticVMs[] = {
+	{ "qagame", qagame_dllEntry, (vmMainProc)qagame_vmMain },
+#ifndef DEDICATED
+	{ "cgame", cgame_dllEntry, (vmMainProc)cgame_vmMain },
+	{ "ui", ui_dllEntry, (vmMainProc)ui_vmMain },
+#endif
+};
+
+static qboolean VM_LoadStatic( vm_t *vm, const char *module ) {
+	int i;
+
+	for ( i = 0; i < ARRAY_LEN( staticVMs ); i++ ) {
+		if ( !Q_stricmp( staticVMs[i].name, module ) ) {
+			Com_DPrintf( "Using static %s module\n", module );
+			staticVMs[i].dllEntry( VM_DllSyscall );
+			vm->entryPoint = staticVMs[i].vmMain;
+			vm->dllHandle = STATIC_VM_HANDLE;
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+#endif
+
 /*
 ================
 VM_Create
@@ -618,6 +670,13 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 	vm = &vmTable[i];
 
 	Q_strncpyz(vm->name, module, sizeof(vm->name));
+
+#ifdef USE_STATIC_VM
+	if ( VM_LoadStatic( vm, module ) ) {
+		vm->systemCall = systemCalls;
+		return vm;
+	}
+#endif
 
 	do
 	{
@@ -722,6 +781,9 @@ void VM_Free( vm_t *vm ) {
 		vm->destroy(vm);
 
 	if ( vm->dllHandle ) {
+#ifdef USE_STATIC_VM
+		if ( vm->dllHandle != STATIC_VM_HANDLE )
+#endif
 		Sys_UnloadDll( vm->dllHandle );
 		Com_Memset( vm, 0, sizeof( *vm ) );
 	}
