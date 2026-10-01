@@ -1168,15 +1168,17 @@ image_t *R_CreateImage( const char *name, byte *pic, int width, int height,
 
 	GL_Bind( image );
 
-	Upload32( (unsigned *)pic,
-			  image->width, image->height,
-			  image->flags & IMGFLAG_MIPMAP,
-			  image->flags & IMGFLAG_PICMIP,
-			  isLightmap,
-			  &image->internalFormat,
-			  &image->uploadWidth,
-			  &image->uploadHeight,
-			  noCompress );
+	if ( pic ) {	// NULL: the caller uploads (R_FindImageDT)
+		Upload32( (unsigned *)pic,
+				  image->width, image->height,
+				  image->flags & IMGFLAG_MIPMAP,
+				  image->flags & IMGFLAG_PICMIP,
+				  isLightmap,
+				  &image->internalFormat,
+				  &image->uploadWidth,
+				  &image->uploadHeight,
+				  noCompress );
+	}
 
 	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, glWrapClampMode );
 	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, glWrapClampMode );
@@ -1332,6 +1334,50 @@ static void R_AverageImage( byte *pic, int width, int height ) {
 }
 #endif
 
+#ifdef USE_PVR
+int pvrgl_TexImageDT( const void *file, int len, int *width, int *height );
+
+/*
+================
+R_CreateImageDT
+
+An image from a pvrtex .dt that `make assets` made: it goes to the PVR as it
+is (VQ compressed, mipmapped), nothing done to it here. NULL if there is no
+such file.
+================
+*/
+image_t *R_CreateImageDT( const char *name, const char *dtName, imgType_t type, imgFlags_t flags ) {
+	image_t *image;
+	void *buf;
+	int len, width = 0, height = 0;
+
+	len = ri.FS_ReadFile( dtName, &buf );
+	if ( len <= 0 ) {
+		return NULL;
+	}
+
+	image = R_CreateImage( name, NULL, 8, 8, type, flags, 0 );
+	GL_Bind( image );
+	if ( pvrgl_TexImageDT( buf, len, &width, &height ) ) {
+		image->width = image->uploadWidth = width;
+		image->height = image->uploadHeight = height;
+	}
+	glState.currenttextures[glState.currenttmu] = 0;
+	qglBindTexture( GL_TEXTURE_2D, 0 );
+	ri.FS_FreeFile( buf );
+	return image;
+}
+
+/* the image's .dt, named as it is but for the extension */
+static image_t *R_FindImageDT( const char *name, imgType_t type, imgFlags_t flags ) {
+	char dtName[MAX_QPATH];
+
+	COM_StripExtension( name, dtName, sizeof( dtName ) );
+	Q_strcat( dtName, sizeof( dtName ), ".dt" );
+	return R_CreateImageDT( name, dtName, type, flags );
+}
+#endif
+
 /*
 ===============
 R_FindImageFile
@@ -1371,10 +1417,19 @@ image_t  *R_FindImageFile( const char *name, imgType_t type, imgFlags_t flags )
 	//
 	// load the pic from disk
 	//
+#if defined( USE_PVR ) && !defined( NO_TEXTURES )
+	image = R_FindImageDT( name, type, flags );
+	if ( image ) {
+		return image;
+	}
+#endif
 	R_LoadImage( name, &pic, &width, &height );
 	if ( pic == NULL ) {
 		return NULL;
 	}
+#ifdef USE_PVR
+	ri.Printf( PRINT_DEVELOPER, "no .dt for %s (%ix%i)\n", name, width, height );
+#endif
 
 #ifdef NO_TEXTURES
 	if ( flags & IMGFLAG_PICMIP ) {

@@ -61,7 +61,11 @@ typedef struct {
 	pvr_ptr_t	data;
 	int			width, height;	/* PVR size (power of two, >= 8) */
 	int			srcWidth, srcHeight;	/* size the renderer uploaded */
-	int			format;			/* PVR_TXRFMT_* */
+	int			format;			/* PVR_TXRFMT_* pixel format */
+	uint32_t	txrFormat;		/* what the poly header gets: + twiddled / VQ / stride */
+	pvr_ptr_t	base;			/* what the PVR is pointed at (a VQ codebook may be short) */
+	int			mipmap;
+	int			alpha;			/* has an alpha channel */
 	int			bytes;
 	int			clampS, clampT;
 	int			linear;
@@ -699,15 +703,18 @@ static pvrTexture_t *BoundTexture( int create ) {
 /* print resident textures grouped by size, to see where VRAM went */
 static void TextureStats( void ) {
 	int counts[8][8][2];	/* log2(w) - 3, log2(h) - 3, has alpha */
+	int bytes[8][8][2];
 	int i, x, y, a;
 
 	memset( counts, 0, sizeof( counts ) );
+	memset( bytes, 0, sizeof( bytes ) );
 	for ( i = 0; i < MAX_TEXTURES; i++ ) {
 		pvrTexture_t *t = gl.textures[i];
 		if ( t && t->data ) {
 			for ( x = 0; ( 8 << x ) < t->width; x++ );
 			for ( y = 0; ( 8 << y ) < t->height; y++ );
-			counts[x][y][t->format == PVR_TXRFMT_ARGB4444]++;
+			counts[x][y][t->alpha]++;
+			bytes[x][y][t->alpha] += t->bytes;
 		}
 	}
 	fprintf( stderr, "pvr_gl: resident textures (%d KB):\n", gl.textureBytes / 1024 );
@@ -715,8 +722,8 @@ static void TextureStats( void ) {
 		for ( y = 0; y < 8; y++ ) {
 			for ( a = 0; a < 2; a++ ) {
 				if ( counts[x][y][a] ) {
-					fprintf( stderr, "  %4dx%-4d %s %4d  %6d KB\n", 8 << x, 8 << y, a ? "4444" : "565 ",
-							 counts[x][y][a], counts[x][y][a] * ( 8 << x ) * ( 8 << y ) * 2 / 1024 );
+					fprintf( stderr, "  %4dx%-4d %s %4d  %6d KB\n", 8 << x, 8 << y, a ? "alpha" : "     ",
+							 counts[x][y][a], bytes[x][y][a] / 1024 );
 				}
 			}
 		}
@@ -792,12 +799,19 @@ void APIENTRY pvrglTexImage2D( GLenum target, GLint level, GLint internalFormat,
 		t->bytes = bytes;
 		gl.textureBytes += bytes;
 	}
+	if ( getenv( "PVRGL_STATS" ) && bytes >= 16384 ) {
+		fprintf( stderr, "pvrgl tex %d: %dx%d raw %d KB\n", gl.bound, w, h, bytes / 1024 );
+	}
 
 	t->width = w;
 	t->height = h;
 	t->srcWidth = width;
 	t->srcHeight = height;
 	t->format = fmt;
+	t->txrFormat = fmt | PVR_TXRFMT_TWIDDLED;
+	t->base = t->data;
+	t->mipmap = 0;
+	t->alpha = fmt == PVR_TXRFMT_ARGB4444;
 
 	if ( pixels ) {
 		WriteTexels( t, 0, 0, width, height, format, pixels );
@@ -812,10 +826,84 @@ void APIENTRY pvrglTexSubImage2D( GLenum target, GLint level, GLint xoffset, GLi
 	pvrTexture_t *t = BoundTexture( 0 );
 
 	(void)target; (void)type;
-	if ( level != 0 || !t || !t->data || !pixels ) {
+	if ( level != 0 || !t || !t->data || !pixels || t->txrFormat != ( t->format | PVR_TXRFMT_TWIDDLED ) ) {
 		return;
 	}
 	WriteTexels( t, xoffset, yoffset, width, height, format, pixels );
+}
+
+/* .dt (pvrtex) header, little endian like the SH-4 */
+typedef struct {
+	char		fourcc[4];		/* "DcTx" */
+	uint32_t	chunkSize;		/* header + data, a multiple of 32 */
+	uint8_t		version;
+	uint8_t		headerSize;		/* in 32 bytes, minus one */
+	uint8_t		codebookSize;	/* VQ codebook entries - 1 */
+	uint8_t		colorsUsed;
+	uint16_t	width, height;	/* the image's, in pixels */
+	uint32_t	pvrType;		/* poly mode3 format bits (31-25) | log2 sizes - 3 (5-0) */
+	uint8_t		pad[12];
+} dtHeader_t;
+
+#define DT_MIPMAP			( 1u << 31 )
+#define DT_VQ				( 1u << 30 )
+#define DT_FORMAT_BITS		0x7e000000u		/* VQ, pixel format, not twiddled, stride */
+#define DT_PIXEL_FORMAT( t )	( ( ( t ) >> 27 ) & 7 )
+#define DT_CODEBOOK_BYTES	2048
+
+int pvrgl_TexImageDT( const void *file, int len, int *width, int *height ) {
+	const dtHeader_t *h = file;
+	pvrTexture_t *t;
+	int dataOfs, bytes, pf;
+
+	if ( len < (int)sizeof( *h ) || memcmp( h->fourcc, "DcTx", 4 ) || h->version != 0 ) {
+		return 0;
+	}
+	dataOfs = ( h->headerSize + 1 ) * 32;
+	bytes = (int)h->chunkSize - dataOfs;
+	pf = DT_PIXEL_FORMAT( h->pvrType );
+	if ( bytes <= 0 || dataOfs + bytes > len || pf > 2 ) {
+		return 0;	/* palettes, YUV and normal maps aren't made */
+	}
+	t = BoundTexture( 1 );
+	if ( !t ) {
+		return 0;
+	}
+
+	FreeTextureData( t );
+	t->data = pvr_mem_malloc( bytes );
+	if ( !t->data ) {
+		if ( !gl.outOfVram ) {
+			fprintf( stderr, "pvr_gl: out of texture memory\n" );
+			TextureStats();
+			gl.outOfVram = 1;
+		}
+		return 0;
+	}
+	t->bytes = bytes;
+	gl.textureBytes += bytes;
+	pvr_txr_load( (const uint8_t *)file + dataOfs, t->data, bytes );
+	if ( getenv( "PVRGL_STATS" ) && bytes >= 16384 ) {
+		fprintf( stderr, "pvrgl tex %d: %dx%d dt %08x %d KB\n", gl.bound, h->width, h->height, h->pvrType, bytes / 1024 );
+	}
+
+	t->width = 8 << ( ( h->pvrType >> 3 ) & 7 );
+	t->height = 8 << ( h->pvrType & 7 );
+	t->srcWidth = h->width;
+	t->srcHeight = h->height;
+	t->format = pf << 27;
+	t->txrFormat = h->pvrType & DT_FORMAT_BITS;
+	t->mipmap = ( h->pvrType & DT_MIPMAP ) != 0;
+	t->alpha = t->format != PVR_TXRFMT_RGB565;
+	/* a VQ codebook of fewer than 256 entries is stored as the end of a full one */
+	t->base = t->data;
+	if ( h->pvrType & DT_VQ ) {
+		t->base = (uint8_t *)t->data - DT_CODEBOOK_BYTES + ( h->codebookSize + 1 ) * 8;
+	}
+
+	*width = h->width;
+	*height = h->height;
+	return 1;
 }
 
 static void TexParameter( GLenum pname, GLint param ) {
@@ -929,9 +1017,9 @@ static int BeginPrimitives( void ) {
 	}
 
 	if ( t ) {
-		pvr_poly_cxt_txr( &cxt, list, t->format | PVR_TXRFMT_TWIDDLED,
-						  t->width, t->height, t->data,
+		pvr_poly_cxt_txr( &cxt, list, t->txrFormat, t->width, t->height, t->base,
 						  t->linear ? PVR_FILTER_BILINEAR : PVR_FILTER_NEAREST );
+		cxt.txr.mipmap = t->mipmap ? PVR_MIPMAP_ENABLE : PVR_MIPMAP_DISABLE;
 		cxt.txr.uv_clamp = ( t->clampS ? PVR_UVCLAMP_U : 0 ) | ( t->clampT ? PVR_UVCLAMP_V : 0 );
 		switch ( gl.texEnv ) {
 		case GL_REPLACE:	cxt.txr.env = PVR_TXRENV_REPLACE; break;
@@ -939,7 +1027,7 @@ static int BeginPrimitives( void ) {
 		case GL_MODULATE:
 		default:			cxt.txr.env = PVR_TXRENV_MODULATEALPHA; break;
 		}
-		cxt.txr.alpha = t->format == PVR_TXRFMT_ARGB4444 ? PVR_TXRALPHA_ENABLE : PVR_TXRALPHA_DISABLE;
+		cxt.txr.alpha = t->alpha ? PVR_TXRALPHA_ENABLE : PVR_TXRALPHA_DISABLE;
 	} else {
 		pvr_poly_cxt_col( &cxt, list );
 	}
@@ -1365,9 +1453,17 @@ void pvrgl_EndFrame( void ) {
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
 	pvr_scene_begin();
+	if ( getenv( "PVRGL_STATS" ) ) {
+		static int n;
+		fprintf( stderr, "pvrgl frame %d: op %d pt %d tr %d KB, textures %d KB\n", n++, gl.lists[0].used / 1024,
+				 gl.lists[PVR_LIST_PT_POLY].used / 1024, gl.lists[PVR_LIST_TR_POLY].used / 1024, gl.textureBytes / 1024 );
+	}
 	for ( i = 0; i < 3; i++ ) {
 		listBuffer_t *l = &gl.lists[order[i]];
 		if ( !l->used ) {
+			continue;
+		}
+		if ( getenv( "PVRGL_SKIP" ) && strchr( getenv( "PVRGL_SKIP" ), '0' + order[i] ) ) {
 			continue;
 		}
 		if ( l->overflowed ) {

@@ -389,6 +389,16 @@ qboolean UI_ConsoleCommand( int realTime ) {
 		return qtrue;
 	}
 
+	// what clicking through the level start screen does, so scripts can too
+	if ( Q_stricmp( cmd, "playerstart" ) == 0 ) {
+		trap_Cmd_ExecuteText( EXEC_APPEND, "fade 0 0 0 0 3\n" );
+		trap_Cvar_Set( "g_playerstart", "1" );
+		trap_Cvar_Set( "cl_paused", "0" );
+		Menus_CloseAll();
+		trap_Key_SetCatcher( trap_Key_GetCatcher() & ~KEYCATCH_UI );
+		return qtrue;
+	}
+
 	if ( Q_stricmp( cmd, "ui_report" ) == 0 ) {
 		UI_Report();
 		return qtrue;

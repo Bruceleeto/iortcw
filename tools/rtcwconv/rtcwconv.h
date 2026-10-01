@@ -8,6 +8,7 @@
 #ifndef RTCWCONV_H
 #define RTCWCONV_H
 
+#include <filesystem>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -42,5 +43,44 @@ struct MdsOptions {
 /* Converts one .mds file. False (with a message) if it isn't one. */
 bool ConvertMds(const std::vector<uint8_t> &in, std::vector<uint8_t> &out,
                 const MdsOptions &opt, MdsStats &st, const char *name);
+
+/* ---- tex.cpp ---- */
+
+struct TexJob {
+	std::string rel;            /* as the game names it, for messages */
+	std::string in;             /* the image file, or: */
+	std::vector<uint8_t> rgba;  /* the image itself, w x h */
+	int w, h;
+	bool noMip;
+	std::filesystem::path out;  /* the .dt */
+};
+
+struct TexOptions {
+	std::string pvrtex;         /* the pvrtex binary */
+	int maxSize;                /* longest side kept */
+	int maxSize2D;              /* the same for 2D art (menus, fonts, HUD) */
+	int jobs;                   /* pvrtex runs at once, 0: a core each */
+	bool verbose;
+};
+
+struct TexStats {
+	int files;
+	size_t bytesIn;             /* as 16 bit texels */
+	size_t bytesOut;
+};
+
+/* ---- bsp.cpp ---- */
+
+/* the lightmap shift the renderer does on PVR with the default cvars
+ * (r_mapOverBrightBits 2, no hardware gamma), baked into the .dt */
+#define LIGHTMAP_DT_SHIFT 2
+
+/* A job for each lightmap of the .bsp, out to <outDir>/maps/<map>/lm_NNNN.dt.
+ * False (with a message) if it isn't a bsp. */
+bool BspLightmapJobs(const std::vector<uint8_t> &bsp, const std::string &mapName,
+                     const std::filesystem::path &outDir, std::vector<TexJob> &jobs);
+
+/* Converts each image to its .dt. Returns how many failed. */
+int ConvertTextures(const std::vector<TexJob> &jobs, const TexOptions &opt, TexStats &st);
 
 #endif

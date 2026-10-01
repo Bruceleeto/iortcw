@@ -7,7 +7,12 @@
  *
  *   .mds   skeletal models -> .mdsc (mds.cpp), which the renderer looks
  *          for first
+ *   .tga / .jpg   images -> .dt (tex.cpp, with -p), which the PVR renderer
+ *          looks for first; a .tga wins over a .jpg of the same name, as
+ *          in the game
+ *   .bsp   its lightmaps -> maps/<map>/lm_NNNN.dt (bsp.cpp, with -p)
  */
+#include <map>
 #include <errno.h>
 #include <filesystem>
 #include <stdio.h>
@@ -50,12 +55,16 @@ static void Usage( void ) {
 		"  -a <f>   bone turn allowed against its parent, in degrees (default 0.5)\n"
 		"  -o <f>   frame bounds / offset error allowed, in units (default 0.1)\n"
 		"  -s <n>   most frames between two keys (default 255)\n"
+		"  -p <f>   pvrtex binary: convert images to .dt too\n"
+		"  -t <n>   largest texture side (default 128; 2D art 256)\n"
+		"  -j <n>   pvrtex runs at once (default: one per core)\n"
 		"  -v       a line per file\n" );
 	exit( 1 );
 }
 
 int main( int argc, char **argv ) {
 	MdsOptions opt = { 0.5f, 0.1f, 255 };
+	TexOptions texOpt = { "", 128, 256, 0, false };
 	bool verbose = false;
 	int i;
 
@@ -68,6 +77,12 @@ int main( int argc, char **argv ) {
 			opt.offsetTol = atof( argv[++i] );
 		} else if ( i + 1 < argc && !strcmp( argv[i], "-s" ) ) {
 			opt.maxSpan = atoi( argv[++i] );
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-p" ) ) {
+			texOpt.pvrtex = argv[++i];
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-t" ) ) {
+			texOpt.maxSize = atoi( argv[++i] );
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-j" ) ) {
+			texOpt.jobs = atoi( argv[++i] );
 		} else {
 			Usage();
 		}
@@ -76,8 +91,12 @@ int main( int argc, char **argv ) {
 		Usage();
 	}
 	fs::path inDir = argv[i], outDir = argv[i + 1];
+	texOpt.verbose = verbose;
 
 	MdsStats mds = {};
+	TexStats tex = {};
+	std::map<std::string, TexJob> images;	/* by name without extension */
+	std::vector<TexJob> lightmaps;
 	int failed = 0;
 
 	for ( const auto &e : fs::recursive_directory_iterator( inDir ) ) {
@@ -101,7 +120,37 @@ int main( int argc, char **argv ) {
 						( mds.bytesIn - before.bytesIn ) / 1048576.0, ( mds.bytesOut - before.bytesOut ) / 1048576.0,
 						100.0 * ( mds.keysOut - before.keysOut ) / ( mds.framesIn - before.framesIn ) );
 			}
+		} else if ( !texOpt.pvrtex.empty() &&
+					( !strcasecmp( ext.c_str(), ".tga" ) || !strcasecmp( ext.c_str(), ".jpg" ) ) ) {
+			fs::path stem = rel;
+			stem.replace_extension();
+			auto it = images.find( stem.string() );
+			if ( it == images.end() || !strcasecmp( ext.c_str(), ".tga" ) ) {
+				TexJob job;
+				job.rel = rel.string();
+				job.in = e.path().string();
+				job.noMip = false;
+				job.out = ( outDir / stem ).concat( ".dt" );
+				images[stem.string()] = job;
+			}
+		} else if ( !texOpt.pvrtex.empty() && !strcasecmp( ext.c_str(), ".bsp" ) ) {
+			std::vector<uint8_t> in;
+			if ( !ReadFile( e.path(), in ) || !BspLightmapJobs( in, e.path().stem().string(), outDir, lightmaps ) ) {
+				failed++;
+			}
 		}
+	}
+
+	for ( auto &job : lightmaps ) {
+		images[job.rel] = std::move( job );
+	}
+
+	if ( !images.empty() ) {
+		std::vector<TexJob> jobs;
+		for ( auto &kv : images ) {
+			jobs.push_back( kv.second );
+		}
+		failed += ConvertTextures( jobs, texOpt, tex );
 	}
 
 	if ( mds.files ) {
@@ -110,6 +159,10 @@ int main( int argc, char **argv ) {
 				mds.files, mds.bytesIn / 1048576.0, mds.bytesOut / 1048576.0,
 				100.0 * mds.keysOut / mds.framesIn, 100.0 * mds.dirKeys / mds.framesIn, mds.sumErr / mds.numErr, mds.maxErr, mds.maxAngle,
 				mds.stripTris, mds.tris, mds.strips );
+	}
+	if ( tex.files ) {
+		printf( "tex: %d files, %.1f MB of 16 bit texels -> %.1f MB of .dt\n",
+				tex.files, tex.bytesIn / 1048576.0, tex.bytesOut / 1048576.0 );
 	}
 	if ( failed ) {
 		fprintf( stderr, "%d file(s) failed\n", failed );

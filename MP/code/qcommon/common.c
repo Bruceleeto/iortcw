@@ -2900,6 +2900,8 @@ void Com_Init( char *commandLine ) {
 #ifdef AUTOMAP
 			// build-time default map (Makefile MAP=): skip intro and menu
 			Cvar_Set( "com_introplayed", "1" );
+			// mp_dc.pk3 (make assets) isn't one of the pure paks
+			Cvar_Set( "sv_pure", "0" );
 			Cbuf_AddText( "devmap " AUTOMAP "\n" );
 		}
 		if ( 0 ) {

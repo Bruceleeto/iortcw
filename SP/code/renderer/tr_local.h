@@ -1419,6 +1419,9 @@ model_t     *R_AllocModel( void );
 
 void        R_Init( void );
 image_t     *R_FindImageFile( const char *name, imgType_t type, imgFlags_t flags );
+#ifdef USE_PVR
+image_t *R_CreateImageDT( const char *name, const char *dtName, imgType_t type, imgFlags_t flags );
+#endif
 image_t     *R_FindImageFileExt( const char *name, imgType_t type, imgFlags_t flags, qboolean characterMip ); //----(SA)	added
 
 image_t     *R_CreateImage( const char *name, byte *pic, int width, int height, imgType_t type, imgFlags_t flags, int internalFormat );

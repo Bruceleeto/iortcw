@@ -464,6 +464,7 @@ static void render_now(void)
 			hw->is_isp_out_of_cache(), hw->is_display_list_invalid());
 		fflush(dbgf);
 	}
+	hw->clear_ta_interrupts();
 
 	if (!to_texture) {
 		view_target ^= 1;

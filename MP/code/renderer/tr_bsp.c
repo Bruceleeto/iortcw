@@ -170,6 +170,20 @@ static void R_LoadLightmaps( lump_t *l ) {
 
 	tr.lightmaps = ri.Hunk_Alloc( tr.numLightmaps * sizeof(image_t *), h_low );
 	for ( i = 0 ; i < tr.numLightmaps ; i++ ) {
+#ifdef USE_PVR
+		// the VQ copy `make assets` made, shifted as it would be here by default
+		if ( r_lightmap->integer != 2 && r_mapOverBrightBits->integer - tr.overbrightBits == 2 ) {
+			char name[MAX_QPATH], dtName[MAX_QPATH];
+
+			Com_sprintf( name, sizeof( name ), "*lightmap%d", i );
+			Com_sprintf( dtName, sizeof( dtName ), "maps/%s/lm_%04d.dt", s_worldData.baseName, i );
+			tr.lightmaps[i] = R_CreateImageDT( name, dtName, IMGTYPE_COLORALPHA,
+				IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION | IMGFLAG_CLAMPTOEDGE );
+			if ( tr.lightmaps[i] ) {
+				continue;
+			}
+		}
+#endif
 		// expand the 24 bit on-disk to 32 bit
 		buf_p = buf + i * LIGHTMAP_SIZE * LIGHTMAP_SIZE * 3;
 

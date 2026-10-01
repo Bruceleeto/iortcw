@@ -8,7 +8,8 @@
 #   make pvrtest       build the tools/gpu_pvr smoke test
 #   make assets        Dreamcast versions of the game data (tools/rtcwconv):
 #                      sp_dc.pk3 / mp_dc.pk3, written to ASSETS_DIR
-#                      (default assets/main, next to the original pk3s)
+#                      (default assets/main, next to the original pk3s);
+#                      images need PVRTEX (KOS utils/pvrtex)
 #
 #   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
 #                         (source /opt/toolchains/dc/kos/environ.sh first)
@@ -163,13 +164,16 @@ $(PVRTEST): $(GPU_PVR_DIR)/test/pvrtest.c $(GPU_PVR_LIB)
 	  -x c $< -x none $(GPU_PVR_LIB) $(SDL_LIBS) -lpthread -lm -o $@
 
 #############################################################################
-# make assets: tools/rtcwconv over the models in each game's pk3s. The
-# converted files have their own extensions (.mdsc), so they shadow nothing
-# and the renderer picks them first. sp_ / mp_ keep each pk3 to its own game.
+# make assets: tools/rtcwconv over the models and images in each game's pk3s.
+# The converted files have their own extensions (.mdsc, .dt), so they shadow
+# nothing and the renderer picks them first (.dt: the pvr renderer only).
+# sp_ / mp_ keep each pk3 to its own game.
 #############################################################################
 
 ASSETS_DIR ?= $(CURDIR)/assets/main
 ASSETS_OUT  = $(BUILD_DIR)/assets
+KOS_BASE   ?= /opt/toolchains/dc/kos
+PVRTEX     ?= $(KOS_BASE)/utils/pvrtex/pvrtex
 RTCWCONV    = $(BUILD_DIR)/tools/rtcwconv
 RTCWCONV_SRC = $(wildcard tools/rtcwconv/*.cpp tools/rtcwconv/TriStripper/src/*.cpp)
 RTCWCONV_HDR = $(wildcard tools/rtcwconv/*.h tools/rtcwconv/TriStripper/include/*.h \
@@ -196,9 +200,10 @@ define assets_pk3
 $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
-	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
+	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.tga' '*.jpg' '*.bsp' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
-	$$(Q)$(RTCWCONV) $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
+	$$(Q)$(RTCWCONV) -p $(PVRTEX) $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef
@@ -284,6 +289,10 @@ ifeq ($(USE_MUMBLE),1)
 endif
 ifeq ($(TEXTURES),0)
   CLIENT_CFLAGS += -DNO_TEXTURES
+endif
+# .dt textures from make assets go to the PVR as they are
+ifeq ($(RENDERER),pvr)
+  CLIENT_CFLAGS += -DUSE_PVR
 endif
 ifeq ($(VIDEO),0)
   CLIENT_CFLAGS += -DNO_VIDEO
