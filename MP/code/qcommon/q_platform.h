@@ -165,6 +165,22 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #endif
 
+//============================================================= DREAMCAST ===
+
+#ifdef _arch_dreamcast
+
+#define OS_STRING "dreamcast"
+#define ID_INLINE inline
+#define PATH_SEP '/'
+
+#define ARCH_STRING "sh4"
+
+#define Q3_LITTLE_ENDIAN
+
+#define DLL_EXT ".so"
+
+#endif
+
 //================================================================= LINUX ===
 
 #if defined(__linux__) || defined(__FreeBSD_kernel__) || defined(__GNU__)

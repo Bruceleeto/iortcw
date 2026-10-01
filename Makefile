@@ -1,5 +1,5 @@
 #
-# iortcw - single top-level Makefile (Linux)
+# iortcw - single top-level Makefile (Linux, Dreamcast)
 #
 #   make sp            build single player  -> build/sp-x86/iowolfsp.x86
 #   make mp            build multiplayer    -> build/mp-x86/iowolfmp.x86
@@ -7,10 +7,15 @@
 #   make clean         remove build/
 #   make pvrtest       build the tools/gpu_pvr smoke test
 #
+#   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
+#                         (source /opt/toolchains/dc/kos/environ.sh first)
+#
 # Everything (engine, renderer, qagame, cgame, ui) is linked into one
 # executable; no renderer or game shared libraries are built or loaded.
 #
 # Options:
+#   PLATFORM=linux     linux (default) or dc (Dreamcast: KOS toolchain, pvr
+#                      renderer, no audio yet, keyboard + mouse input)
 #   ARCH=x86           x86 (-m32, default) or x86_64
 #   RENDERER=opengl1   opengl1 (default), rend2, or pvr (Dreamcast PowerVR
 #                      backend, run on PC through tools/gpu_pvr; x86 only)
@@ -28,6 +33,7 @@
 #   V=1                show full command lines
 #
 
+PLATFORM ?= linux
 ARCH     ?= x86
 RENDERER ?= opengl1
 DEBUG    ?= 0
@@ -35,6 +41,19 @@ AUDIO    ?= 1
 TEXTURES ?= 1
 USE_VOIP ?= 1
 USE_MUMBLE ?= 0
+
+ifeq ($(PLATFORM),dc)
+  ifndef KOS_BASE
+    $(error PLATFORM=dc needs the KOS environment: source /opt/toolchains/dc/kos/environ.sh)
+  endif
+  override ARCH = sh4
+  override RENDERER = pvr
+  override AUDIO = 0
+  override USE_MUMBLE = 0
+  BASEDIR ?= /cd
+else ifneq ($(PLATFORM),linux)
+  $(error PLATFORM must be linux or dc)
+endif
 ifeq ($(AUDIO),0)
   override USE_VOIP = 0
 endif
@@ -52,6 +71,19 @@ ifeq ($(origin CXX),default)
 endif
 HOST_CC  ?= $(CC)
 OBJCOPY  ?= objcopy
+
+ifeq ($(PLATFORM),dc)
+  # kos-cc/kos-c++ add the KOS flags, includes and (when linking) libraries
+  override CC  = kos-cc
+  override CXX = kos-c++
+  HOST_CC  = gcc
+  OBJCOPY  = $(KOS_CC_PREFIX)-objcopy
+  # plain gcc for the partial module links: kos-cc would add the KOS link
+  # script and libraries to a -r link
+  MODULE_LD = $(KOS_CC_BASE)/bin/$(KOS_CC_PREFIX)-gcc -ml $(KOS_SH4_PRECISION) -r -nostdlib
+  # SH ELF C symbols carry a leading underscore
+  SYM_PREFIX = _
+endif
 
 ifeq ($(V),1)
   Q =
@@ -72,12 +104,25 @@ else ifeq ($(ARCH),x86_64)
   ARCH_FLAGS  = -m64
   ARCH_STRING = x86_64
   ARCH_OPT    =
+else ifeq ($(ARCH),sh4)
+  # KOS turns on LTO; it would undo the module symbol localizing
+  ARCH_FLAGS  = -fno-lto
+  ARCH_STRING = sh4
+  ARCH_OPT    =
 else
   $(error ARCH must be x86 or x86_64)
 endif
 
-SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null || echo -I/usr/include/SDL2 -D_REENTRANT)
-SDL_LIBS   ?= -lSDL2
+ifeq ($(PLATFORM),dc)
+  # no SDL on the Dreamcast; its bundled headers still provide the GL types
+  SDL_CFLAGS =
+  SDL_LIBS   =
+else
+  SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null || echo -I/usr/include/SDL2 -D_REENTRANT)
+  SDL_LIBS   ?= -lSDL2
+endif
+
+MODULE_LD ?= $(CC) $(ARCH_FLAGS) -r -nostdlib
 
 .PHONY: all sp mp game clean pvrtest
 
@@ -94,9 +139,11 @@ clean:
 # renderer code on PC (32-bit only)
 #############################################################################
 
+ifneq ($(PLATFORM),dc)
 GPU_PVR_DIR = tools/gpu_pvr
 GPU_PVR_OUT = $(BUILD_DIR)/gpu_pvr-$(ARCH)
 include $(GPU_PVR_DIR)/gpu_pvr.mk
+endif
 
 PVRTEST = $(GPU_PVR_OUT)/pvrtest
 
@@ -137,7 +184,11 @@ ifeq ($(RENDERER),pvr)
 endif
 
 B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter pvr,$(RENDERER)),-pvr)$(if $(filter 0,$(AUDIO)),-noaudio)$(if $(filter 0,$(TEXTURES)),-notex)
-EXE = $(B)/$(BIN).$(ARCH)
+ifeq ($(PLATFORM),dc)
+  EXE = $(B)/$(BIN).elf
+else
+  EXE = $(B)/$(BIN).$(ARCH)
+endif
 
 VERSION := 1.51d
 GIT_REV := $(shell git show -s --pretty=format:%h-%ad --date=short 2>/dev/null)
@@ -170,7 +221,7 @@ endif
 BASE_CFLAGS = $(ARCH_FLAGS) -pipe -Wall -fno-strict-aliasing -MMD \
   -DARCH_STRING=\"$(ARCH_STRING)\" -DPRODUCT_VERSION=\"$(PRODUCT_VERSION)\" \
   -DUSE_ICON -DUSE_LOCAL_HEADERS $(GAME_DEFS) \
-  -DNO_GZIP -I$(ZDIR) \
+  -DNO_GZIP -I$(ZDIR) $(if $(filter dc,$(PLATFORM)),-DIOAPI_NO_64) \
   -DUSE_INTERNAL_JPEG -I$(JPDIR) \
   $(OPT)
 
@@ -201,7 +252,11 @@ endif
 MOD_CFLAGS = $(BASE_CFLAGS) -fvisibility=hidden
 
 LDFLAGS += $(ARCH_FLAGS) $(ARCH_LDFLAGS)
-LIBS = $(SDL_LIBS) -lm -ldl -lrt -lpthread
+ifeq ($(PLATFORM),dc)
+  LIBS = -lm
+else
+  LIBS = $(SDL_LIBS) -lm -ldl -lrt -lpthread
+endif
 
 #############################################################################
 # sources (paths relative to $(CODE))
@@ -222,9 +277,8 @@ ENGINE_SRC = \
   $(filter-out client/snd_% client/libmumblelink.c,$(call rel,client/*.c)) \
   $(filter-out server/sv_wallhack.c,$(call rel,server/*.c)) \
   $(filter-out qcommon/vm_armv7l.c qcommon/vm_none.c qcommon/vm_powerpc.c \
-    qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c,$(call rel,qcommon/*.c)) \
-  sys/con_log.c sys/con_tty.c sys/sys_main.c sys/sys_unix.c \
-  sdl/sdl_input.c \
+    qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c qcommon/vm_x86.c qcommon/net_ip.c,$(call rel,qcommon/*.c)) \
+  sys/con_log.c sys/sys_main.c sys/sys_unix.c \
   $(filter-out splines/q_shared.cpp,$(call rel,splines/*.cpp)) \
   $(call rel,zlib-1.2.11/*.c)
 
@@ -238,7 +292,16 @@ ifeq ($(USE_MUMBLE),1)
   ENGINE_SRC += client/libmumblelink.c
 endif
 
-ENGINE_SRC += asm/snapvector.c asm/ftola.c
+ifeq ($(PLATFORM),dc)
+  # no VM compiler on SH4 (all modules are static anyway)
+  ENGINE_SRC += qcommon/vm_none.c sys/con_passive.c
+  # maple keyboard and mouse instead of SDL input
+  # and no network: loopback only
+  DC_OBJ = $(B)/dc/dc_input.c.o $(B)/dc/dc_net.c.o $(B)/dc/dc_posix.c.o
+else
+  ENGINE_SRC += qcommon/vm_x86.c qcommon/net_ip.c sdl/sdl_input.c sys/con_tty.c asm/snapvector.c asm/ftola.c
+  DC_OBJ =
+endif
 ifeq ($(ARCH),x86)
   ENGINE_SRC += asm/matha.s
   ifneq ($(AUDIO),0)
@@ -261,13 +324,17 @@ else
   $(error RENDERER must be opengl1, rend2 or pvr)
 endif
 ifeq ($(RENDERER),pvr)
-  ifneq ($(ARCH),x86)
+  ifeq ($(filter x86 sh4,$(ARCH)),)
     $(error RENDERER=pvr needs ARCH=x86: gpu_pvr keeps host pointers in 32 bits)
   endif
   # the opengl1 renderer front end on pvr/pvr_gl.c instead of SDL + OpenGL
   RENDERER_SRC += $(call rel,jpeg-8c/*.c)
   PVR_OBJ = $(B)/pvr/pvr_gl.c.o $(B)/pvr/pvr_glimp.c.o
-  RENDERER_LIBS = $(GPU_PVR_LIB) -lstdc++
+  ifeq ($(PLATFORM),dc)
+    RENDERER_LIBS =
+  else
+    RENDERER_LIBS = $(GPU_PVR_LIB) -lstdc++
+  endif
 else
   RENDERER_SRC += sdl/sdl_gamma.c sdl/sdl_glimp.c $(call rel,jpeg-8c/*.c)
   PVR_OBJ =
@@ -300,7 +367,7 @@ MODCOMMON_OBJ = $(call obj,modcommon,$(MODCOMMON_SRC))
 # each game module is pre-linked into one relocatable object
 MODULE_OBJ = $(B)/qagame.o $(B)/cgame.o $(B)/ui.o
 
-ALL_OBJ = $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) \
+ALL_OBJ = $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) \
   $(QAGAME_OBJ) $(CGAME_OBJ) $(UI_OBJ) $(MODCOMMON_OBJ)
 
 STRINGIFY = $(B)/tools/stringify
@@ -311,7 +378,7 @@ STRINGIFY = $(B)/tools/stringify
 
 game: $(EXE)
 
-$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
+$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
 	$(echo_cmd) "LD $@"
 	$(Q)$(CXX) $(LDFLAGS) -o $@ $(filter %.o,$^) $(RENDERER_LIBS) $(LIBS)
 
@@ -321,15 +388,21 @@ $(B)/pvr/%.c.o: pvr/%.c
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/renderer $(GPU_PVR_CFLAGS) -c $< -o $@
 
+# dc/ is the Dreamcast platform glue, also shared by SP and MP
+$(B)/dc/%.c.o: dc/%.c
+	$(echo_cmd) "DC_CC $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/client -I$(CODE)/qcommon -c $< -o $@
+
 # Combine a module's objects, make every hidden symbol local so modules
 # can't collide with each other or the engine, then rename the entry points.
 define link_module
 $(B)/$(1).o: $$($(2)_OBJ) $$(MODCOMMON_OBJ)
 	$$(echo_cmd) "MODULE $$@"
-	$$(Q)$$(CC) $$(ARCH_FLAGS) -r -nostdlib -o $$@.tmp $$^
+	$$(Q)$$(MODULE_LD) -o $$@.tmp $$^
 	$$(Q)$$(OBJCOPY) --localize-hidden \
-	  --redefine-sym dllEntry=$(1)_dllEntry \
-	  --redefine-sym vmMain=$(1)_vmMain $$@.tmp $$@
+	  --redefine-sym $$(SYM_PREFIX)dllEntry=$$(SYM_PREFIX)$(1)_dllEntry \
+	  --redefine-sym $$(SYM_PREFIX)vmMain=$$(SYM_PREFIX)$(1)_vmMain $$@.tmp $$@
 	$$(Q)rm -f $$@.tmp
 endef
 $(eval $(call link_module,qagame,QAGAME))

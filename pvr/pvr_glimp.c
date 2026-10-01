@@ -12,13 +12,19 @@
 
 #include "pvr_gl.h"
 
-#ifndef _arch_dreamcast
+#ifdef _arch_dreamcast
+#	include <dc/video.h>
+#else
 #	include "SDL.h"
 #	include "pvr_host.h"
 #endif
 
 /* globals sdl_glimp.c would define */
+#ifdef _arch_dreamcast
+static void *SDL_window = NULL;		/* input needs no window on the DC */
+#else
 SDL_Window *SDL_window = NULL;
+#endif
 
 cvar_t *r_allowSoftwareGL;
 cvar_t *r_allowResize;
@@ -91,7 +97,9 @@ void GLimp_Init( qboolean fixedFunction ) {
 	r_allowResize = ri.Cvar_Get( "r_allowResize", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "0", CVAR_ARCHIVE | CVAR_LATCH );
 
-#ifndef _arch_dreamcast
+#ifdef _arch_dreamcast
+	vid_set_mode( DM_640x480, PM_RGB565 );
+#else
 	if ( pvr_host_open( CLIENT_WINDOW_TITLE, 1 ) ) {
 		ri.Error( ERR_FATAL, "GLimp_Init() - could not open the PVR window" );
 	}

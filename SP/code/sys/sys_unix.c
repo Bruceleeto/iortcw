@@ -31,7 +31,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <stdio.h>
 #include <dirent.h>
 #include <unistd.h>
+#ifndef _arch_dreamcast
 #include <sys/mman.h>
+#endif
 #include <sys/time.h>
 #include <pwd.h>
 #include <libgen.h>
@@ -890,7 +892,9 @@ void Sys_GLimpInit( void )
 void Sys_SetFloatEnv(void)
 {
 	// rounding toward nearest
+#ifndef _arch_dreamcast	// SH4 FPU always rounds to nearest
 	fesetround(FE_TONEAREST);
+#endif
 }
 
 /*

@@ -31,7 +31,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <ctype.h>
 #include <errno.h>
 
-#ifndef DEDICATED
+#if !defined(DEDICATED) && !defined(_arch_dreamcast)
 #ifdef USE_LOCAL_HEADERS
 #	include "SDL.h"
 #	include "SDL_cpuinfo.h"
@@ -112,7 +112,7 @@ Restart the input subsystem
 */
 void Sys_In_Restart_f( void )
 {
-#ifndef DEDICATED
+#if !defined(DEDICATED) && !defined(_arch_dreamcast)
 	if( !SDL_WasInit( SDL_INIT_VIDEO ) )
 	{
 		Com_Printf( "in_restart: Cannot restart input while video is shutdown\n" );
@@ -142,7 +142,7 @@ Sys_GetClipboardData
 */
 char *Sys_GetClipboardData(void)
 {
-#ifdef DEDICATED
+#if defined(DEDICATED) || defined(_arch_dreamcast)
 	return NULL;
 #else
 	char *data = NULL;
@@ -284,7 +284,7 @@ static __attribute__ ((noreturn)) void Sys_Exit( int exitCode )
 {
 	CON_Shutdown( );
 
-#ifndef DEDICATED
+#if !defined(DEDICATED) && !defined(_arch_dreamcast)
 	SDL_Quit( );
 #endif
 
@@ -320,7 +320,7 @@ cpuFeatures_t Sys_GetProcessorFeatures( void )
 {
 	cpuFeatures_t features = 0;
 
-#ifndef DEDICATED
+#if !defined(DEDICATED) && !defined(_arch_dreamcast)
 	if( SDL_HasRDTSC( ) )	features |= CF_RDTSC;
 	if( SDL_Has3DNow( ) )	features |= CF_3DNOW;
 	if( SDL_HasMMX( ) )	features |= CF_MMX;
@@ -691,7 +691,7 @@ int main( int argc, char **argv )
 	int   i;
 	char  commandLine[ MAX_STRING_CHARS ] = { 0 };
 
-#ifndef DEDICATED
+#if !defined(DEDICATED) && !defined(_arch_dreamcast)
 	// SDL version check
 
 	// Compile time

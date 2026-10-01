@@ -20,7 +20,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-#ifdef DEDICATED
+#if defined(_arch_dreamcast)
+	// no shared libraries on the Dreamcast; game modules are linked in
+#	define Sys_LoadLibrary(f) NULL
+#	define Sys_UnloadLibrary(h) ((void)(h))
+#	define Sys_LoadFunction(h,fn) NULL
+#	define Sys_LibraryError() "no shared libraries on the Dreamcast"
+#elif defined(DEDICATED)
 #	ifdef _WIN32
 #		include <windows.h>
 #		define Sys_LoadLibrary(f) (void*)LoadLibrary(f)

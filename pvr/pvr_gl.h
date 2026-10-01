@@ -7,11 +7,8 @@
 #ifndef PVR_GL_H
 #define PVR_GL_H
 
-#ifdef _arch_dreamcast
-#	include <GL/gl.h>
-#else
-#	include "SDL_opengl.h"
-#endif
+/* only the GL types and constants; SDL's copy is bundled with the game */
+#include "SDL_opengl.h"
 
 #ifndef APIENTRY
 #define APIENTRY
