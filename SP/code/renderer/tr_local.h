@@ -716,6 +716,8 @@ typedef struct {
 	vec3_t bounds[2];
 	vec3_t origin;                  // the verts' xyz are from here
 	float xyzStep;                  // in steps this big
+	vec2_t stOrigin;                // and the st from here
+	float stStep;                   // in steps this big
 	int numVerts;
 	int numIndexes;
 	wldVert_t       *verts;

@@ -1419,6 +1419,9 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 			VectorCopy( in->bounds[1], srf->bounds[1] );
 			VectorCopy( in->origin, srf->origin );
 			srf->xyzStep = in->xyzStep;
+			srf->stOrigin[0] = in->stOrigin[0];
+			srf->stOrigin[1] = in->stOrigin[1];
+			srf->stStep = in->stStep;
 			srf->hasPlane = in->plane[0] || in->plane[1] || in->plane[2];
 			if ( srf->hasPlane ) {
 				VectorCopy( in->plane, srf->plane.normal );

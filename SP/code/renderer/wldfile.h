@@ -11,10 +11,12 @@
  * little endian:
  *
  *   SHADERS       the .bsp's shader lump as it is (dshader_t)
- *   LIGHTMAPS     the .bsp's lightmap lump as it is (for when there's no .dt)
+ *   LIGHTMAPS     empty: the map is lit by vertex (r_vertexLight), each
+ *                 vertex's colour its lightmap's light where it is
  *   FOGS          wldFog_t: the fog brush's box and fog surface, worked out
  *   SURFACES      wldSurface_t
- *   VERTS         wldVert_t, each surface's from its firstVert
+ *   VERTS         wldVert_t, each surface's from its firstVert; one a
+ *                 surface for all its vertexes alike
  *   INDEXES       unsigned short, 3 a triangle, each surface's from its
  *                 firstIndex, counted from the surface's firstVert
  *   LEAFSURFACES  int, into SURFACES
@@ -29,7 +31,7 @@
 #define WLDFILE_H
 
 #define WLD_IDENT       ( ( 'D' << 24 ) + ( 'L' << 16 ) + ( 'W' << 8 ) + 'R' )   // "RWLD"
-#define WLD_VERSION     2
+#define WLD_VERSION     3
 
 enum {
 	WLD_LUMP_SHADERS,
@@ -54,18 +56,23 @@ typedef struct {
 	} lumps[WLD_LUMPS];
 } wldHeader_t;
 
-// 24 bytes
+// 16 bytes
 typedef struct {
 	short xyz[3];                   // from the surface's origin, in its xyzStep units
 	unsigned char normal[2];        // as an MD3 normal: around z, then down from z, 256 to a turn
-	float st[2];
-	unsigned short lightmap[2];     // 0 to 1 as 0 to 65535
-	unsigned char color[4];
+	short st[2];                    // from the surface's stOrigin, in its stStep units
+	unsigned char color[4];         // the light, from the lightmap
 } wldVert_t;
 
 // a surface's xyzStep: this, or more for one too big to fit a short so
 #define WLD_XYZ_STEP        0.125f
-#define WLD_LIGHTMAP_SCALE  65535.0f
+// a surface's stStep: this, or more for st too far apart to fit a short so
+#define WLD_ST_STEP         ( 1.0f / 2048 )
+// how far apart a surface's st are at most, so it keeps that stStep (more
+// than one piece's are, and it has its own step)
+#define WLD_MAX_ST          30.0f
+// vertexes alike but for their colour's low bits this many are one
+#define WLD_WELD_COLOR      2
 // how far across surfaces are joined into one at most, so they keep the
 // finest xyzStep
 #define WLD_MAX_EXTENT      8000.0f
@@ -92,6 +99,8 @@ typedef struct {
 	float bounds[2][3];
 	float origin[3];                // what the xyz are from, on the xyzStep grid
 	float xyzStep;                  // a power of two
+	float stOrigin[2];              // what the st are from
+	float stStep;                   // a power of two
 	float plane[4];                 // when every triangle is on one plane, else 0 0 0 0
 	float flare[3][3];              // WLD_FLARE: origin, color, normal
 } wldSurface_t;

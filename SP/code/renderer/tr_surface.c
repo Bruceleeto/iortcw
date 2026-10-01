@@ -1231,10 +1231,10 @@ static void RB_SurfaceWorld( srfWorld_t *srf ) {
 	}
 	for ( i = 0, j = first ; i < srf->numVerts ; i++, j++, v++ ) {
 		R_WorldVertXyz( srf, v, tess.xyz[j] );
-		tess.texCoords[j][0][0] = v->st[0];
-		tess.texCoords[j][0][1] = v->st[1];
-		tess.texCoords[j][1][0] = v->lightmap[0] * ( 1.0f / WLD_LIGHTMAP_SCALE );
-		tess.texCoords[j][1][1] = v->lightmap[1] * ( 1.0f / WLD_LIGHTMAP_SCALE );
+		tess.texCoords[j][0][0] = srf->stOrigin[0] + srf->stStep * v->st[0];
+		tess.texCoords[j][0][1] = srf->stOrigin[1] + srf->stStep * v->st[1];
+		tess.texCoords[j][1][0] = 0;    // lit by vertex: no lightmap
+		tess.texCoords[j][1][1] = 0;
 		*(unsigned int *)tess.vertexColors[j] = *(const unsigned int *)v->color;
 		tess.vertexDlightBits[j] = dlightBits;
 	}

@@ -1167,9 +1167,10 @@ void R_Register( void ) {
 	r_customPixelAspect = ri.Cvar_Get( "r_customPixelAspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_simpleMipMaps = ri.Cvar_Get( "r_simpleMipMaps", "1", CVAR_ARCHIVE | CVAR_LATCH );
 #ifdef USE_PVR
-	// the lit colour the map has on every vertex, in place of the lightmap
-	// pass: half the world's polygons, and no lightmaps in VRAM
-	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	// the light on every vertex (the .wld has its lightmap's), in place of
+	// the lightmap pass: half the world's polygons, and no lightmaps in
+	// VRAM. Always: the .wld has no lightmaps to draw.
+	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "1", CVAR_ROM );
 #else
 	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
 #endif

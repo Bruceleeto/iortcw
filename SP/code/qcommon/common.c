@@ -1630,6 +1630,13 @@ void Com_MemoryReport( const char *when ) {
 				inUse / 1024, Hunk_FreeRAM() / 1024 );
 #ifdef DCSIM
 	DCSim_DumpAllocs( when );
+	{
+		extern int SV_NumEntities( void );
+		Com_Printf( "MEM %s: %d entity slots used of %d\n", when, SV_NumEntities(), MAX_GENTITIES );
+		if ( strstr( when, "seconds" ) ) {
+			Cmd_ExecuteString( "dcsim_ents" );    // the game's
+		}
+	}
 	// who ran out: addr2line -f -e iowolfsp.x86 on these
 	if ( strstr( when, "out of" ) ) {
 		void *frames[16];

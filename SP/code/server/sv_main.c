@@ -469,3 +469,10 @@ void SV_Frame( int msec ) {
 	// send messages back to the clients
 	SV_SendClientMessages();
 }
+
+#ifdef DCSIM
+// how many entity slots the game has used: the most it has had at once
+int SV_NumEntities( void ) {
+	return sv.state == SS_DEAD ? 0 : sv.num_entities;
+}
+#endif

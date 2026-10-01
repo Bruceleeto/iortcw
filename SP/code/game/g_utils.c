@@ -829,3 +829,39 @@ int DebugLine( vec3_t start, vec3_t end, int color ) {
 
 	return trap_DebugPolygonCreate( color, 4, points );
 }
+
+#ifdef DCSIM
+// what the entity slots in use are, by classname, most first
+void G_DCSimEntityReport( void ) {
+	const char *names[MAX_GENTITIES];
+	int counts[MAX_GENTITIES], num = 0, unused = 0, i, j;
+
+	for ( i = 0; i < level.num_entities; i++ ) {
+		const char *c = g_entities[i].inuse ? g_entities[i].classname : "(free)";
+		if ( !c ) {
+			c = "(none)";
+		}
+		if ( !g_entities[i].inuse ) {
+			unused++;
+		}
+		for ( j = 0; j < num && strcmp( names[j], c ); j++ ) {
+		}
+		if ( j == num ) {
+			names[num] = c;
+			counts[num++] = 0;
+		}
+		counts[j]++;
+	}
+	for ( ; num; num-- ) {
+		int best = 0;
+		for ( j = 1; j < num; j++ ) {
+			if ( counts[j] > counts[best] ) {
+				best = j;
+			}
+		}
+		G_Printf( "ENTS %4d %s\n", counts[best], names[best] );
+		names[best] = names[num - 1];
+		counts[best] = counts[num - 1];
+	}
+}
+#endif

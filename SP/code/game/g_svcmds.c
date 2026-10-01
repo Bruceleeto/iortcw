@@ -466,6 +466,14 @@ qboolean    ConsoleCommand( void ) {
 
 	trap_Argv( 0, cmd, sizeof( cmd ) );
 
+#ifdef DCSIM
+	if ( Q_stricmp( cmd, "dcsim_ents" ) == 0 ) {
+		void G_DCSimEntityReport( void );
+		G_DCSimEntityReport();
+		return qtrue;
+	}
+#endif
+
 	// Ridah, savegame
 	if ( Q_stricmp( cmd, "savegame" ) == 0 ) {
 

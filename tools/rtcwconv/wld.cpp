@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <tuple>
+#include <unordered_map>
 
 #include "bspfile.h"
 #include "rtcwconv.h"
@@ -41,32 +42,56 @@ static Vert MakeVert( const float *xyz, const float *st, const float *lightmap, 
 	return v;
 }
 
-/* as the renderer reads it back: R_WorldVertXyz, R_LatLongToNormal */
-static wldVert_t PackVert( const Vert &in, const float origin[3], float step ) {
+/* the lat / long bytes R_WorldVertNormal reads back */
+static void PackNormal( const float *normal, unsigned char out[2] ) {
+	float len = sqrtf( normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] );
+	float z = len > 0 ? normal[2] / len : 1;
+	out[0] = (unsigned char)( lrintf( atan2f( normal[1], normal[0] ) * ( 256 / ( 2 * M_PI ) ) ) & 255 );
+	out[1] = (unsigned char)lrintf( acosf( z < -1 ? -1 : z > 1 ? 1 : z ) * ( 256 / ( 2 * M_PI ) ) );
+}
+
+/* as the renderer reads it back: R_WorldVertXyz, R_WorldVertSt, R_LatLongToNormal */
+static wldVert_t PackVert( const Vert &in, const wldSurface_t &s ) {
 	wldVert_t v = {};
 	for ( int i = 0; i < 3; i++ ) {
-		v.xyz[i] = (short)lrintf( ( in.xyz[i] - origin[i] ) / step );
+		v.xyz[i] = (short)lrintf( ( in.xyz[i] - s.origin[i] ) / s.xyzStep );
 	}
-	float len = sqrtf( in.normal[0] * in.normal[0] + in.normal[1] * in.normal[1] + in.normal[2] * in.normal[2] );
-	float z = len > 0 ? in.normal[2] / len : 1;
-	v.normal[0] = (unsigned char)( lrintf( atan2f( in.normal[1], in.normal[0] ) * ( 256 / ( 2 * M_PI ) ) ) & 255 );
-	v.normal[1] = (unsigned char)lrintf( acosf( z < -1 ? -1 : z > 1 ? 1 : z ) * ( 256 / ( 2 * M_PI ) ) );
+	PackNormal( in.normal, v.normal );
 	for ( int i = 0; i < 2; i++ ) {
-		v.st[i] = in.st[i];
-		float l = in.lightmap[i] * WLD_LIGHTMAP_SCALE;
-		v.lightmap[i] = (unsigned short)lrintf( l < 0 ? 0 : l > 65535 ? 65535 : l );
+		v.st[i] = (short)lrintf( ( in.st[i] - s.stOrigin[i] ) / s.stStep );
 	}
 	memcpy( v.color, in.color, 4 );
 	return v;
 }
 
-/* the surfaces being made, a group of pieces at a time */
+/* what makes two vertexes of a surface the same one: the xyz and st as
+ * finely as they're kept, the normal as packed, the colour near enough */
+static std::string WeldKey( const Vert &v ) {
+	int32_t k[8];
+	for ( int i = 0; i < 3; i++ ) {
+		k[i] = lrintf( v.xyz[i] / WLD_XYZ_STEP );
+	}
+	for ( int i = 0; i < 2; i++ ) {
+		k[3 + i] = lrintf( v.st[i] / WLD_ST_STEP );
+	}
+	unsigned char n[2];
+	PackNormal( v.normal, n );
+	k[5] = n[0] << 8 | n[1];
+	k[6] = ( v.color[0] >> WLD_WELD_COLOR ) << 16 | ( v.color[1] >> WLD_WELD_COLOR ) << 8 | ( v.color[2] >> WLD_WELD_COLOR );
+	k[7] = v.color[3];
+	return std::string( (const char *)k, sizeof( k ) );
+}
+
+/* the surfaces being made, a group of pieces at a time; a vertex the open
+ * surface has already is used again */
 struct Builder {
 	std::vector<wldSurface_t> surfaces;
 	std::vector<Vert> verts;
 	std::vector<uint16_t> indexes;
 	bool open = false;
-	float mins[3], maxs[3];     /* the open surface's */
+	float mins[5], maxs[5];     /* the open surface's xyz and st */
+	std::unordered_map<std::string, int> have;  /* the open surface's vertexes */
+	long welded = 0;
 
 	wldSurface_t &Cur() { return surfaces.back(); }
 
@@ -78,13 +103,23 @@ struct Builder {
 		s.numVerts = s.numIndexes = 0;
 		surfaces.push_back( s );
 		open = true;
-		for ( int i = 0; i < 3; i++ ) {
+		have.clear();
+		for ( int i = 0; i < 5; i++ ) {
 			mins[i] = 1e30f;
 			maxs[i] = -1e30f;
 		}
 	}
 
-	/* bounds, and the plane if every piece put in was on the same one */
+	/* the finest step a range fits a short at, from its middle */
+	static float StepFor( float lo, float hi, float step, float *origin ) {
+		while ( ( hi - lo ) * 0.5f / step + 2 > 32767 ) {
+			step *= 2;
+		}
+		*origin = roundf( ( lo + hi ) * 0.5f / step ) * step;
+		return step;
+	}
+
+	/* bounds, steps, and the plane if every piece put in was on the same one */
 	void Close() {
 		if ( !open ) {
 			return;
@@ -95,7 +130,6 @@ struct Builder {
 			surfaces.pop_back();
 			return;
 		}
-		/* the finest step the xyz fit a short at, from the middle */
 		float half = 0;
 		for ( int i = 0; i < 3; i++ ) {
 			half = fmaxf( half, ( maxs[i] - mins[i] ) * 0.5f );
@@ -109,9 +143,15 @@ struct Builder {
 			s.bounds[1][i] = maxs[i];
 			s.origin[i] = roundf( ( mins[i] + maxs[i] ) * 0.5f / s.xyzStep ) * s.xyzStep;
 		}
+		float o[2];
+		s.stStep = fmaxf( StepFor( mins[3], maxs[3], WLD_ST_STEP, &o[0] ), StepFor( mins[4], maxs[4], WLD_ST_STEP, &o[1] ) );
+		for ( int i = 0; i < 2; i++ ) {
+			s.stOrigin[i] = roundf( ( mins[3 + i] + maxs[3 + i] ) * 0.5f / s.stStep ) * s.stStep;
+		}
 	}
 
-	/* and still no wider than WLD_MAX_EXTENT, with bmins / bmaxs in it */
+	/* and still no wider than WLD_MAX_EXTENT, nor its st than WLD_MAX_ST,
+	 * with bmins / bmaxs in it */
 	bool Fits( int numVerts, int numIndexes, const float *bmins, const float *bmaxs ) {
 		if ( Cur().numVerts + numVerts > WLD_MAX_VERTS || Cur().numIndexes + numIndexes > WLD_MAX_INDEXES ) {
 			return false;
@@ -119,8 +159,8 @@ struct Builder {
 		if ( !Cur().numVerts ) {
 			return true;    /* on its own, whatever its size */
 		}
-		for ( int i = 0; i < 3; i++ ) {
-			if ( fmaxf( maxs[i], bmaxs[i] ) - fminf( mins[i], bmins[i] ) > WLD_MAX_EXTENT ) {
+		for ( int i = 0; i < 5; i++ ) {
+			if ( fmaxf( maxs[i], bmaxs[i] ) - fminf( mins[i], bmins[i] ) > ( i < 3 ? WLD_MAX_EXTENT : WLD_MAX_ST ) ) {
 				return false;
 			}
 		}
@@ -128,7 +168,7 @@ struct Builder {
 	}
 
 	void Grow( const float *bmins, const float *bmaxs ) {
-		for ( int i = 0; i < 3; i++ ) {
+		for ( int i = 0; i < 5; i++ ) {
 			mins[i] = fminf( mins[i], bmins[i] );
 			maxs[i] = fmaxf( maxs[i], bmaxs[i] );
 		}
@@ -149,16 +189,28 @@ struct Builder {
 		}
 	}
 
+	/* the open surface's index for v, put in if it hasn't one like it */
+	int Put( const Vert &v ) {
+		wldSurface_t &s = Cur();
+		auto it = have.emplace( WeldKey( v ), s.numVerts );
+		if ( !it.second ) {
+			welded++;
+			return it.first->second;
+		}
+		verts.push_back( v );
+		return s.numVerts++;
+	}
+
 	/* the piece as it is, when it fits; else a triangle at a time */
 	void Add( const Piece &p, const wldSurface_t &proto ) {
 		int nv = p.verts.size(), ni = p.indexes.size();
-		float pmins[3] = { 1e30f, 1e30f, 1e30f }, pmaxs[3] = { -1e30f, -1e30f, -1e30f };
+		float pmins[5] = { 1e30f, 1e30f, 1e30f, 1e30f, 1e30f }, pmaxs[5] = { -1e30f, -1e30f, -1e30f, -1e30f, -1e30f };
 		for ( const Vert &v : p.verts ) {
-			Grow2( pmins, pmaxs, v.xyz );
+			Grow2( pmins, pmaxs, v );
 		}
 		bool small = nv <= WLD_MAX_VERTS && ni <= WLD_MAX_INDEXES;
-		for ( int i = 0; i < 3; i++ ) {
-			small &= pmaxs[i] - pmins[i] <= WLD_MAX_EXTENT;
+		for ( int i = 0; i < 5; i++ ) {
+			small &= pmaxs[i] - pmins[i] <= ( i < 3 ? WLD_MAX_EXTENT : WLD_MAX_ST );
 		}
 		if ( !Fits( nv, ni, pmins, pmaxs ) && small ) {
 			Start( proto );
@@ -167,21 +219,23 @@ struct Builder {
 			wldSurface_t &s = Cur();
 			Grow( pmins, pmaxs );
 			PlaneOf( p, !s.numIndexes );
-			for ( int i : p.indexes ) {
-				indexes.push_back( s.numVerts + i );
+			std::vector<int> remap( nv );
+			for ( int i = 0; i < nv; i++ ) {
+				remap[i] = Put( p.verts[i] );
 			}
-			verts.insert( verts.end(), p.verts.begin(), p.verts.end() );
-			s.numVerts += nv;
+			for ( int i : p.indexes ) {
+				indexes.push_back( remap[i] );
+			}
 			s.numIndexes += ni;
 			return;
 		}
 		std::vector<int> remap( nv, -1 );
 		for ( int t = 0; t < ni; t += 3 ) {
 			int need = 0;
-			float tmins[3] = { 1e30f, 1e30f, 1e30f }, tmaxs[3] = { -1e30f, -1e30f, -1e30f };
+			float tmins[5] = { 1e30f, 1e30f, 1e30f, 1e30f, 1e30f }, tmaxs[5] = { -1e30f, -1e30f, -1e30f, -1e30f, -1e30f };
 			for ( int k = 0; k < 3; k++ ) {
 				need += remap[p.indexes[t + k]] < 0;
-				Grow2( tmins, tmaxs, p.verts[p.indexes[t + k]].xyz );
+				Grow2( tmins, tmaxs, p.verts[p.indexes[t + k]] );
 			}
 			if ( !Fits( need, 3, tmins, tmaxs ) ) {
 				Start( proto );
@@ -195,8 +249,7 @@ struct Builder {
 			for ( int k = 0; k < 3; k++ ) {
 				int &r = remap[p.indexes[t + k]];
 				if ( r < 0 ) {
-					r = s.numVerts++;
-					verts.push_back( p.verts[p.indexes[t + k]] );
+					r = Put( p.verts[p.indexes[t + k]] );
 				}
 				indexes.push_back( r );
 				s.numIndexes++;
@@ -204,10 +257,11 @@ struct Builder {
 		}
 	}
 
-	static void Grow2( float *bmins, float *bmaxs, const float *xyz ) {
-		for ( int i = 0; i < 3; i++ ) {
-			bmins[i] = fminf( bmins[i], xyz[i] );
-			bmaxs[i] = fmaxf( bmaxs[i], xyz[i] );
+	static void Grow2( float *bmins, float *bmaxs, const Vert &v ) {
+		for ( int i = 0; i < 5; i++ ) {
+			float x = i < 3 ? v.xyz[i] : v.st[i - 3];
+			bmins[i] = fminf( bmins[i], x );
+			bmaxs[i] = fmaxf( bmaxs[i], x );
 		}
 	}
 };
@@ -428,7 +482,8 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 		std::vector<Key> order;
 		for ( int i = model.firstSurface; i < model.firstSurface + model.numSurfaces; i++ ) {
 			const BspSurface &s = surfaces[i];
-			int lightmapNum = kinds[i] == WLD_TRIANGLES || kinds[i] == WLD_FLARE ? LIGHTMAP_BY_VERTEX : s.lightmapNum;
+			/* all lit by vertex now, so which lightmap doesn't part them */
+			int lightmapNum = LIGHTMAP_BY_VERTEX;
 			if ( kinds[i] < 0 || ( kinds[i] != WLD_FLARE && pieces[i].indexes.empty() ) ) {
 				continue;
 			}
@@ -537,7 +592,7 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 	std::vector<wldVert_t> outVerts( b.verts.size() );
 	for ( const wldSurface_t &s : b.surfaces ) {
 		for ( int v = s.firstVert; v < s.firstVert + s.numVerts; v++ ) {
-			outVerts[v] = PackVert( b.verts[v], s.origin, s.xyzStep );
+			outVerts[v] = PackVert( b.verts[v], s );
 		}
 	}
 
@@ -580,11 +635,11 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 	h.ident = WLD_IDENT;
 	h.version = WLD_VERSION;
 	out.assign( sizeof( h ), 0 );
-	if ( !CopyLump( bsp, out, h, WLD_LUMP_SHADERS, BSP_SHADERS ) ||
-		 !CopyLump( bsp, out, h, WLD_LUMP_LIGHTMAPS, BSP_LIGHTMAPS ) ) {
+	if ( !CopyLump( bsp, out, h, WLD_LUMP_SHADERS, BSP_SHADERS ) ) {
 		fprintf( stderr, "%s: bad lumps\n", name );
 		return false;
 	}
+	PutLump( out, h, WLD_LUMP_LIGHTMAPS, NULL, 0 );     /* lit by vertex: none */
 	PutLump( out, h, WLD_LUMP_FOGS, outFogs.data(), outFogs.size() * sizeof( outFogs[0] ) );
 	PutLump( out, h, WLD_LUMP_SURFACES, b.surfaces.data(), b.surfaces.size() * sizeof( b.surfaces[0] ) );
 	PutLump( out, h, WLD_LUMP_VERTS, outVerts.data(), outVerts.size() * sizeof( outVerts[0] ) );
