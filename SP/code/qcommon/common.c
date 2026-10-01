@@ -45,6 +45,12 @@ If you have questions concerning this license or the applicable additional terms
 
 #define MIN_DEDICATED_COMHUNKMEGS 1
 #define MIN_COMHUNKMEGS		128
+#ifdef _arch_dreamcast
+#include <unistd.h>
+#include <arch/arch.h>
+#include <arch/stack.h>
+#define DC_MALLOC_RESERVE	( 4 * 1024 * 1024 )
+#endif
 #define DEF_COMHUNKMEGS 	256
 #define DEF_COMZONEMEGS		32
 #define DEF_COMHUNKMEGS_S	XSTRING(DEF_COMHUNKMEGS)
@@ -1202,17 +1208,32 @@ void Com_InitHunkMemory( void ) {
 		pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
 	}
 
+#ifdef _arch_dreamcast
+	// the RAM still free above the heap, less what the malloc users (zone,
+	// game, ui, cgame pools) need; com_hunkMegs means nothing here
+	{
+		uintptr_t heapTop = (uintptr_t)sbrk( 0 );
+		uintptr_t top = _arch_mem_top - THD_KERNEL_STACK_SIZE;
+
+		s_hunkTotal = top > heapTop + DC_MALLOC_RESERVE + 32 ? top - heapTop - DC_MALLOC_RESERVE - 32 : 0;
+		Com_Printf( "Hunk: %i K of %i K free (%i K kept for malloc)\n", s_hunkTotal / 1024,
+					(int)( top - heapTop ) / 1024, DC_MALLOC_RESERVE / 1024 );
+		(void)nMinAlloc;
+		(void)pMsg;
+	}
+#else
 	if ( cv->integer < nMinAlloc ) {
 		s_hunkTotal = 1024 * 1024 * nMinAlloc;
 		Com_Printf( pMsg, nMinAlloc, s_hunkTotal / ( 1024 * 1024 ) );
 	} else {
 		s_hunkTotal = cv->integer * 1024 * 1024;
 	}
+#endif
 
 
 	s_hunkData = malloc( s_hunkTotal + 31 );
 	if ( !s_hunkData ) {
-		Com_Error( ERR_FATAL, "Hunk data failed to allocate %i megs", s_hunkTotal / ( 1024 * 1024 ) );
+		Com_Error( ERR_FATAL, "Hunk data failed to allocate %i K", s_hunkTotal / 1024 );
 	}
 	// cacheline align
 	s_hunkData = (byte *) ( ( (intptr_t)s_hunkData + 31 ) & ~31 );
@@ -1293,6 +1314,10 @@ void Hunk_Clear( void ) {
 				hunk_low.permanent, hunk_low.tempHighwater, hunk_high.permanent, hunk_high.tempHighwater,
 				s_hunkTotal, (int)zoneUsed, (int)zonePeak );
 	zonePeak = zoneUsed;
+	{
+		struct mallinfo2 mi = mallinfo2();
+		Com_Printf( "POOL malloc: %zu K in use (%zu K mmapped)\n", ( mi.uordblks + mi.hblkhd ) / 1024, mi.hblkhd / 1024 );
+	}
 #endif
 
 #ifndef DEDICATED

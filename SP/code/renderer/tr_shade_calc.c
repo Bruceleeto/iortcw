@@ -778,7 +778,7 @@ void RB_CalcWaveAlpha( const waveForm_t *wf, unsigned char *dstColors ) {
 */
 void RB_CalcModulateColorsByFog( unsigned char *colors ) {
 	int i;
-	float texCoords[SHADER_MAX_VERTEXES][2] = {{0.0f}};
+	float ( *texCoords )[2] = ri.Hunk_AllocateTempMemory( tess.numVertexes * sizeof( *texCoords ) );   // off the stack
 
 	// calculate texcoords so we can derive density
 	// this is not wasted, because it would only have
@@ -791,6 +791,7 @@ void RB_CalcModulateColorsByFog( unsigned char *colors ) {
 		colors[1] *= f;
 		colors[2] *= f;
 	}
+	ri.Hunk_FreeTempMemory( texCoords );
 }
 
 /*
@@ -798,7 +799,7 @@ void RB_CalcModulateColorsByFog( unsigned char *colors ) {
 */
 void RB_CalcModulateAlphasByFog( unsigned char *colors ) {
 	int i;
-	float texCoords[SHADER_MAX_VERTEXES][2] = {{0.0f}};
+	float ( *texCoords )[2] = ri.Hunk_AllocateTempMemory( tess.numVertexes * sizeof( *texCoords ) );   // off the stack
 
 	// calculate texcoords so we can derive density
 	// this is not wasted, because it would only have
@@ -809,6 +810,7 @@ void RB_CalcModulateAlphasByFog( unsigned char *colors ) {
 		float f = 1.0 - R_FogFactor( texCoords[i][0], texCoords[i][1] );
 		colors[3] *= f;
 	}
+	ri.Hunk_FreeTempMemory( texCoords );
 }
 
 /*
@@ -816,7 +818,7 @@ void RB_CalcModulateAlphasByFog( unsigned char *colors ) {
 */
 void RB_CalcModulateRGBAsByFog( unsigned char *colors ) {
 	int i;
-	float texCoords[SHADER_MAX_VERTEXES][2] = {{0.0f}};
+	float ( *texCoords )[2] = ri.Hunk_AllocateTempMemory( tess.numVertexes * sizeof( *texCoords ) );   // off the stack
 
 	// calculate texcoords so we can derive density
 	// this is not wasted, because it would only have
@@ -830,6 +832,7 @@ void RB_CalcModulateRGBAsByFog( unsigned char *colors ) {
 		colors[2] *= f;
 		colors[3] *= f;
 	}
+	ri.Hunk_FreeTempMemory( texCoords );
 }
 
 

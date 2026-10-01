@@ -372,9 +372,11 @@ srfGridMesh_t *R_SubdividePatchToGrid( int width, int height,
 	float len, maxLen;
 	int dir;
 	int t;
-	drawVert_t ctrl[MAX_GRID_SIZE][MAX_GRID_SIZE];
+	drawVert_t ( *ctrl )[MAX_GRID_SIZE];    // [MAX_GRID_SIZE] of these: 186K, off the stack
 	float errorTable[2][MAX_GRID_SIZE];
+	srfGridMesh_t *grid;
 
+	ctrl = ri.Hunk_AllocateTempMemory( MAX_GRID_SIZE * sizeof( *ctrl ) );
 	for ( i = 0 ; i < width ; i++ ) {
 		for ( j = 0 ; j < height ; j++ ) {
 			ctrl[j][i] = points[j * width + i];
@@ -519,7 +521,9 @@ srfGridMesh_t *R_SubdividePatchToGrid( int width, int height,
 	// calculate normals
 	MakeMeshNormals( width, height, ctrl );
 
-	return R_CreateSurfaceGridMesh( width, height, ctrl, errorTable );
+	grid = R_CreateSurfaceGridMesh( width, height, ctrl, errorTable );
+	ri.Hunk_FreeTempMemory( ctrl );
+	return grid;
 }
 
 /*
@@ -530,7 +534,7 @@ R_GridInsertColumn
 srfGridMesh_t *R_GridInsertColumn( srfGridMesh_t *grid, int column, int row, vec3_t point, float loderror ) {
 	int i, j;
 	int width, height, oldwidth;
-	drawVert_t ctrl[MAX_GRID_SIZE][MAX_GRID_SIZE];
+	drawVert_t ( *ctrl )[MAX_GRID_SIZE];    // [MAX_GRID_SIZE] of these: 186K, off the stack
 	float errorTable[2][MAX_GRID_SIZE];
 	float lodRadius;
 	vec3_t lodOrigin;
@@ -540,6 +544,7 @@ srfGridMesh_t *R_GridInsertColumn( srfGridMesh_t *grid, int column, int row, vec
 	if ( width > MAX_GRID_SIZE ) {
 		return NULL;
 	}
+	ctrl = ri.Hunk_AllocateTempMemory( MAX_GRID_SIZE * sizeof( *ctrl ) );
 	height = grid->height;
 	for ( i = 0; i < width; i++ ) {
 		if ( i == column ) {
@@ -573,6 +578,7 @@ srfGridMesh_t *R_GridInsertColumn( srfGridMesh_t *grid, int column, int row, vec
 	R_FreeSurfaceGridMesh( grid );
 	// create a new grid
 	grid = R_CreateSurfaceGridMesh( width, height, ctrl, errorTable );
+	ri.Hunk_FreeTempMemory( ctrl );
 	grid->lodRadius = lodRadius;
 	VectorCopy( lodOrigin, grid->lodOrigin );
 	return grid;
@@ -586,7 +592,7 @@ R_GridInsertRow
 srfGridMesh_t *R_GridInsertRow( srfGridMesh_t *grid, int row, int column, vec3_t point, float loderror ) {
 	int i, j;
 	int width, height, oldheight;
-	drawVert_t ctrl[MAX_GRID_SIZE][MAX_GRID_SIZE];
+	drawVert_t ( *ctrl )[MAX_GRID_SIZE];    // [MAX_GRID_SIZE] of these: 186K, off the stack
 	float errorTable[2][MAX_GRID_SIZE];
 	float lodRadius;
 	vec3_t lodOrigin;
@@ -597,6 +603,7 @@ srfGridMesh_t *R_GridInsertRow( srfGridMesh_t *grid, int row, int column, vec3_t
 	if ( height > MAX_GRID_SIZE ) {
 		return NULL;
 	}
+	ctrl = ri.Hunk_AllocateTempMemory( MAX_GRID_SIZE * sizeof( *ctrl ) );
 	for ( i = 0; i < height; i++ ) {
 		if ( i == row ) {
 			//insert new row
@@ -629,6 +636,7 @@ srfGridMesh_t *R_GridInsertRow( srfGridMesh_t *grid, int row, int column, vec3_t
 	R_FreeSurfaceGridMesh( grid );
 	// create a new grid
 	grid = R_CreateSurfaceGridMesh( width, height, ctrl, errorTable );
+	ri.Hunk_FreeTempMemory( ctrl );
 	grid->lodRadius = lodRadius;
 	VectorCopy( lodOrigin, grid->lodOrigin );
 	return grid;

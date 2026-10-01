@@ -13,8 +13,9 @@
 #   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
 #                         (source /opt/toolchains/dc/kos/environ.sh first)
 #   make disc          Dreamcast build plus the sp pk3s (with sp_dc.pk3 if
-#                      made) in a selfboot disc image -> build/iowolfsp.cdi
-#                      (needs mkdcdisc; sources KOS's environ.sh itself)
+#                      made), unpacked, in a selfboot disc image
+#                      -> build/iowolfsp.cdi (needs mkdcdisc; sources KOS's
+#                      environ.sh itself)
 #
 # Everything (engine, renderer, qagame, cgame, ui) is linked into one
 # executable; no renderer or game shared libraries are built or loaded.
@@ -191,7 +192,7 @@ define assets_pk3
 $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
-	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.tga' '*.jpg' '*.bsp' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
+	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.tga' '*.jpg' '*.bsp' '*.aas' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
 	$$(Q)$(RTCWCONV) -p $(PVRTEX) $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
@@ -202,13 +203,16 @@ $(eval $(call assets_pk3,sp,$(SP_PAKS)))
 
 #############################################################################
 # make disc: the Dreamcast build and the sp pk3s on a selfboot .cdi; the
-# data goes in main/ at the root of the disc (/cd/main on the Dreamcast)
+# pk3s are unpacked into main/ at the root of the disc (/cd/main on the
+# Dreamcast), in the order the game loads them so the same file wins: no
+# zip directories in RAM, no inflating, no seeking through big zips
 #############################################################################
 
 MKDCDISC  ?= mkdcdisc
 DISC_DIR   = $(BUILD_DIR)/disc
 DISC_CDI   = $(BUILD_DIR)/iowolfsp.cdi
-DISC_PAKS  = $(SP_PAKS) $(wildcard $(ASSETS_DIR)/sp_dc.pk3)
+# a later pk3 (in sorted order) wins, as in the game
+DISC_PAKS  = $(sort $(SP_PAKS) $(wildcard $(ASSETS_DIR)/sp_dc.pk3))
 DISC_FILES = $(wildcard $(ASSETS_DIR)/scripts/translation.cfg)
 
 disc:
@@ -217,7 +221,7 @@ disc:
 	@test -f $(ASSETS_DIR)/sp_dc.pk3 || echo "warning: no sp_dc.pk3 (make assets): the disc has the PC data only" >&2
 	$(echo_cmd) "DISC $(DISC_CDI)"
 	$(Q)rm -rf $(DISC_DIR) && mkdir -p $(DISC_DIR)/main/scripts
-	$(Q)for f in $(DISC_PAKS); do ln -f "$$f" $(DISC_DIR)/main/ 2>/dev/null || cp "$$f" $(DISC_DIR)/main/; done
+	$(Q)for f in $(DISC_PAKS); do unzip -qq -o "$$f" -d $(DISC_DIR)/main || exit 1; done
 	$(Q)for f in $(DISC_FILES); do cp "$$f" $(DISC_DIR)/main/scripts/; done
 	$(Q)$(MKDCDISC) -e $(BUILD_DIR)/sp-sh4/iowolfsp.elf -D $(DISC_DIR) -o $(DISC_CDI) \
 	  -n "Return to Castle Wolfenstein" -N

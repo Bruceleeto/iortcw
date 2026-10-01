@@ -69,6 +69,18 @@ struct TexStats {
 	size_t bytesOut;
 };
 
+/* ---- aas.cpp ---- */
+
+struct AasStats {
+	int files;
+	size_t bytesIn, bytesOut;
+	long facesIn, facesOut;
+};
+
+/* .aas -> .aasc: only the ladder faces (and their edges and vertexes) kept.
+ * False (with a message) if it isn't one. */
+bool ConvertAas(const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasStats &st, const char *name);
+
 /* ---- bsp.cpp ---- */
 
 /* the lightmap shift the renderer does on PVR with the default cvars

@@ -11,6 +11,8 @@
  *          looks for first; a .tga wins over a .jpg of the same name, as
  *          in the game
  *   .bsp   its lightmaps -> maps/<map>/lm_NNNN.dt (bsp.cpp, with -p)
+ *   .aas   bot navigation -> .aasc without the faces the game doesn't read
+ *          (aas.cpp), which the botlib looks for first
  */
 #include <map>
 #include <errno.h>
@@ -95,6 +97,7 @@ int main( int argc, char **argv ) {
 
 	MdsStats mds = {};
 	TexStats tex = {};
+	AasStats aas = {};
 	std::map<std::string, TexJob> images;	/* by name without extension */
 	std::vector<TexJob> lightmaps;
 	int failed = 0;
@@ -119,6 +122,12 @@ int main( int argc, char **argv ) {
 				printf( "%-48s %7.2f MB -> %6.2f MB  keys %5.1f%%\n", rel.c_str(),
 						( mds.bytesIn - before.bytesIn ) / 1048576.0, ( mds.bytesOut - before.bytesOut ) / 1048576.0,
 						100.0 * ( mds.keysOut - before.keysOut ) / ( mds.framesIn - before.framesIn ) );
+			}
+		} else if ( !strcasecmp( ext.c_str(), ".aas" ) ) {
+			std::vector<uint8_t> in, out;
+			if ( !ReadFile( e.path(), in ) || !ConvertAas( in, out, aas, rel.c_str() ) ||
+				 !WriteFile( ( outDir / rel ).concat( "c" ), out ) ) {
+				failed++;
 			}
 		} else if ( !texOpt.pvrtex.empty() &&
 					( !strcasecmp( ext.c_str(), ".tga" ) || !strcasecmp( ext.c_str(), ".jpg" ) ) ) {
@@ -159,6 +168,10 @@ int main( int argc, char **argv ) {
 				mds.files, mds.bytesIn / 1048576.0, mds.bytesOut / 1048576.0,
 				100.0 * mds.keysOut / mds.framesIn, 100.0 * mds.dirKeys / mds.framesIn, mds.sumErr / mds.numErr, mds.maxErr, mds.maxAngle,
 				mds.stripTris, mds.tris, mds.strips );
+	}
+	if ( aas.files ) {
+		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces kept\n",
+				aas.files, aas.bytesIn / 1048576.0, aas.bytesOut / 1048576.0, aas.facesOut, aas.facesIn );
 	}
 	if ( tex.files ) {
 		printf( "tex: %d files, %.1f MB of 16 bit texels -> %.1f MB of .dt\n",

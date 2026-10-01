@@ -1022,13 +1022,14 @@ CM_PatchCollideFromGrid
 static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	int i, j;
 	float           *p1, *p2, *p3;
-	int gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2];
+	int ( *gridPlanes )[MAX_GRID_SIZE][2];  // [MAX_GRID_SIZE] of these: 133K, off the stack
 	facet_t         *facet;
 	int borders[4];
 	int noAdjust[4];
 
 	numPlanes = 0;
 	numFacets = 0;
+	gridPlanes = Hunk_AllocateTempMemory( MAX_GRID_SIZE * sizeof( *gridPlanes ) );
 
 	// find the planes for each triangle of the grid
 	for ( i = 0 ; i < grid->width - 1 ; i++ ) {
@@ -1167,6 +1168,8 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 		}
 	}
 
+	Hunk_FreeTempMemory( gridPlanes );
+
 	// copy the results out
 	pf->numPlanes = numPlanes;
 	pf->numFacets = numFacets;
@@ -1189,7 +1192,7 @@ Points is packed as concatenated rows.
 */
 struct patchCollide_s   *CM_GeneratePatchCollide( int width, int height, vec3_t *points ) {
 	patchCollide_t  *pf;
-	cGrid_t grid;
+	cGrid_t *grid;  // 200K at its biggest: off the stack
 	int i, j;
 
 	if ( width <= 2 || height <= 2 || !points ) {
@@ -1206,42 +1209,44 @@ struct patchCollide_s   *CM_GeneratePatchCollide( int width, int height, vec3_t 
 	}
 
 	// build a grid
-	grid.width = width;
-	grid.height = height;
-	grid.wrapWidth = qfalse;
-	grid.wrapHeight = qfalse;
+	grid = Hunk_AllocateTempMemory( sizeof( *grid ) );
+	grid->width = width;
+	grid->height = height;
+	grid->wrapWidth = qfalse;
+	grid->wrapHeight = qfalse;
 	for ( i = 0 ; i < width ; i++ ) {
 		for ( j = 0 ; j < height ; j++ ) {
-			VectorCopy( points[j * width + i], grid.points[i][j] );
+			VectorCopy( points[j * width + i], grid->points[i][j] );
 		}
 	}
 
 	// subdivide the grid
-	CM_SetGridWrapWidth( &grid );
-	CM_SubdivideGridColumns( &grid );
-	CM_RemoveDegenerateColumns( &grid );
+	CM_SetGridWrapWidth( grid );
+	CM_SubdivideGridColumns( grid );
+	CM_RemoveDegenerateColumns( grid );
 
-	CM_TransposeGrid( &grid );
+	CM_TransposeGrid( grid );
 
-	CM_SetGridWrapWidth( &grid );
-	CM_SubdivideGridColumns( &grid );
-	CM_RemoveDegenerateColumns( &grid );
+	CM_SetGridWrapWidth( grid );
+	CM_SubdivideGridColumns( grid );
+	CM_RemoveDegenerateColumns( grid );
 
 	// we now have a grid of points exactly on the curve
 	// the aproximate surface defined by these points will be
 	// collided against
 	pf = Hunk_Alloc( sizeof( *pf ), h_high );
 	ClearBounds( pf->bounds[0], pf->bounds[1] );
-	for ( i = 0 ; i < grid.width ; i++ ) {
-		for ( j = 0 ; j < grid.height ; j++ ) {
-			AddPointToBounds( grid.points[i][j], pf->bounds[0], pf->bounds[1] );
+	for ( i = 0 ; i < grid->width ; i++ ) {
+		for ( j = 0 ; j < grid->height ; j++ ) {
+			AddPointToBounds( grid->points[i][j], pf->bounds[0], pf->bounds[1] );
 		}
 	}
 
-	c_totalPatchBlocks += ( grid.width - 1 ) * ( grid.height - 1 );
+	c_totalPatchBlocks += ( grid->width - 1 ) * ( grid->height - 1 );
 
 	// generate a bsp tree for the surface
-	CM_PatchCollideFromGrid( &grid, pf );
+	CM_PatchCollideFromGrid( grid, pf );
+	Hunk_FreeTempMemory( grid );
 
 	// expand by one unit for epsilon purposes
 	pf->bounds[0][0] -= 1;

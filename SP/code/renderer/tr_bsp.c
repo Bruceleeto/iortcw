@@ -141,7 +141,7 @@ static void R_LoadLightmaps( fileHandle_t f, const lump_t *l ) {
 	bspLump_t lump = { NULL, 0 };
 	byte        *buf_p;
 	int len;
-	byte image[LIGHTMAP_SIZE * LIGHTMAP_SIZE * 4];
+	byte *image = NULL;     // 64K: off the stack, only when there's no .dt
 	int i, j;
 	float maxIntensity = 0;
 	double sumIntensity = 0;
@@ -186,6 +186,7 @@ static void R_LoadLightmaps( fileHandle_t f, const lump_t *l ) {
 		// expand the 24 bit on-disk to 32 bit; the lump is only read for this
 		if ( !lump.data ) {
 			ri.CM_ReadLump( f, l, &lump );
+			image = ri.Hunk_AllocateTempMemory( LIGHTMAP_SIZE * LIGHTMAP_SIZE * 4 );
 		}
 		buf_p = (byte *)lump.data + i * LIGHTMAP_SIZE * LIGHTMAP_SIZE * 3;
 
@@ -228,6 +229,9 @@ static void R_LoadLightmaps( fileHandle_t f, const lump_t *l ) {
 		tr.lightmaps[i] = R_CreateImage( va( "*lightmap%d",i ), image,
 			LIGHTMAP_SIZE, LIGHTMAP_SIZE, IMGTYPE_COLORALPHA,
 			IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION | IMGFLAG_CLAMPTOEDGE, 0 );
+	}
+	if ( image ) {
+		ri.Hunk_FreeTempMemory( image );
 	}
 	ri.CM_FreeLump( &lump );
 
@@ -426,7 +430,7 @@ static void ParseMesh( dsurface_t *ds, drawVert_t *verts, msurface_t *surf ) {
 	srfGridMesh_t   *grid;
 	int i, j;
 	int width, height, numPoints;
-	drawVert_t points[MAX_PATCH_SIZE * MAX_PATCH_SIZE];
+	drawVert_t *points;     // sized to the patch, off the stack
 	int lightmapNum;
 	vec3_t bounds[2];
 	vec3_t tmpVec;
@@ -455,6 +459,7 @@ static void ParseMesh( dsurface_t *ds, drawVert_t *verts, msurface_t *surf ) {
 
 	verts += LittleLong( ds->firstVert );
 	numPoints = width * height;
+	points = ri.Hunk_AllocateTempMemory( numPoints * sizeof( *points ) );
 	for ( i = 0 ; i < numPoints ; i++ ) {
 		for ( j = 0 ; j < 3 ; j++ ) {
 			points[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
@@ -469,6 +474,7 @@ static void ParseMesh( dsurface_t *ds, drawVert_t *verts, msurface_t *surf ) {
 
 	// pre-tesseleate
 	grid = R_SubdividePatchToGrid( width, height, points );
+	ri.Hunk_FreeTempMemory( points );
 	surf->data = (surfaceType_t *)grid;
 
 	// copy the level of detail origin, which is the center

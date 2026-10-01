@@ -484,10 +484,12 @@ static void ProjectDlightTexture_scalar( void ) {
 	vec3_t	origin;
 	float	*texCoords;
 	byte	*colors;
-	byte	clipBits[SHADER_MAX_VERTEXES];
-	float	texCoordsArray[SHADER_MAX_VERTEXES][2];
-	byte	colorArray[SHADER_MAX_VERTEXES][4];
-	glIndex_t	hitIndexes[SHADER_MAX_INDEXES];
+	// sized to this surface, off the stack (148K at SHADER_MAX_*)
+	byte	*clipBits;
+	float	( *texCoordsArray )[2];
+	byte	( *colorArray )[4];
+	glIndex_t	*hitIndexes;
+	byte	*arrays;
 	int		numIndexes;
 	float	scale;
 	float	radius;
@@ -501,6 +503,13 @@ static void ProjectDlightTexture_scalar( void ) {
 	if ( backEnd.refdef.rdflags & RDF_SNOOPERVIEW ) {  // no dlights for snooper
 		return;
 	}
+
+	arrays = ri.Hunk_AllocateTempMemory( tess.numVertexes * ( sizeof( *texCoordsArray ) + sizeof( *colorArray ) + 1 )
+										 + tess.numIndexes * sizeof( *hitIndexes ) );
+	texCoordsArray = (void *)arrays;
+	colorArray = (void *)( texCoordsArray + tess.numVertexes );
+	hitIndexes = (void *)( colorArray + tess.numVertexes );
+	clipBits = (byte *)( hitIndexes + tess.numIndexes );
 
 	for ( l = 0 ; l < backEnd.refdef.num_dlights ; l++ ) {
 		dlight_t	*dl;
@@ -658,6 +667,8 @@ static void ProjectDlightTexture_scalar( void ) {
 			}
 		}
 	}
+
+	ri.Hunk_FreeTempMemory( arrays );
 }
 
 static void ProjectDlightTexture( void ) {

@@ -45,7 +45,10 @@
 #define MAX_MATRIX_DEPTH	32
 #define MAX_TEXTURES		16384
 #define MAX_IMMEDIATE		4096
-#define LIST_BUFFER_BYTES	( 1024 * 1024 )
+/* a list's buffer grows (doubling) as frames need it, up to the vertex
+   buffer pvrgl_Init gives the PVR: no frame can send it more than that */
+#define LIST_BUFFER_START	( 64 * 1024 )
+#define LIST_BUFFER_MAX		( 768 * 1024 )
 
 /* scale factors on 1/w, see the comment at the top */
 #define DEPTH_SCALE_SKY		0.01f
@@ -88,6 +91,7 @@ typedef struct {
 
 typedef struct {
 	uint8_t		*data;
+	int			size;
 	int			used;
 	int			overflowed;
 	pvr_poly_hdr_t	last;		/* last header written to this list */
@@ -942,9 +946,21 @@ void APIENTRY pvrglTexParameteri( GLenum target, GLenum pname, GLint param ) {
 /* ===================================================================== */
 
 static void ListWrite( listBuffer_t *l, const void *data ) {
-	if ( l->used + 32 > LIST_BUFFER_BYTES ) {
-		l->overflowed = 1;
-		return;
+	if ( l->used + 32 > l->size ) {
+		int size = l->size ? l->size * 2 : LIST_BUFFER_START;
+		uint8_t *grown;
+
+		if ( size > LIST_BUFFER_MAX ) {
+			size = LIST_BUFFER_MAX;
+		}
+		grown = size > l->size ? realloc( l->data, size ) : NULL;
+
+		if ( !grown ) {
+			l->overflowed = 1;
+			return;
+		}
+		l->data = grown;
+		l->size = size;
 	}
 	memcpy( l->data + l->used, data, 32 );
 	l->used += 32;
@@ -1467,7 +1483,7 @@ void pvrgl_EndFrame( void ) {
 			continue;
 		}
 		if ( l->overflowed ) {
-			fprintf( stderr, "pvr_gl: list %d overflowed its %d KB buffer\n", order[i], LIST_BUFFER_BYTES / 1024 );
+			fprintf( stderr, "pvr_gl: list %d overflowed its %d KB buffer\n", order[i], l->size / 1024 );
 		}
 		pvr_list_begin( order[i] );
 		pvr_prim( l->data, l->used );
@@ -1488,7 +1504,6 @@ int pvrgl_Init( void ) {
 		3,				/* extra OPBs */
 		0
 	};
-	int i;
 
 	if ( gl.inited ) {
 		return 0;
@@ -1497,13 +1512,7 @@ int pvrgl_Init( void ) {
 		return -1;
 	}
 
-	memset( &gl, 0, sizeof( gl ) );
-	for ( i = 0; i < 5; i++ ) {
-		gl.lists[i].data = malloc( LIST_BUFFER_BYTES );
-		if ( !gl.lists[i].data ) {
-			return -1;
-		}
-	}
+	memset( &gl, 0, sizeof( gl ) );	/* the list buffers grow as they get used (ListWrite) */
 
 	gl.matrixMode = GL_MODELVIEW;
 	Mat_Identity( gl.modelview[0] );

@@ -1225,6 +1225,10 @@ static void CL_GenerateQKey(void)
 	unsigned char buff[ QKEY_SIZE ];
 	fileHandle_t f;
 
+#ifdef _arch_dreamcast
+	return;		// nowhere to keep it
+#endif
+
 	len = FS_SV_FOpenFileRead( QKEY_FILE, &f );
 	FS_FCloseFile( f );
 	if( len == QKEY_SIZE ) {

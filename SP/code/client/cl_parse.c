@@ -45,8 +45,7 @@ gamestate, and possibly during gameplay.
 void CL_SystemInfoChanged( void ) {
 	char	*systemInfo;
 	const char	*s, *t;
-	char	key[BIG_INFO_KEY];
-	char	value[BIG_INFO_VALUE];
+	char	*key, *value;   // BIG_INFO_KEY + BIG_INFO_VALUE: 16K, off the stack
 	qboolean	gameSet;
 
 	systemInfo = cl.gameState.stringData + cl.gameState.stringOffsets[ CS_SYSTEMINFO ];
@@ -69,6 +68,8 @@ void CL_SystemInfoChanged( void ) {
 	FS_PureServerSetReferencedPaks( s, t );
 
 	gameSet = qfalse;
+	key = Z_Malloc( BIG_INFO_KEY + BIG_INFO_VALUE );
+	value = key + BIG_INFO_KEY;
 	// scan through all the variables in the systeminfo and locally set cvars to match
 	s = systemInfo;
 	while ( s ) {
@@ -111,6 +112,7 @@ void CL_SystemInfoChanged( void ) {
 			Cvar_SetSafe(key, value);
 		}
 	}
+	Z_Free( key );
 	// if game folder should not be set and it is set at the client side
 	if ( !gameSet && *Cvar_VariableString("fs_game") ) {
 		Cvar_Set( "fs_game", "" );

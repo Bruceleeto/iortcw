@@ -70,6 +70,10 @@ char *Sys_DefaultHomePath(void)
 	char *p2;
 #endif
 
+#ifdef _arch_dreamcast
+	return "/cd";	// the same as the base path: nothing is written on a Dreamcast
+#endif
+
 	if( !*homePath && com_homepath != NULL )
 	{
 #ifdef __APPLE__
@@ -427,7 +431,7 @@ char **Sys_ListFiles( const char *directory, const char *extension, char *filter
 	char          search[MAX_OSPATH];
 	int           nfiles;
 	char          **listCopy;
-	char          *list[MAX_FOUND_FILES];
+	char          **list;   // MAX_FOUND_FILES: 16K, on the heap while listing
 	int           i;
 	struct stat   st;
 
@@ -436,19 +440,23 @@ char **Sys_ListFiles( const char *directory, const char *extension, char *filter
 	if (filter) {
 
 		nfiles = 0;
+		list = Z_Malloc( MAX_FOUND_FILES * sizeof( *list ) );
 		Sys_ListFilteredFiles( directory, "", filter, list, &nfiles );
 
 		list[ nfiles ] = NULL;
 		*numfiles = nfiles;
 
-		if (!nfiles)
+		if (!nfiles) {
+			Z_Free( list );
 			return NULL;
+		}
 
 		listCopy = Z_Malloc( ( nfiles + 1 ) * sizeof( *listCopy ) );
 		for ( i = 0 ; i < nfiles ; i++ ) {
 			listCopy[i] = list[i];
 		}
 		listCopy[i] = NULL;
+		Z_Free( list );
 
 		return listCopy;
 	}
@@ -475,6 +483,7 @@ char **Sys_ListFiles( const char *directory, const char *extension, char *filter
 		*numfiles = 0;
 		return NULL;
 	}
+	list = Z_Malloc( MAX_FOUND_FILES * sizeof( *list ) );
 
 	while ((d = readdir(fdir)) != NULL) {
 		Com_sprintf(search, sizeof(search), "%s/%s", directory, d->d_name);
@@ -507,6 +516,7 @@ char **Sys_ListFiles( const char *directory, const char *extension, char *filter
 	*numfiles = nfiles;
 
 	if ( !nfiles ) {
+		Z_Free( list );
 		return NULL;
 	}
 
@@ -515,6 +525,7 @@ char **Sys_ListFiles( const char *directory, const char *extension, char *filter
 		listCopy[i] = list[i];
 	}
 	listCopy[i] = NULL;
+	Z_Free( list );
 
 	return listCopy;
 }
@@ -606,6 +617,10 @@ void Sys_ErrorDialog( const char *error )
 
 #ifndef DEDICATED
 	Sys_Dialog( DT_ERROR, va( "%s. See \"%s\" for details.", error, ospath ), "Error" );
+#endif
+
+#ifdef _arch_dreamcast
+	return;		// no crash log: nothing on a Dreamcast can be written to
 #endif
 
 	// Make sure the write path for the crashlog exists...

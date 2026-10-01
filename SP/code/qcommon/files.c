@@ -564,6 +564,10 @@ qboolean FS_CreatePath (char *OSPath) {
 	char    *ofs;
 	char	path[MAX_OSPATH];
 
+#ifdef _arch_dreamcast
+	return qtrue;	// nothing on a Dreamcast can be written to
+#endif
+
 	// make absolutely sure that it can't back up the path
 	// FIXME: is c: allowed???
 	if ( strstr( OSPath, ".." ) || strstr( OSPath, "::" ) ) {
@@ -807,6 +811,10 @@ fileHandle_t FS_SV_FOpenFileWrite( const char *filename ) {
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 	}
+
+#ifdef _arch_dreamcast
+	return 0;	// nothing on a Dreamcast can be written to
+#endif
 
 	ospath = FS_BuildOSPath( fs_homepath->string, filename, "" );
 	ospath[strlen(ospath)-1] = '\0';
@@ -1053,6 +1061,10 @@ fileHandle_t FS_FOpenFileWrite( const char *filename ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 	}
 
+#ifdef _arch_dreamcast
+	return 0;	// nothing on a Dreamcast can be written to
+#endif
+
 	f = FS_HandleForFile();
 	fsh[f].zipFile = qfalse;
 
@@ -1095,6 +1107,10 @@ fileHandle_t FS_FOpenFileAppend( const char *filename ) {
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 	}
+
+#ifdef _arch_dreamcast
+	return 0;	// nothing on a Dreamcast can be written to
+#endif
 
 	f = FS_HandleForFile();
 	fsh[f].zipFile = qfalse;
@@ -1862,7 +1878,7 @@ void QDECL FS_Printf( fileHandle_t h, const char *fmt, ... ) {
 	FS_Write( msg, strlen( msg ), h );
 }
 
-#define PK3_SEEK_BUFFER_SIZE 65536
+#define PK3_SEEK_BUFFER_SIZE 4096	// a skip buffer: on the stack
 
 /*
 =================
@@ -2225,6 +2241,10 @@ Filename are relative to the quake search path
 void FS_WriteFile( const char *qpath, const void *buffer, int size ) {
 	fileHandle_t f;
 
+#ifdef _arch_dreamcast
+	return;		// nothing on a Dreamcast can be written to
+#endif
+
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 	}
@@ -2475,7 +2495,7 @@ from all search paths
 char **FS_ListFilteredFiles( const char *path, const char *extension, char *filter, int *numfiles, qboolean allowNonPureFilesOnDisk ) {
 	int nfiles;
 	char            **listCopy;
-	char            *list[MAX_FOUND_FILES];
+	char            **list;     // MAX_FOUND_FILES: 16K, on the heap while listing
 	searchpath_t    *search;
 	int i;
 	int pathLength;
@@ -2504,6 +2524,7 @@ char **FS_ListFilteredFiles( const char *path, const char *extension, char *filt
 	extensionLength = strlen( extension );
 	nfiles = 0;
 	FS_ReturnPath( path, zpath, &pathDepth );
+	list = Z_Malloc( MAX_FOUND_FILES * sizeof( *list ) );
 
 	//
 	// search through the path, one element at a time, adding to list
@@ -2588,6 +2609,7 @@ char **FS_ListFilteredFiles( const char *path, const char *extension, char *filt
 	*numfiles = nfiles;
 
 	if ( !nfiles ) {
+		Z_Free( list );
 		return NULL;
 	}
 
@@ -2596,6 +2618,7 @@ char **FS_ListFilteredFiles( const char *path, const char *extension, char *filt
 		listCopy[i] = list[i];
 	}
 	listCopy[i] = NULL;
+	Z_Free( list );
 
 	return listCopy;
 }
@@ -3828,6 +3851,11 @@ static void FS_CheckPak0( void )
 	const char	*pakBasename;
 	qboolean founddemo = qfalse;
 	unsigned int foundPak = 0;
+
+#ifdef _arch_dreamcast
+	Cvar_Set( "com_standalone", "0" );
+	return;	// the disc has the pk3s unpacked (make disc)
+#endif
 
 	for( path = fs_searchpaths; path; path = path->next )
 	{

@@ -660,7 +660,6 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	int i;
 	int checksum;
 	qboolean isBot;
-	char systemInfo[16384];
 	const char  *p;
 
 	// Ridah, enforce maxclients in single player, so there is enough room for AI characters
@@ -918,9 +917,9 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	Cvar_Set( "sv_referencedPakNames", p );
 
 	// save systeminfo and serverinfo strings
-	Q_strncpyz( systemInfo, Cvar_InfoString_Big( CVAR_SYSTEMINFO ), sizeof( systemInfo ) );
+	// (Cvar_InfoString_Big's buffer is static: no 16K copy on the stack)
 	cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
-	SV_SetConfigstring( CS_SYSTEMINFO, systemInfo );
+	SV_SetConfigstring( CS_SYSTEMINFO, Cvar_InfoString_Big( CVAR_SYSTEMINFO ) );
 
 	SV_SetConfigstring( CS_SERVERINFO, Cvar_InfoString( CVAR_SERVERINFO ) );
 	cvar_modifiedFlags &= ~CVAR_SERVERINFO;

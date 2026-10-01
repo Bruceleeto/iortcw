@@ -146,7 +146,7 @@ void CL_ConfigstringModified( void ) {
 	char        *old, *s;
 	int i, index;
 	char        *dup;
-	gameState_t oldGs;
+	gameState_t *oldGs;     // 24K: off the stack
 	int len;
 
 	index = atoi( Cmd_Argv( 1 ) );
@@ -163,7 +163,8 @@ void CL_ConfigstringModified( void ) {
 	}
 
 	// build the new gameState_t
-	oldGs = cl.gameState;
+	oldGs = Z_Malloc( sizeof( *oldGs ) );
+	*oldGs = cl.gameState;
 
 	memset( &cl.gameState, 0, sizeof( cl.gameState ) );
 
@@ -174,7 +175,7 @@ void CL_ConfigstringModified( void ) {
 		if ( i == index ) {
 			dup = s;
 		} else {
-			dup = oldGs.stringData + oldGs.stringOffsets[ i ];
+			dup = oldGs->stringData + oldGs->stringOffsets[ i ];
 		}
 		if ( !dup[0] ) {
 			continue;       // leave with the default empty string
@@ -183,6 +184,7 @@ void CL_ConfigstringModified( void ) {
 		len = strlen( dup );
 
 		if ( len + 1 + cl.gameState.dataCount > MAX_GAMESTATE_CHARS ) {
+			Z_Free( oldGs );
 			Com_Error( ERR_DROP, "MAX_GAMESTATE_CHARS exceeded" );
 		}
 
@@ -191,6 +193,7 @@ void CL_ConfigstringModified( void ) {
 		memcpy( cl.gameState.stringData + cl.gameState.dataCount, dup, len + 1 );
 		cl.gameState.dataCount += len + 1;
 	}
+	Z_Free( oldGs );
 
 	if ( index == CS_SYSTEMINFO ) {
 		// parse serverId and other cvars

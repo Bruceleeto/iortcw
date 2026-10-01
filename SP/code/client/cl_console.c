@@ -309,7 +309,7 @@ If the line width has changed, reformat the buffer.
 */
 void Con_CheckResize( void ) {
 	int i, j, width, oldwidth, oldtotallines, numlines, numchars;
-	short	tbuf[CON_TEXTSIZE];
+	short	*tbuf;      // the old text, 128K: off the stack
 
 	width = ( SCREEN_WIDTH / SMALLCHAR_WIDTH ) - 2;
 
@@ -342,6 +342,7 @@ void Con_CheckResize( void ) {
 			numchars = con.linewidth;
 		}
 
+		tbuf = Z_Malloc( CON_TEXTSIZE * sizeof( short ) );
 		memcpy( tbuf, con.text, CON_TEXTSIZE * sizeof( short ) );
 		for ( i = 0; i < CON_TEXTSIZE; i++ )
 
@@ -357,6 +358,7 @@ void Con_CheckResize( void ) {
 						   oldtotallines ) * oldwidth + j];
 			}
 		}
+		Z_Free( tbuf );
 
 		Con_ClearNotify();
 	}

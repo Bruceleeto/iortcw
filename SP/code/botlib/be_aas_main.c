@@ -319,6 +319,7 @@ float AAS_Time( void ) {
 int AAS_LoadFiles( const char *mapname ) {
 	int errnum;
 	char aasfile[MAX_QPATH];
+	fileHandle_t fp = 0;
 
 	Q_strncpyz( ( *aasworld ).mapname, mapname, sizeof( ( *aasworld ).mapname ) );
 	//NOTE: first reset the entity links into the AAS areas and BSP leaves
@@ -330,8 +331,15 @@ int AAS_LoadFiles( const char *mapname ) {
 	// load bsp info
 	AAS_LoadBSPFile();
 
-	//load the aas file
-	Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aas", mapname );
+	//load the aas file: the .aasc from rtcwconv (only the faces the game
+	//still reads) if there is one
+	Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aasc", mapname );
+	if ( botimport.FS_FOpenFile( aasfile, &fp, FS_READ ) < 0 || !fp ) {
+		Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aas", mapname );
+	}
+	if ( fp ) {
+		botimport.FS_FCloseFile( fp );
+	}
 	errnum = AAS_LoadAASFile( aasfile );
 	if ( errnum != BLERR_NOERROR ) {
 		return errnum;

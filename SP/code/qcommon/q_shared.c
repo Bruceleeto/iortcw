@@ -1306,7 +1306,7 @@ FIXME: overflow check?
 ===============
 */
 char *Info_ValueForKey( const char *s, const char *key ) {
-	char pkey[BIG_INFO_KEY];
+	static char pkey[BIG_INFO_KEY];         // static like value: 8K off the stack of every caller
 	static char value[2][BIG_INFO_VALUE];   // use two buffers so compares
 											// work without stomping on each other
 	static int valueindex = 0;
