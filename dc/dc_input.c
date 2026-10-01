@@ -5,7 +5,7 @@
  * poll, so key and button changes become SE_KEY / SE_CHAR / SE_MOUSE events
  * on the main thread (the KOS keyboard callback runs from the maple driver).
  *
- * Shared by SP and MP; compiled against each game's client.h.
+ * Compiled against the game's client.h.
  */
 
 #include <dc/maple.h>

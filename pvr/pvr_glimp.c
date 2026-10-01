@@ -5,7 +5,7 @@
  * 640x480.  On PC the PVR runs on tools/gpu_pvr, which owns the SDL window
  * that sdl_input.c reads its events from.
  *
- * Compiled once per game (SP/MP) against that game's tr_local.h.
+ * Compiled against the game's tr_local.h.
  */
 
 #include "tr_local.h"

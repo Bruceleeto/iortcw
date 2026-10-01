@@ -2,10 +2,10 @@
  * Dreamcast networking: none yet.  Replaces qcommon/net_ip.c.
  *
  * Only loopback (the local client talking to the local server) and bots
- * exist, which is all single player and a local MP game need.  Packets for
+ * exist, which is all single player needs.  Packets for
  * real addresses are dropped.
  *
- * Shared by SP and MP; compiled against each game's qcommon.h.
+ * Compiled against the game's qcommon.h.
  */
 
 #include <unistd.h>

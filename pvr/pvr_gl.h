@@ -2,7 +2,7 @@
  * pvr_gl: the OpenGL 1.1 subset the RtCW renderer uses, on the Dreamcast
  * PowerVR (KOS <dc/pvr.h>).  On PC the same code runs on tools/gpu_pvr.
  *
- * Shared by SP and MP: it only knows GL and the PVR, not the game.
+ * It only knows GL and the PVR, not the game.
  */
 #ifndef PVR_GL_H
 #define PVR_GL_H

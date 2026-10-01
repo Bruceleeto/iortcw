@@ -2,12 +2,11 @@
 # iortcw - single top-level Makefile (Linux, Dreamcast)
 #
 #   make sp            build single player  -> build/sp-x86/iowolfsp.x86
-#   make mp            build multiplayer    -> build/mp-x86/iowolfmp.x86
-#   make               build both
+#   make               the same
 #   make clean         remove build/
 #   make pvrtest       build the tools/gpu_pvr smoke test
 #   make assets        Dreamcast versions of the game data (tools/rtcwconv):
-#                      sp_dc.pk3 / mp_dc.pk3, written to ASSETS_DIR
+#                      sp_dc.pk3, written to ASSETS_DIR
 #                      (default assets/main, next to the original pk3s);
 #                      images need PVRTEX (KOS utils/pvrtex)
 #
@@ -29,8 +28,8 @@
 #   TEXTURES=0         world/model textures become one pixel of their average
 #                      colour (menus, fonts and lightmaps stay); opengl1/pvr
 #   MAP=<name>         start straight into this map when no + commands are
-#                      given; pvr builds default to escape1 (SP) / mp_beach
-#                      (MP), MAP= goes to the menu as normal
+#                      given; pvr builds default to escape1, MAP= goes to
+#                      the menu as normal
 #   USE_VOIP=0         drop VoIP (and opus with it); default 1
 #   USE_MUMBLE=1       Mumble positional audio link; default 0
 #   DEBUG=1            debug build (-O0 -g)
@@ -133,11 +132,11 @@ endif
 
 MODULE_LD ?= $(CC) $(ARCH_FLAGS) -r -nostdlib
 
-.PHONY: all sp mp game clean pvrtest assets
+.PHONY: all sp game clean pvrtest assets
 
-all: sp mp
+all: sp
 
-sp mp:
+sp:
 	@$(MAKE) --no-print-directory GAME=$@ game
 
 clean:
@@ -164,10 +163,9 @@ $(PVRTEST): $(GPU_PVR_DIR)/test/pvrtest.c $(GPU_PVR_LIB)
 	  -x c $< -x none $(GPU_PVR_LIB) $(SDL_LIBS) -lpthread -lm -o $@
 
 #############################################################################
-# make assets: tools/rtcwconv over the models and images in each game's pk3s.
+# make assets: tools/rtcwconv over the models and images in the game's pk3s.
 # The converted files have their own extensions (.mdsc, .dt), so they shadow
 # nothing and the renderer picks them first (.dt: the pvr renderer only).
-# sp_ / mp_ keep each pk3 to its own game.
 #############################################################################
 
 ASSETS_DIR ?= $(CURDIR)/assets/main
@@ -179,15 +177,13 @@ RTCWCONV_SRC = $(wildcard tools/rtcwconv/*.cpp tools/rtcwconv/TriStripper/src/*.
 RTCWCONV_HDR = $(wildcard tools/rtcwconv/*.h tools/rtcwconv/TriStripper/include/*.h \
   tools/rtcwconv/TriStripper/include/detail/*.h) mdsc/mdsc.h
 
-# the pk3s in the order each game loads them (later ones win): its own
-# sp_ / mp_ paks first, then the rest, never the other game's
-ALL_PAKS = $(filter-out %/sp_dc.pk3 %/mp_dc.pk3,$(sort $(wildcard $(ASSETS_DIR)/*.pk3)))
+# the pk3s in the order the game loads them (later ones win): the sp_ paks
+# first, then the shared ones; never the mp_ ones
+ALL_PAKS = $(filter-out %/sp_dc.pk3,$(sort $(wildcard $(ASSETS_DIR)/*.pk3)))
 SP_PAKS  = $(filter $(ASSETS_DIR)/sp_%,$(ALL_PAKS)) \
   $(filter-out $(ASSETS_DIR)/sp_% $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
-MP_PAKS  = $(filter $(ASSETS_DIR)/mp_%,$(ALL_PAKS)) \
-  $(filter-out $(ASSETS_DIR)/sp_% $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
 
-assets: $(ASSETS_DIR)/sp_dc.pk3 $(ASSETS_DIR)/mp_dc.pk3
+assets: $(ASSETS_DIR)/sp_dc.pk3
 
 $(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_HDR)
 	$(echo_cmd) "HOST_CXX $@"
@@ -195,7 +191,7 @@ $(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_HDR)
 	$(Q)$(HOST_CXX) -std=c++17 -O2 -w -Imdsc -Itools/rtcwconv -Itools/rtcwconv/TriStripper/include \
 	  $(RTCWCONV_SRC) -x c mdsc/mdsc.c -x none -lm -o $@
 
-# 1 = sp / mp, 2 = its pk3s in load order
+# 1 = sp, 2 = its pk3s in load order
 define assets_pk3
 $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(echo_cmd) "ASSETS $$@"
@@ -208,7 +204,6 @@ $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef
 $(eval $(call assets_pk3,sp,$(SP_PAKS)))
-$(eval $(call assets_pk3,mp,$(MP_PAKS)))
 
 ifdef GAME
 
@@ -221,22 +216,13 @@ ifeq ($(GAME),sp)
   BIN       = iowolfsp
   GAMETAG   = SP
   GAME_DEFS =
-else ifeq ($(GAME),mp)
-  CODE      = MP/code
-  BIN       = iowolfmp
-  GAMETAG   = MP
-  GAME_DEFS = -DUSE_PBMD5
 else
-  $(error GAME must be sp or mp)
+  $(error GAME must be sp)
 endif
 
 # pvr builds boot straight into a map for testing
 ifeq ($(RENDERER),pvr)
-  ifeq ($(GAME),sp)
-    MAP ?= escape1
-  else
-    MAP ?= mp_beach
-  endif
+  MAP ?= escape1
 endif
 
 B   = $(BUILD_DIR)/$(GAME)-$(ARCH)
@@ -449,19 +435,19 @@ $(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_
 	$(echo_cmd) "LD $@"
 	$(Q)$(CXX) $(LDFLAGS) -o $@ $(filter %.o,$^) $(RENDERER_LIBS) $(LIBS)
 
-# pvr/ is shared by SP and MP; each game builds it against its own renderer
+# pvr/ is built against the game's renderer
 $(B)/pvr/%.c.o: pvr/%.c
 	$(echo_cmd) "PVR_CC $<"
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/renderer $(GPU_PVR_CFLAGS) -c $< -o $@
 
-# mdsc/ is shared by SP, MP and tools/rtcwconv
+# mdsc/ is shared by the game and tools/rtcwconv
 $(B)/mdsc/%.c.o: mdsc/%.c
 	$(echo_cmd) "MDSC_CC $<"
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(CLIENT_CFLAGS) -c $< -o $@
 
-# dc/ is the Dreamcast platform glue, also shared by SP and MP
+# dc/ is the Dreamcast platform glue
 $(B)/dc/%.c.o: dc/%.c
 	$(echo_cmd) "DC_CC $<"
 	@mkdir -p $(@D)

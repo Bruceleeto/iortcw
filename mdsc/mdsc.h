@@ -1,8 +1,8 @@
 /*
  * MDSC: an RtCW .mds skeletal model with its animation made small.
  *
- * Made by tools/rtcwconv, read by the SP and MP renderers. This file and
- * mdsc.c are shared by all three, so the converter checks its error with the
+ * Made by tools/rtcwconv, read by the renderer. This file and
+ * mdsc.c are shared by both, so the converter checks its error with the
  * very decoder the game uses. Plain C, nothing from the engine.
  *
  * An MDSC is an .mds (mdsHeader_t, bones, surfaces, tags as they are) whose
