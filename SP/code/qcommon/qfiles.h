@@ -277,6 +277,42 @@ typedef struct {
 // done.
 
 /*
+** .mdb: an .mdc (tools/rtcwconv mdc.cpp) whose animated surfaces keep only
+** the frames that can't be lerped from the ones either side, as rigid bones
+** or as the .mdc's own vertexes; RE_RegisterModel looks for it first.
+** Header, frames and tags are the .mdc's. Each frame is one of the kept
+** frames and how far on to the next (mdbFrame_t * numFrames, at
+** ofsFrameCompFrames). A bone surface has numCompFrames MDB_BONES and
+** numBaseFrames its numBones:
+**
+** ofsXyzNormals       md3XyzNormal_t * numVerts, as at rest, bone by bone
+** ofsXyzCompressed    short * numBones (padded to 4): how many of them each bone has
+** ofsFrameBaseFrames  mdbPose_t * numBones a kept frame: each bone's turn and
+**                     move from rest to that frame
+**
+** A vertex surface has numCompFrames MDB_KEYS, and the .mdc's base frames
+** (numBaseFrames) and compressed frames (as many as fit before
+** ofsFrameBaseFrames) that the kept frames use; ofsFrameBaseFrames is an
+** mdbKey_t a kept frame.
+*/
+#define MDB_BONES           -1
+#define MDB_KEYS            -2
+
+typedef struct {
+	short quat[4];                  // x y z w, 1 as 32767
+	float origin[3];                // where rest's 0 0 0 goes
+} mdbPose_t;
+
+typedef struct {
+	short key;                      // the kept frame
+	short lerp;                     // how far on to the next, 1 as 32767
+} mdbFrame_t;
+
+typedef struct {
+	short base, comp;               // comp -1 for none
+} mdbKey_t;
+
+/*
 ==============================================================================
 
 MDR file format

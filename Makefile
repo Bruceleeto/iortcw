@@ -171,28 +171,55 @@ PVRTEX     ?= $(KOS_BASE)/utils/pvrtex/pvrtex
 RTCWCONV    = $(BUILD_DIR)/tools/rtcwconv
 RTCWCONV_SRC = $(wildcard tools/rtcwconv/*.cpp tools/rtcwconv/TriStripper/src/*.cpp)
 RTCWCONV_HDR = $(wildcard tools/rtcwconv/*.h tools/rtcwconv/TriStripper/include/*.h \
-  tools/rtcwconv/TriStripper/include/detail/*.h) mdsc/mdsc.h
+  tools/rtcwconv/TriStripper/include/detail/*.h) mdsc/mdsc.h $(wildcard SP/code/qcommon/*.h) \
+  $(wildcard SP/code/renderer/*.h)
+# the engine's curve collision, for the .col, and the renderer's curves, for
+# the .wld
+RTCWCONV_CSRC = tools/rtcwconv/cm_glue.c $(addprefix SP/code/qcommon/,cm_patch.c cm_polylib.c q_math.c) \
+  tools/rtcwconv/wld_glue.c $(addprefix SP/code/renderer/,tr_curve.c tr_stitch.c)
+RTCWCONV_CINC = -ISP/code/qcommon -ISP/code/renderer -ISP/code/SDL2/include -Itools/rtcwconv
 
-# the pk3s in the order the game loads them (later ones win): the sp_ paks
-# first, then the shared ones; never the mp_ ones
+# the pk3s in the order the game loads them, sorted (later ones win: sp_pak4's
+# dam, crypt1 and end over pak0's); never the mp_ ones
 ALL_PAKS = $(filter-out %/sp_dc.pk3,$(sort $(wildcard $(ASSETS_DIR)/*.pk3)))
-SP_PAKS  = $(filter $(ASSETS_DIR)/sp_%,$(ALL_PAKS)) \
-  $(filter-out $(ASSETS_DIR)/sp_% $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
+SP_PAKS  = $(filter-out $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
 
 assets: $(ASSETS_DIR)/sp_dc.pk3
 
-$(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_HDR)
+# x87 math, as the engine's x86 build does it: SSE rounds differently, and
+# the curve collision then merges fewer planes (escape1: 4655, not 4238)
+ifneq ($(filter x86_64 i%86,$(shell uname -m)),)
+  RTCWCONV_CFLAGS = -mfpmath=387 -ffast-math
+endif
+RTCWCONV_COBJ = $(addprefix $(BUILD_DIR)/tools/rtcwconv-obj/,$(notdir $(RTCWCONV_CSRC:.c=.o)))
+
+$(BUILD_DIR)/tools/rtcwconv-obj/%.o: tools/rtcwconv/%.c $(RTCWCONV_HDR)
+	$(echo_cmd) "HOST_CC $@"
+	@mkdir -p $(@D)
+	$(Q)$(HOST_CC) -O2 -w $(RTCWCONV_CFLAGS) -DNDEBUG -DARCH_STRING=\"host\" $(RTCWCONV_CINC) -c $< -o $@
+
+$(BUILD_DIR)/tools/rtcwconv-obj/%.o: SP/code/qcommon/%.c $(RTCWCONV_HDR)
+	$(echo_cmd) "HOST_CC $@"
+	@mkdir -p $(@D)
+	$(Q)$(HOST_CC) -O2 -w $(RTCWCONV_CFLAGS) -DNDEBUG -DARCH_STRING=\"host\" $(RTCWCONV_CINC) -c $< -o $@
+
+$(BUILD_DIR)/tools/rtcwconv-obj/%.o: SP/code/renderer/%.c $(RTCWCONV_HDR)
+	$(echo_cmd) "HOST_CC $@"
+	@mkdir -p $(@D)
+	$(Q)$(HOST_CC) -O2 -w $(RTCWCONV_CFLAGS) -DNDEBUG -DARCH_STRING=\"host\" $(RTCWCONV_CINC) -c $< -o $@
+
+$(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_COBJ) $(RTCWCONV_HDR)
 	$(echo_cmd) "HOST_CXX $@"
 	@mkdir -p $(@D)
 	$(Q)$(HOST_CXX) -std=c++17 -O2 -w -Imdsc -Itools/rtcwconv -Itools/rtcwconv/TriStripper/include \
-	  $(RTCWCONV_SRC) -x c mdsc/mdsc.c -x none -lm -o $@
+	  -ISP/code/qcommon -ISP/code/renderer $(RTCWCONV_SRC) -x c mdsc/mdsc.c -x none $(RTCWCONV_COBJ) -lm -o $@
 
 # 1 = sp, 2 = its pk3s in load order
 define assets_pk3
 $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
-	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.tga' '*.jpg' '*.bsp' '*.aas' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
+	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
 	$$(Q)$(RTCWCONV) -p $(PVRTEX) $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc

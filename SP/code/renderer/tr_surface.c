@@ -838,6 +838,165 @@ void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
 	outNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
 }
 
+/*
+** R_MdbWeights
+
+What an .mdb surface's kept frames each give to the frame drawn: the entity's
+frame and oldframe, each between two kept frames
+*/
+typedef struct {
+	int key;
+	float weight;
+} mdbWeight_t;
+
+static void R_MdbAddWeight( mdbWeight_t *w, int *numWeights, int key, float weight ) {
+	int i;
+
+	if ( weight <= 0 ) {
+		return;
+	}
+	for ( i = 0 ; i < *numWeights ; i++ ) {
+		if ( w[i].key == key ) {
+			w[i].weight += weight;
+			return;
+		}
+	}
+	w[i].key = key;
+	w[i].weight = weight;
+	( *numWeights )++;
+}
+
+static int R_MdbWeights( const mdcSurface_t *surf, float backlerp, mdbWeight_t w[4] ) {
+	const mdbFrame_t *frames = ( const mdbFrame_t * )( (const byte *)surf + surf->ofsFrameCompFrames );
+	const mdbFrame_t *newFrame = &frames[backEnd.currentEntity->e.frame];
+	const mdbFrame_t *oldFrame = &frames[backEnd.currentEntity->e.oldframe];
+	float t;
+	int n = 0;
+
+	t = newFrame->lerp * ( 1.0f / 32767 );
+	R_MdbAddWeight( w, &n, newFrame->key, ( 1.0f - backlerp ) * ( 1.0f - t ) );
+	R_MdbAddWeight( w, &n, newFrame->key + 1, ( 1.0f - backlerp ) * t );
+	t = oldFrame->lerp * ( 1.0f / 32767 );
+	R_MdbAddWeight( w, &n, oldFrame->key, backlerp * ( 1.0f - t ) );
+	R_MdbAddWeight( w, &n, oldFrame->key + 1, backlerp * t );
+	return n;
+}
+
+/*
+** LerpMdbBoneVertexes
+
+An .mdb bone surface: each bone's turn and move, lerped between the kept
+frames, on its vertexes as at rest
+*/
+static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
+	const md3XyzNormal_t *v = ( const md3XyzNormal_t * )( (byte *)surf + surf->ofsXyzNormals );
+	const short *count = ( const short * )( (byte *)surf + surf->ofsXyzCompressed );
+	const mdbPose_t *poses = ( const mdbPose_t * )( (byte *)surf + surf->ofsFrameBaseFrames );
+	float *outXyz = tess.xyz[tess.numVertexes];
+	float *outNormal = tess.normal[tess.numVertexes];
+	mdbWeight_t w[4];
+	int numWeights, bone, i, j;
+
+	numWeights = R_MdbWeights( surf, backlerp, w );
+
+	for ( bone = 0 ; bone < surf->numBaseFrames ; bone++ ) {
+		const mdbPose_t *first = &poses[w[0].key * surf->numBaseFrames + bone];
+		float q[4] = { 0, 0, 0, 0 }, t[3] = { 0, 0, 0 }, m[3][3], l, x, y, z, ww;
+
+		for ( j = 0 ; j < numWeights ; j++ ) {
+			const mdbPose_t *p = &poses[w[j].key * surf->numBaseFrames + bone];
+			// the shorter way round
+			float s = p->quat[0] * first->quat[0] + p->quat[1] * first->quat[1] + p->quat[2] * first->quat[2] +
+					  p->quat[3] * first->quat[3] < 0 ? -w[j].weight : w[j].weight;
+
+			for ( i = 0 ; i < 4 ; i++ ) {
+				q[i] += p->quat[i] * s;
+			}
+			VectorMA( t, w[j].weight, p->origin, t );
+		}
+		l = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+		l = l > 0 ? 2.0f / l : 0;
+		x = q[0];
+		y = q[1];
+		z = q[2];
+		ww = q[3];
+		m[0][0] = 1 - ( y * y + z * z ) * l;
+		m[0][1] = ( x * y - ww * z ) * l;
+		m[0][2] = ( x * z + ww * y ) * l;
+		m[1][0] = ( x * y + ww * z ) * l;
+		m[1][1] = 1 - ( x * x + z * z ) * l;
+		m[1][2] = ( y * z - ww * x ) * l;
+		m[2][0] = ( x * z - ww * y ) * l;
+		m[2][1] = ( y * z + ww * x ) * l;
+		m[2][2] = 1 - ( x * x + y * y ) * l;
+
+		for ( i = 0 ; i < count[bone] ; i++, v++, outXyz += 4, outNormal += 4 ) {
+			vec3_t p, n;
+
+			p[0] = v->xyz[0] * MD3_XYZ_SCALE;
+			p[1] = v->xyz[1] * MD3_XYZ_SCALE;
+			p[2] = v->xyz[2] * MD3_XYZ_SCALE;
+			outXyz[0] = m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2] + t[0];
+			outXyz[1] = m[1][0] * p[0] + m[1][1] * p[1] + m[1][2] * p[2] + t[1];
+			outXyz[2] = m[2][0] * p[0] + m[2][1] * p[1] + m[2][2] * p[2] + t[2];
+
+			R_LatLongToNormal( n, v->normal );
+			outNormal[0] = m[0][0] * n[0] + m[0][1] * n[1] + m[0][2] * n[2];
+			outNormal[1] = m[1][0] * n[0] + m[1][1] * n[1] + m[1][2] * n[2];
+			outNormal[2] = m[2][0] * n[0] + m[2][1] * n[1] + m[2][2] * n[2];
+		}
+	}
+}
+
+/*
+** LerpMdbKeyVertexes
+
+An .mdb vertex surface: the .mdc's vertexes, lerped between the kept frames
+*/
+static void LerpMdbKeyVertexes( mdcSurface_t *surf, float backlerp ) {
+	const mdbKey_t *keys = ( const mdbKey_t * )( (byte *)surf + surf->ofsFrameBaseFrames );
+	const md3XyzNormal_t *xyz[4];
+	const mdcXyzCompressed_t *comp[4];
+	float *outXyz = tess.xyz[tess.numVertexes];
+	float *outNormal = tess.normal[tess.numVertexes];
+	mdbWeight_t w[4];
+	int numWeights, i, j;
+
+	numWeights = R_MdbWeights( surf, backlerp, w );
+	for ( j = 0 ; j < numWeights ; j++ ) {
+		const mdbKey_t *key = &keys[w[j].key];
+
+		xyz[j] = ( const md3XyzNormal_t * )( (byte *)surf + surf->ofsXyzNormals ) + key->base * surf->numVerts;
+		comp[j] = key->comp < 0 ? NULL : ( const mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + key->comp * surf->numVerts;
+	}
+
+	for ( i = 0 ; i < surf->numVerts ; i++, outXyz += 4, outNormal += 4 ) {
+		VectorClear( outXyz );
+		VectorClear( outNormal );
+		for ( j = 0 ; j < numWeights ; j++ ) {
+			const md3XyzNormal_t *v = &xyz[j][i];
+			vec3_t p, n;
+
+			p[0] = v->xyz[0] * MD3_XYZ_SCALE;
+			p[1] = v->xyz[1] * MD3_XYZ_SCALE;
+			p[2] = v->xyz[2] * MD3_XYZ_SCALE;
+			if ( comp[j] ) {
+				vec3_t ofs;
+
+				R_MDC_DecodeXyzCompressed( comp[j][i].ofsVec, ofs, n );
+				VectorAdd( p, ofs, p );
+			} else {
+				R_LatLongToNormal( n, v->normal );
+			}
+			VectorMA( outXyz, w[j].weight, p, outXyz );
+			VectorMA( outNormal, w[j].weight, n, outNormal );
+		}
+		if ( numWeights > 1 ) {
+			VectorNormalize( outNormal );
+		}
+	}
+}
+
 // Ridah
 /*
 ** LerpCMeshVertexes
@@ -1009,7 +1168,13 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 
 	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
 
-	LerpCMeshVertexes( surface, backlerp );
+	if ( surface->numCompFrames == MDB_BONES ) {
+		LerpMdbBoneVertexes( surface, backlerp );
+	} else if ( surface->numCompFrames == MDB_KEYS ) {
+		LerpMdbKeyVertexes( surface, backlerp );
+	} else {
+		LerpCMeshVertexes( surface, backlerp );
+	}
 
 	triangles = ( int * )( (byte *)surface + surface->ofsTriangles );
 	indexes = surface->numTriangles * 3;
@@ -1032,6 +1197,50 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	tess.numVertexes += surface->numVerts;
 }
 // done.
+
+/*
+==============
+RB_SurfaceWorld
+
+A .wld surface: copied as it is, the indexes counted on from the tess's
+==============
+*/
+static void RB_SurfaceWorld( srfWorld_t *srf ) {
+	int i, j, first;
+	const wldVert_t *v;
+	glIndex_t *tessIndexes;
+	int dlightBits;
+
+	RB_CHECKOVERFLOW( srf->numVerts, srf->numIndexes );
+
+	dlightBits = srf->dlightBits;
+	tess.dlightBits |= dlightBits;
+
+	first = tess.numVertexes;
+	tessIndexes = tess.indexes + tess.numIndexes;
+	for ( i = 0 ; i < srf->numIndexes ; i++ ) {
+		tessIndexes[i] = first + srf->indexes[i];
+	}
+	tess.numIndexes += srf->numIndexes;
+
+	v = srf->verts;
+	if ( tess.shader->needsNormal ) {
+		for ( i = 0, j = first ; i < srf->numVerts ; i++, j++ ) {
+			R_WorldVertNormal( &v[i], tess.normal[j] );
+		}
+	}
+	for ( i = 0, j = first ; i < srf->numVerts ; i++, j++, v++ ) {
+		R_WorldVertXyz( srf, v, tess.xyz[j] );
+		tess.texCoords[j][0][0] = v->st[0];
+		tess.texCoords[j][0][1] = v->st[1];
+		tess.texCoords[j][1][0] = v->lightmap[0] * ( 1.0f / WLD_LIGHTMAP_SCALE );
+		tess.texCoords[j][1][1] = v->lightmap[1] * ( 1.0f / WLD_LIGHTMAP_SCALE );
+		*(unsigned int *)tess.vertexColors[j] = *(const unsigned int *)v->color;
+		tess.vertexDlightBits[j] = dlightBits;
+	}
+
+	tess.numVertexes += srf->numVerts;
+}
 
 /*
 ==============
@@ -1402,5 +1611,6 @@ void( *rb_surfaceTable[SF_NUM_SURFACE_TYPES] ) ( void * ) = {
 	( void( * ) ( void* ) )RB_MDRSurfaceAnim,      // SF_MDR,
 	( void( * ) ( void* ) )RB_IQMSurfaceAnim,      // SF_IQM,
 	( void( * ) ( void* ) )RB_SurfaceFlare,        // SF_FLARE,
-	( void( * ) ( void* ) )RB_SurfaceEntity        // SF_ENTITY
+	( void( * ) ( void* ) )RB_SurfaceEntity,       // SF_ENTITY
+	( void( * ) ( void* ) )RB_SurfaceWorld         // SF_WORLD
 };

@@ -1,0 +1,106 @@
+/*
+ * maps/<map>.wld: what the renderer draws of a map, made offline by
+ * tools/rtcwconv from the .bsp. RE_LoadWorldMap loads it in place of the
+ * .bsp when there is one. Planes, visibility and the entity string are the
+ * collision map's (cm_load.c), so they aren't here.
+ *
+ * The map's surfaces are made ready to draw, as DMS does its models: curves
+ * cut into triangles here instead of at load, and the surfaces that are
+ * drawn alike (same model, shader, lightmap, fog and kind, and seen from
+ * the same leafs) joined into one, so a leaf holds a few big surfaces. All
+ * little endian:
+ *
+ *   SHADERS       the .bsp's shader lump as it is (dshader_t)
+ *   LIGHTMAPS     the .bsp's lightmap lump as it is (for when there's no .dt)
+ *   FOGS          wldFog_t: the fog brush's box and fog surface, worked out
+ *   SURFACES      wldSurface_t
+ *   VERTS         wldVert_t, each surface's from its firstVert
+ *   INDEXES       unsigned short, 3 a triangle, each surface's from its
+ *                 firstIndex, counted from the surface's firstVert
+ *   LEAFSURFACES  int, into SURFACES
+ *   NODES, LEAFS  the .bsp's, leafs pointing into the LEAFSURFACES here
+ *   MODELS        the .bsp's, pointing into the SURFACES here
+ *   LIGHTGRID     the .bsp's light grid (8 bytes a point), each different
+ *                 point once: int numPoints, then numPoints points, then an
+ *                 unsigned short a grid point, which of them it is. With
+ *                 numPoints 0, the grid's points follow as they are.
+ */
+#ifndef WLDFILE_H
+#define WLDFILE_H
+
+#define WLD_IDENT       ( ( 'D' << 24 ) + ( 'L' << 16 ) + ( 'W' << 8 ) + 'R' )   // "RWLD"
+#define WLD_VERSION     2
+
+enum {
+	WLD_LUMP_SHADERS,
+	WLD_LUMP_LIGHTMAPS,
+	WLD_LUMP_FOGS,
+	WLD_LUMP_SURFACES,
+	WLD_LUMP_VERTS,
+	WLD_LUMP_INDEXES,
+	WLD_LUMP_LEAFSURFACES,
+	WLD_LUMP_NODES,
+	WLD_LUMP_LEAFS,
+	WLD_LUMP_MODELS,
+	WLD_LUMP_LIGHTGRID,
+	WLD_LUMPS
+};
+
+typedef struct {
+	int ident;
+	int version;
+	struct {
+		int fileofs, filelen;
+	} lumps[WLD_LUMPS];
+} wldHeader_t;
+
+// 24 bytes
+typedef struct {
+	short xyz[3];                   // from the surface's origin, in its xyzStep units
+	unsigned char normal[2];        // as an MD3 normal: around z, then down from z, 256 to a turn
+	float st[2];
+	unsigned short lightmap[2];     // 0 to 1 as 0 to 65535
+	unsigned char color[4];
+} wldVert_t;
+
+// a surface's xyzStep: this, or more for one too big to fit a short so
+#define WLD_XYZ_STEP        0.125f
+#define WLD_LIGHTMAP_SCALE  65535.0f
+// how far across surfaces are joined into one at most, so they keep the
+// finest xyzStep
+#define WLD_MAX_EXTENT      8000.0f
+
+// what a surface was made from, which says how marks (decals) go on it
+enum {
+	WLD_PLANAR,         // flat faces, maybe on more than one plane
+	WLD_CURVE,          // curves, cut into triangles
+	WLD_TRIANGLES,      // triangle soups (misc_models)
+	WLD_FLARE
+};
+
+// a surface never has more than this, so it fits the shader's tess at once
+#define WLD_MAX_VERTS       2048
+#define WLD_MAX_INDEXES     ( 3 * 2048 )
+
+typedef struct {
+	int kind;                       // WLD_*
+	int shaderNum;
+	int lightmapNum;                // LIGHTMAP_BY_VERTEX for triangles and flares
+	int fogNum;                     // -1 for none, as in the .bsp
+	int firstVert, numVerts;
+	int firstIndex, numIndexes;
+	float bounds[2][3];
+	float origin[3];                // what the xyz are from, on the xyzStep grid
+	float xyzStep;                  // a power of two
+	float plane[4];                 // when every triangle is on one plane, else 0 0 0 0
+	float flare[3][3];              // WLD_FLARE: origin, color, normal
+} wldSurface_t;
+
+typedef struct {
+	char shader[64];
+	float bounds[2][3];
+	int hasSurface;
+	float surface[4];
+} wldFog_t;
+
+#endif

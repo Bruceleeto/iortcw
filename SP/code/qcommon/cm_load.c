@@ -29,6 +29,8 @@ If you have questions concerning this license or the applicable additional terms
 // cmodel.c -- model loading
 
 #include "cm_local.h"
+#include "cm_patch.h"
+#include "colfile.h"
 
 #ifdef BSPC
 
@@ -645,6 +647,138 @@ void CM_FreeLump( bspLump_t *l ) {
 	}
 }
 
+static void CMod_LoadColLump( fileHandle_t f, const colHeader_t *header, int lump, void ( *load )( bspLump_t *l ) );
+
+/*
+=================
+CMod_LoadColPatches
+
+The curve collision rtcwconv made (see colfile.h)
+=================
+*/
+static void CMod_LoadColPatches( bspLump_t *l ) {
+	const int *in = l->data;
+	const int *end = (const int *)( (const byte *)l->data + l->len );
+	int i, j, k, numPatches;
+
+#define COL_INT()   ( in < end ? LittleLong( *in++ ) : ( Com_Error( ERR_DROP, "CMod_LoadColPatches: short lump" ), 0 ) )
+#define COL_FLOAT() ( in < end ? LittleFloat( *(const float *)in++ ) : ( Com_Error( ERR_DROP, "CMod_LoadColPatches: short lump" ), 0.0f ) )
+
+	cm.numSurfaces = COL_INT();
+	numPatches = COL_INT();
+	if ( cm.numSurfaces < 0 || numPatches < 0 || numPatches > cm.numSurfaces ) {
+		Com_Error( ERR_DROP, "CMod_LoadColPatches: bad counts" );
+	}
+	cm.surfaces = Hunk_Alloc( cm.numSurfaces * sizeof( cm.surfaces[0] ), h_high );
+
+	for ( i = 0 ; i < numPatches ; i++ ) {
+		int surfaceNum = COL_INT();
+		int shaderNum = COL_INT();
+		cPatch_t *patch;
+		patchCollide_t *pc;
+
+		if ( surfaceNum < 0 || surfaceNum >= cm.numSurfaces || shaderNum < 0 || shaderNum >= cm.numShaders ) {
+			Com_Error( ERR_DROP, "CMod_LoadColPatches: bad patch %i", i );
+		}
+		cm.surfaces[ surfaceNum ] = patch = Hunk_Alloc( sizeof( *patch ), h_high );
+		patch->contents = cm.shaders[shaderNum].contentFlags;
+		patch->surfaceFlags = cm.shaders[shaderNum].surfaceFlags;
+
+		patch->pc = pc = Hunk_Alloc( sizeof( *pc ), h_high );
+		for ( j = 0 ; j < 2 ; j++ ) {
+			for ( k = 0 ; k < 3 ; k++ ) {
+				pc->bounds[j][k] = COL_FLOAT();
+			}
+		}
+		pc->numPlanes = COL_INT();
+		pc->numFacets = COL_INT();
+		if ( pc->numPlanes < 0 || pc->numPlanes > MAX_PATCH_PLANES || pc->numFacets < 0 || pc->numFacets > MAX_FACETS ) {
+			Com_Error( ERR_DROP, "CMod_LoadColPatches: bad patch %i", i );
+		}
+		pc->planes = Hunk_Alloc( pc->numPlanes * sizeof( *pc->planes ), h_high );
+		for ( j = 0 ; j < pc->numPlanes ; j++ ) {
+			for ( k = 0 ; k < 4 ; k++ ) {
+				pc->planes[j].plane[k] = COL_FLOAT();
+			}
+			pc->planes[j].signbits = COL_INT();
+		}
+		pc->facets = Hunk_Alloc( pc->numFacets * sizeof( *pc->facets ), h_high );
+		for ( j = 0 ; j < pc->numFacets ; j++ ) {
+			facet_t *f = &pc->facets[j];
+			f->surfacePlane = COL_INT();
+			f->numBorders = COL_INT();
+			if ( f->surfacePlane < 0 || f->surfacePlane >= pc->numPlanes ||
+				 f->numBorders < 0 || f->numBorders > ARRAY_LEN( f->borderPlanes ) ) {
+				Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
+			}
+			for ( k = 0 ; k < f->numBorders ; k++ ) {
+				f->borderPlanes[k] = COL_INT();
+				f->borderInward[k] = COL_INT();
+				f->borderNoAdjust[k] = COL_INT();
+				if ( f->borderPlanes[k] < 0 || f->borderPlanes[k] >= pc->numPlanes ) {
+					Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
+				}
+			}
+		}
+	}
+#undef COL_INT
+#undef COL_FLOAT
+}
+
+/*
+=================
+CM_LoadCol
+
+Loads the map's .col in place of the .bsp; qfalse if it has none
+=================
+*/
+static qboolean CM_LoadCol( const char *name ) {
+	char colName[MAX_QPATH];
+	fileHandle_t f;
+	colHeader_t header;
+	bspLump_t patches;
+	int i;
+
+	COM_StripExtension( name, colName, sizeof( colName ) );
+	Q_strcat( colName, sizeof( colName ), ".col" );
+	if ( FS_FOpenFileRead( colName, &f, qtrue ) <= 0 || !f ) {
+		if ( f ) {
+			FS_FCloseFile( f );
+		}
+		return qfalse;
+	}
+	if ( FS_Read( &header, sizeof( header ), f ) != sizeof( header ) ) {
+		FS_FCloseFile( f );
+		Com_Error( ERR_DROP, "%s is too short", colName );
+	}
+	for ( i = 0 ; i < sizeof( header ) / 4 ; i++ ) {
+		( (int *)&header )[i] = LittleLong( ( (int *)&header )[i] );
+	}
+	if ( header.ident != COL_IDENT || header.version != COL_VERSION ) {
+		FS_FCloseFile( f );
+		Com_Error( ERR_DROP, "%s isn't a version %i .col", colName, COL_VERSION );
+	}
+
+	CMod_LoadColLump( f, &header, COL_LUMP_SHADERS, CMod_LoadShaders );
+	CMod_LoadColLump( f, &header, COL_LUMP_LEAFS, CMod_LoadLeafs );
+	CMod_LoadColLump( f, &header, COL_LUMP_LEAFBRUSHES, CMod_LoadLeafBrushes );
+	CMod_LoadColLump( f, &header, COL_LUMP_LEAFSURFACES, CMod_LoadLeafSurfaces );
+	CMod_LoadColLump( f, &header, COL_LUMP_PLANES, CMod_LoadPlanes );
+	CMod_LoadColLump( f, &header, COL_LUMP_BRUSHSIDES, CMod_LoadBrushSides );
+	CMod_LoadColLump( f, &header, COL_LUMP_BRUSHES, CMod_LoadBrushes );
+	CMod_LoadColLump( f, &header, COL_LUMP_MODELS, CMod_LoadSubmodels );
+	CMod_LoadColLump( f, &header, COL_LUMP_NODES, CMod_LoadNodes );
+	CMod_LoadEntityString( f, (const lump_t *)&header.lumps[COL_LUMP_ENTITIES] );
+	CMod_LoadVisibility( f, (const lump_t *)&header.lumps[COL_LUMP_VISIBILITY] );
+
+	CM_ReadLump( f, (const lump_t *)&header.lumps[COL_LUMP_PATCHES], &patches );
+	CMod_LoadColPatches( &patches );
+	CM_FreeLump( &patches );
+
+	FS_FCloseFile( f );
+	return qtrue;
+}
+
 /*
 ==================
 CMod_LoadLump
@@ -654,6 +788,14 @@ static void CMod_LoadLump( fileHandle_t f, const dheader_t *header, int lump, vo
 	bspLump_t l;
 
 	CM_ReadLump( f, &header->lumps[lump], &l );
+	load( &l );
+	CM_FreeLump( &l );
+}
+
+static void CMod_LoadColLump( fileHandle_t f, const colHeader_t *header, int lump, void ( *load )( bspLump_t *l ) ) {
+	bspLump_t l;
+
+	CM_ReadLump( f, (const lump_t *)&header->lumps[lump], &l );
 	load( &l );
 	CM_FreeLump( &l );
 }
@@ -702,6 +844,10 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	// no whole file to checksum: the .aas is trusted to be made from this .bsp
 	*checksum = 0;
 
+	if ( CM_LoadCol( name ) ) {
+		goto loaded;
+	}
+
 	f = CM_OpenBsp( name, &header );
 
 	CMod_LoadLump( f, &header, LUMP_SHADERS, CMod_LoadShaders );
@@ -724,6 +870,7 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 
 	FS_FCloseFile( f );
 
+loaded:
 	CM_InitBoxHull();
 
 	CM_FloodAreaConnections();

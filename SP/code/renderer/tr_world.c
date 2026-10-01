@@ -101,6 +101,33 @@ static qboolean R_CullGrid( srfGridMesh_t *cv ) {
 
 
 /*
+=================
+R_CullWorldSurf
+
+A .wld surface: by its plane when it has one, as a face, else by its box
+=================
+*/
+static qboolean R_CullWorldSurf( srfWorld_t *srf, shader_t *shader ) {
+	float d;
+
+	if ( srf->hasPlane && shader->cullType != CT_TWO_SIDED && r_facePlaneCull->integer ) {
+		d = DotProduct( tr.or.viewOrigin, srf->plane.normal );
+		// as for faces, not exactly on the plane
+		if ( shader->cullType == CT_FRONT_SIDED ) {
+			if ( d < srf->plane.dist - 8 ) {
+				return qtrue;
+			}
+		} else {
+			if ( d > srf->plane.dist + 8 ) {
+				return qtrue;
+			}
+		}
+	}
+
+	return R_CullLocalBox( srf->bounds ) == CULL_OUT;
+}
+
+/*
 ================
 R_CullSurface
 
@@ -124,6 +151,10 @@ static qboolean R_CullSurface( surfaceType_t *surface, shader_t *shader ) {
 
 	if ( *surface == SF_TRIANGLES ) {
 		return R_CullTriSurf( (srfTriangles_t *)surface );
+	}
+
+	if ( *surface == SF_WORLD ) {
+		return R_CullWorldSurf( (srfWorld_t *)surface, shader );
 	}
 
 	if ( *surface != SF_FACE ) {
@@ -213,6 +244,43 @@ static int R_DlightGrid( srfGridMesh_t *grid, int dlightBits ) {
 }
 
 
+static int R_DlightWorldSurf( srfWorld_t *srf, int dlightBits ) {
+	float d;
+	int i;
+	dlight_t    *dl;
+
+	for ( i = 0 ; i < tr.refdef.num_dlights ; i++ ) {
+		if ( !( dlightBits & ( 1 << i ) ) ) {
+			continue;
+		}
+		dl = &tr.refdef.dlights[i];
+		if ( dl->origin[0] - dl->radius > srf->bounds[1][0]
+			 || dl->origin[0] + dl->radius < srf->bounds[0][0]
+			 || dl->origin[1] - dl->radius > srf->bounds[1][1]
+			 || dl->origin[1] + dl->radius < srf->bounds[0][1]
+			 || dl->origin[2] - dl->radius > srf->bounds[1][2]
+			 || dl->origin[2] + dl->radius < srf->bounds[0][2] ) {
+			// dlight doesn't reach the bounds
+			dlightBits &= ~( 1 << i );
+			continue;
+		}
+		if ( srf->hasPlane ) {
+			d = DotProduct( dl->origin, srf->plane.normal ) - srf->plane.dist;
+			if ( d < -dl->radius || d > dl->radius ) {
+				// dlight doesn't reach the plane
+				dlightBits &= ~( 1 << i );
+			}
+		}
+	}
+
+	if ( !dlightBits ) {
+		tr.pc.c_dlightSurfacesCulled++;
+	}
+
+	srf->dlightBits = dlightBits;
+	return dlightBits;
+}
+
 static int R_DlightTrisurf( srfTriangles_t *surf, int dlightBits ) {
 	// FIXME: more dlight culling to trisurfs...
 	surf->dlightBits = dlightBits;
@@ -262,6 +330,8 @@ static int R_DlightSurface( msurface_t *surf, int dlightBits ) {
 		dlightBits = R_DlightGrid( (srfGridMesh_t *)surf->data, dlightBits );
 	} else if ( *surf->data == SF_TRIANGLES ) {
 		dlightBits = R_DlightTrisurf( (srfTriangles_t *)surf->data, dlightBits );
+	} else if ( *surf->data == SF_WORLD ) {
+		dlightBits = R_DlightWorldSurf( (srfWorld_t *)surf->data, dlightBits );
 	} else {
 		dlightBits = 0;
 	}

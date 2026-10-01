@@ -196,6 +196,22 @@ void R_BoxSurfaces_r( mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **l
 				surf->viewCount = tr.viewCount;
 			}
 		}
+		else if ( *( surf->data ) == SF_WORLD ) {
+			srfWorld_t *w = (srfWorld_t *) surf->data;
+			if ( w->bounds[0][0] > maxs[0] || w->bounds[1][0] < mins[0] ||
+				 w->bounds[0][1] > maxs[1] || w->bounds[1][1] < mins[1] ||
+				 w->bounds[0][2] > maxs[2] || w->bounds[1][2] < mins[2] ) {
+				surf->viewCount = tr.viewCount;
+			} else if ( w->hasPlane ) {
+				// as a face
+				s = BoxOnPlaneSide( mins, maxs, &w->plane );
+				if ( s == 1 || s == 2 ) {
+					surf->viewCount = tr.viewCount;
+				} else if ( DotProduct( w->plane.normal, dir ) < -0.5 ) {
+					surf->viewCount = tr.viewCount;
+				}
+			}
+		}
 		else if (*(surfaceType_t *) (surf->data) != SF_GRID &&
 			 *(surfaceType_t *) (surf->data) != SF_TRIANGLES)
 			surf->viewCount = tr.viewCount;
@@ -483,6 +499,57 @@ int R_OldMarkFragments( int numPoints, const vec3_t *points, const vec3_t projec
 
 /*
 =================
+R_WorldTriangleFace
+
+Triangle n of a .wld surface of faces, as a face of its own for the decal
+code; the plane its surface's when it has one, else the triangle's own
+=================
+*/
+typedef struct {
+	srfSurfaceFace_t face;          // points[0] is in here,
+	float points[2][VERTEXSIZE];    // points[1] and [2] here
+	int indexes[3];
+} markFace_t;
+
+static qboolean R_WorldTriangleFace( srfWorld_t *srf, int n, markFace_t *out ) {
+	vec3_t p[3];
+	vec3_t e1, e2, normal, vertNormal;
+	int j;
+
+	if ( n * 3 + 2 >= srf->numIndexes ) {
+		return qfalse;
+	}
+	for ( j = 0 ; j < 3 ; j++ ) {
+		R_WorldVertXyz( srf, &srf->verts[srf->indexes[n * 3 + j]], p[j] );
+		VectorCopy( p[j], &out->face.points[0][0] + VERTEXSIZE * j );
+		out->indexes[j] = j;
+	}
+	out->face.surfaceType = SF_FACE;
+	out->face.numPoints = 3;
+	out->face.numIndices = 3;
+	out->face.ofsIndices = (byte *)out->indexes - (byte *)&out->face;
+
+	if ( srf->hasPlane ) {
+		out->face.plane = srf->plane;
+		return qtrue;
+	}
+	// facing the way the face's normal does
+	R_WorldVertNormal( &srf->verts[srf->indexes[n * 3]], vertNormal );
+	VectorSubtract( p[1], p[0], e1 );
+	VectorSubtract( p[2], p[0], e2 );
+	CrossProduct( e1, e2, normal );
+	if ( VectorNormalize( normal ) == 0 ) {
+		VectorCopy( vertNormal, normal );
+	} else if ( DotProduct( normal, vertNormal ) < 0 ) {
+		VectorInverse( normal );
+	}
+	VectorCopy( normal, out->face.plane.normal );
+	out->face.plane.dist = DotProduct( p[0], normal );
+	return qtrue;
+}
+
+/*
+=================
 R_MarkFragments
 
 =================
@@ -658,7 +725,8 @@ int R_MarkFragments( int orientation, const vec3_t *points, const vec3_t project
 					}
 				}
 			}
-		} else if ( *surfaces[i] == SF_FACE )     {
+		} else if ( *surfaces[i] == SF_FACE ||
+					( *surfaces[i] == SF_WORLD && ( (srfWorld_t *)surfaces[i] )->kind == WLD_PLANAR ) ) {
 			extern float VectorDistance( vec3_t v1, vec3_t v2 );
 			vec3_t axis[3];
 			float texCoordScale, dot;
@@ -671,126 +739,175 @@ int R_MarkFragments( int orientation, const vec3_t *points, const vec3_t project
 			float ldists[MAX_VERTS_ON_POLY + 2];
 			vec3_t lmins, lmaxs;
 
-			srfSurfaceFace_t *surf = ( srfSurfaceFace_t * ) surfaces[i];
+			markFace_t tmp;
+			srfSurfaceFace_t *surf;
+			int face;
 
-			if ( !oldMapping ) {
-
-				// Ridah, create a new clip box such that this decal surface is mapped onto
-				// the current surface without distortion. To find the center of the new clip box,
-				// we project the center of the original impact center out along the projection vector,
-				// onto the current surface
-
-				// find the center of the new decal
-				dot = DotProduct( center, surf->plane.normal );
-				dot -= surf->plane.dist;
-				// check the normal of this face
-				if ( dot < -epsilon && DotProduct( surf->plane.normal, projectionDir ) >= 0.01 ) {
-					continue;
-				} else if ( fabs( dot ) > radius ) {
-					continue;
-				}
-				// if the impact point is behind the surface, subtract the projection, otherwise add it
-				VectorMA( center, -dot, bestnormal, newCenter );
-
-				// recalc dot from the offset position
-				dot = DotProduct( newCenter, surf->plane.normal );
-				dot -= surf->plane.dist;
-				VectorMA( newCenter, -dot, surf->plane.normal, newCenter );
-
-				VectorMA( newCenter, MARKER_OFFSET, surf->plane.normal, newCenter );
-
-				// create the texture axis
-				VectorNormalize2( surf->plane.normal, axis[0] );
-				PerpendicularVector( axis[1], axis[0] );
-				RotatePointAroundVector( axis[2], axis[0], axis[1], (float)orientation );
-				CrossProduct( axis[0], axis[2], axis[1] );
-
-				texCoordScale = 0.5 * 1.0 / radius;
-
-				// create the full polygon
-				for ( j = 0 ; j < 3 ; j++ ) {
-					originalPoints[0][j] = newCenter[j] - radius * axis[1][j] - radius * axis[2][j];
-					originalPoints[1][j] = newCenter[j] + radius * axis[1][j] - radius * axis[2][j];
-					originalPoints[2][j] = newCenter[j] + radius * axis[1][j] + radius * axis[2][j];
-					originalPoints[3][j] = newCenter[j] - radius * axis[1][j] + radius * axis[2][j];
+			// the face, or each triangle of a .wld surface as a face
+			for ( face = 0 ; ; face++ ) {
+				if ( *surfaces[i] == SF_FACE ) {
+					if ( face ) {
+						break;
+					}
+					surf = ( srfSurfaceFace_t * ) surfaces[i];
+				} else if ( !R_WorldTriangleFace( (srfWorld_t *)surfaces[i], face, &tmp ) ) {
+					break;
+				} else {
+					surf = &tmp.face;
 				}
 
-				ClearBounds( lmins, lmaxs );
+				if ( !oldMapping ) {
 
-				// create the bounding planes for the to be projected polygon
-				for ( j = 0 ; j < 4 ; j++ ) {
-					AddPointToBounds( originalPoints[j], lmins, lmaxs );
+					// Ridah, create a new clip box such that this decal surface is mapped onto
+					// the current surface without distortion. To find the center of the new clip box,
+					// we project the center of the original impact center out along the projection vector,
+					// onto the current surface
 
-					VectorSubtract( originalPoints[( j + 1 ) % numPoints], originalPoints[j], v1 );
-					VectorSubtract( originalPoints[j], surf->plane.normal, v2 );
-					VectorSubtract( originalPoints[j], v2, v2 );
-					CrossProduct( v1, v2, lnormals[j] );
-					VectorNormalize( lnormals[j] );
-					ldists[j] = DotProduct( lnormals[j], originalPoints[j] );
-				}
-				numPlanes = numPoints;
+					// find the center of the new decal
+					dot = DotProduct( center, surf->plane.normal );
+					dot -= surf->plane.dist;
+					// check the normal of this face
+					if ( dot < -epsilon && DotProduct( surf->plane.normal, projectionDir ) >= 0.01 ) {
+						continue;
+					} else if ( fabs( dot ) > radius ) {
+						continue;
+					}
+					// if the impact point is behind the surface, subtract the projection, otherwise add it
+					VectorMA( center, -dot, bestnormal, newCenter );
 
-				// done.
+					// recalc dot from the offset position
+					dot = DotProduct( newCenter, surf->plane.normal );
+					dot -= surf->plane.dist;
+					VectorMA( newCenter, -dot, surf->plane.normal, newCenter );
 
-				indexes = ( int * )( (byte *)surf + surf->ofsIndices );
-				for ( k = 0 ; k < surf->numIndices ; k += 3 ) {
+					VectorMA( newCenter, MARKER_OFFSET, surf->plane.normal, newCenter );
+
+					// create the texture axis
+					VectorNormalize2( surf->plane.normal, axis[0] );
+					PerpendicularVector( axis[1], axis[0] );
+					RotatePointAroundVector( axis[2], axis[0], axis[1], (float)orientation );
+					CrossProduct( axis[0], axis[2], axis[1] );
+
+					texCoordScale = 0.5 * 1.0 / radius;
+
+					// create the full polygon
 					for ( j = 0 ; j < 3 ; j++ ) {
-						v = &surf->points[0][0] + VERTEXSIZE * indexes[k + j];
-						VectorMA( v, MARKER_OFFSET, surf->plane.normal, clipPoints[0][j] );
+						originalPoints[0][j] = newCenter[j] - radius * axis[1][j] - radius * axis[2][j];
+						originalPoints[1][j] = newCenter[j] + radius * axis[1][j] - radius * axis[2][j];
+						originalPoints[2][j] = newCenter[j] + radius * axis[1][j] + radius * axis[2][j];
+						originalPoints[3][j] = newCenter[j] - radius * axis[1][j] + radius * axis[2][j];
 					}
 
-					oldNumPoints = returnedPoints;
+					ClearBounds( lmins, lmaxs );
 
-					// add the fragments of this face
-					R_AddMarkFragments( 3, clipPoints,
-										numPlanes, lnormals, ldists,
-										maxPoints, pointBuffer,
-										maxFragments, fragmentBuffer,
-										&returnedPoints, &returnedFragments, lmins, lmaxs );
+					// create the bounding planes for the to be projected polygon
+					for ( j = 0 ; j < 4 ; j++ ) {
+						AddPointToBounds( originalPoints[j], lmins, lmaxs );
 
-					if ( oldNumPoints != returnedPoints ) {
-						// flag this surface as already having computed ST's
-						fragmentBuffer[returnedFragments - 1].numPoints *= -1;
+						VectorSubtract( originalPoints[( j + 1 ) % numPoints], originalPoints[j], v1 );
+						VectorSubtract( originalPoints[j], surf->plane.normal, v2 );
+						VectorSubtract( originalPoints[j], v2, v2 );
+						CrossProduct( v1, v2, lnormals[j] );
+						VectorNormalize( lnormals[j] );
+						ldists[j] = DotProduct( lnormals[j], originalPoints[j] );
+					}
+					numPlanes = numPoints;
 
-						// Ridah, calculate ST's
-						for ( j = 0 ; j < ( returnedPoints - oldNumPoints ) ; j++ ) {
-							VectorSubtract( (float *)pointBuffer + 5 * ( oldNumPoints + j ), newCenter, delta );
-							*( (float *)pointBuffer + 5 * ( oldNumPoints + j ) + 3 ) = 0.5 + DotProduct( delta, axis[1] ) * texCoordScale;
-							*( (float *)pointBuffer + 5 * ( oldNumPoints + j ) + 4 ) = 0.5 + DotProduct( delta, axis[2] ) * texCoordScale;
+					// done.
+
+					indexes = ( int * )( (byte *)surf + surf->ofsIndices );
+					for ( k = 0 ; k < surf->numIndices ; k += 3 ) {
+						for ( j = 0 ; j < 3 ; j++ ) {
+							v = &surf->points[0][0] + VERTEXSIZE * indexes[k + j];
+							VectorMA( v, MARKER_OFFSET, surf->plane.normal, clipPoints[0][j] );
+						}
+
+						oldNumPoints = returnedPoints;
+
+						// add the fragments of this face
+						R_AddMarkFragments( 3, clipPoints,
+											numPlanes, lnormals, ldists,
+											maxPoints, pointBuffer,
+											maxFragments, fragmentBuffer,
+											&returnedPoints, &returnedFragments, lmins, lmaxs );
+
+						if ( oldNumPoints != returnedPoints ) {
+							// flag this surface as already having computed ST's
+							fragmentBuffer[returnedFragments - 1].numPoints *= -1;
+
+							// Ridah, calculate ST's
+							for ( j = 0 ; j < ( returnedPoints - oldNumPoints ) ; j++ ) {
+								VectorSubtract( (float *)pointBuffer + 5 * ( oldNumPoints + j ), newCenter, delta );
+								*( (float *)pointBuffer + 5 * ( oldNumPoints + j ) + 3 ) = 0.5 + DotProduct( delta, axis[1] ) * texCoordScale;
+								*( (float *)pointBuffer + 5 * ( oldNumPoints + j ) + 4 ) = 0.5 + DotProduct( delta, axis[2] ) * texCoordScale;
+							}
+						}
+
+						if ( returnedFragments == maxFragments ) {
+							return returnedFragments;   // not enough space for more fragments
 						}
 					}
 
-					if ( returnedFragments == maxFragments ) {
-						return returnedFragments;   // not enough space for more fragments
+				} else {    // old mapping
+
+					// check the normal of this face
+					//if (DotProduct(surf->plane.normal, projectionDir) > 0.0) {
+					//	continue;
+					//}
+
+					indexes = ( int * )( (byte *)surf + surf->ofsIndices );
+					for ( k = 0 ; k < surf->numIndices ; k += 3 ) {
+						for ( j = 0 ; j < 3 ; j++ ) {
+							v = &surf->points[0][0] + VERTEXSIZE * indexes[k + j];
+							VectorMA( v, MARKER_OFFSET, surf->plane.normal, clipPoints[0][j] );
+						}
+						// add the fragments of this face
+						R_AddMarkFragments( 3, clipPoints,
+											numPlanes, normals, dists,
+											maxPoints, pointBuffer,
+											maxFragments, fragmentBuffer,
+											&returnedPoints, &returnedFragments, mins, maxs );
+						if ( returnedFragments == maxFragments ) {
+							return returnedFragments;   // not enough space for more fragments
+						}
 					}
+
 				}
-
-			} else {    // old mapping
-
-				// check the normal of this face
-				//if (DotProduct(surf->plane.normal, projectionDir) > 0.0) {
-				//	continue;
-				//}
-
-				indexes = ( int * )( (byte *)surf + surf->ofsIndices );
-				for ( k = 0 ; k < surf->numIndices ; k += 3 ) {
-					for ( j = 0 ; j < 3 ; j++ ) {
-						v = &surf->points[0][0] + VERTEXSIZE * indexes[k + j];
-						VectorMA( v, MARKER_OFFSET, surf->plane.normal, clipPoints[0][j] );
-					}
-					// add the fragments of this face
-					R_AddMarkFragments( 3, clipPoints,
-										numPlanes, normals, dists,
-										maxPoints, pointBuffer,
-										maxFragments, fragmentBuffer,
-										&returnedPoints, &returnedFragments, mins, maxs );
-					if ( returnedFragments == maxFragments ) {
-						return returnedFragments;   // not enough space for more fragments
-					}
-				}
-
 			}
+		}
+		else if ( *surfaces[i] == SF_WORLD ) {
+			srfWorld_t *surf = (srfWorld_t *) surfaces[i];
 
+			if ( surf->kind == WLD_TRIANGLES && !r_marksOnTriangleMeshes->integer ) {
+				continue;
+			}
+			for ( k = 0 ; k < surf->numIndexes ; k += 3 ) {
+				for ( j = 0 ; j < 3 ; j++ ) {
+					wldVert_t *wv = &surf->verts[surf->indexes[k + j]];
+					R_WorldVertXyz( surf, wv, clipPoints[0][j] );
+					R_WorldVertNormal( wv, normal );
+					VectorMA( clipPoints[0][j], MARKER_OFFSET, normal, clipPoints[0][j] );
+				}
+				if ( surf->kind == WLD_CURVE ) {
+					// check the normal of this triangle, as for grids
+					VectorSubtract( clipPoints[0][0], clipPoints[0][1], v1 );
+					VectorSubtract( clipPoints[0][2], clipPoints[0][1], v2 );
+					CrossProduct( v1, v2, normal );
+					VectorNormalize( normal );
+					if ( DotProduct( normal, projectionDir ) >= ( ( k / 3 ) & 1 ? -0.05 : -0.1 ) ) {
+						continue;
+					}
+				}
+				// add the fragments of this triangle
+				R_AddMarkFragments( 3, clipPoints,
+									numPlanes, normals, dists,
+									maxPoints, pointBuffer,
+									maxFragments, fragmentBuffer,
+									&returnedPoints, &returnedFragments, mins, maxs );
+				if ( returnedFragments == maxFragments ) {
+					return returnedFragments;   // not enough space for more fragments
+				}
+			}
 		}
 		else if(*surfaces[i] == SF_TRIANGLES && r_marksOnTriangleMeshes->integer) {
 

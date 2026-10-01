@@ -82,13 +82,19 @@ qhandle_t R_RegisterMD3(const char *name, model_t *mod)
 			Com_sprintf(namebuf, sizeof(namebuf), "%s.%s", filename, fext);
 
 
+		// an .mdb (an .mdc with bones, from `make assets`) before anything
+		namebuf[strlen( namebuf ) - 1] = 'b';
+		ri.FS_ReadFile( namebuf, &buf.v );
+
 		if ( r_compressModels->integer ) {
 			namebuf[strlen( namebuf ) - 1] = '3';  // try MD3 first
 		} else {
 			namebuf[strlen( namebuf ) - 1] = 'c';  // try MDC first
 		}
 
-		ri.FS_ReadFile( namebuf, &buf.v );
+		if ( !buf.u ) {
+			ri.FS_ReadFile( namebuf, &buf.v );
+		}
 		if ( !buf.u ) {
 			if ( r_compressModels->integer ) {
 				namebuf[strlen( namebuf ) - 1] = 'c';  // try MDC second
@@ -871,6 +877,72 @@ static qboolean R_MDC_ConvertMD3( model_t *mod, int lod, const char *mod_name ) 
 R_LoadMDC
 =================
 */
+/*
+=================
+R_CheckMdbSurface
+
+An .mdb surface's parts are in order and in it, its frames point at kept
+frames it has, and those at what it has: a bone surface's bones cover its
+vertexes, a vertex surface's kept frames are of its base and compressed frames
+=================
+*/
+static qboolean R_CheckMdbSurface( const mdcSurface_t *surf, int numFrames ) {
+	const mdbFrame_t *frame;
+	int i, total, numKeys, keySize;
+
+	if ( surf->numBaseFrames < 1 || surf->numVerts < 1 ||
+		 surf->ofsXyzNormals < 0 || surf->ofsXyzNormals > surf->ofsXyzCompressed ||
+		 surf->ofsXyzCompressed > surf->ofsFrameBaseFrames || surf->ofsFrameBaseFrames > surf->ofsFrameCompFrames ||
+		 surf->ofsFrameCompFrames + numFrames * (int)sizeof( mdbFrame_t ) > surf->ofsEnd ||
+		 ( ( surf->ofsFrameBaseFrames | surf->ofsFrameCompFrames ) & 3 ) ) {
+		return qfalse;
+	}
+
+	if ( surf->numCompFrames == MDB_BONES ) {
+		const short *count = ( const short * )( (const byte *)surf + surf->ofsXyzCompressed );
+
+		if ( surf->ofsXyzNormals + surf->numVerts * (int)sizeof( md3XyzNormal_t ) > surf->ofsXyzCompressed ||
+			 surf->ofsXyzCompressed + surf->numBaseFrames * (int)sizeof( short ) > surf->ofsFrameBaseFrames ) {
+			return qfalse;
+		}
+		for ( i = 0, total = 0 ; i < surf->numBaseFrames ; i++ ) {
+			if ( count[i] < 0 ) {
+				return qfalse;
+			}
+			total += count[i];
+		}
+		if ( total != surf->numVerts ) {
+			return qfalse;
+		}
+		keySize = surf->numBaseFrames * sizeof( mdbPose_t );
+	} else if ( surf->numCompFrames == MDB_KEYS ) {
+		const mdbKey_t *key = ( const mdbKey_t * )( (const byte *)surf + surf->ofsFrameBaseFrames );
+		int numComp = ( surf->ofsFrameBaseFrames - surf->ofsXyzCompressed ) / ( surf->numVerts * (int)sizeof( mdcXyzCompressed_t ) );
+
+		if ( surf->ofsXyzNormals + surf->numBaseFrames * surf->numVerts * (int)sizeof( md3XyzNormal_t ) > surf->ofsXyzCompressed ) {
+			return qfalse;
+		}
+		for ( i = 0 ; i < ( surf->ofsFrameCompFrames - surf->ofsFrameBaseFrames ) / (int)sizeof( mdbKey_t ) ; i++ ) {
+			if ( key[i].base < 0 || key[i].base >= surf->numBaseFrames || key[i].comp < -1 || key[i].comp >= numComp ) {
+				return qfalse;
+			}
+		}
+		keySize = sizeof( mdbKey_t );
+	} else {
+		return qfalse;
+	}
+
+	numKeys = ( surf->ofsFrameCompFrames - surf->ofsFrameBaseFrames ) / keySize;
+	frame = ( const mdbFrame_t * )( (const byte *)surf + surf->ofsFrameCompFrames );
+	for ( i = 0 ; i < numFrames ; i++ ) {
+		if ( frame[i].key < 0 || frame[i].key >= numKeys || frame[i].lerp < 0 ||
+			 ( frame[i].lerp > 0 && frame[i].key + 1 >= numKeys ) ) {
+			return qfalse;
+		}
+	}
+	return qtrue;
+}
+
 static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *mod_name ) {
 	int i, j;
 	mdcHeader_t         *pinmodel;
@@ -985,6 +1057,11 @@ static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *mod_
 			ri.Printf(PRINT_WARNING, "R_LoadMDC: %s has more than %i triangles on %s (%i).\n",
 				mod_name, ( SHADER_MAX_INDEXES / 3 ) - 1, surf->name[0] ? surf->name : "a surface",
 				surf->numTriangles );
+			return qfalse;
+		}
+		if ( surf->numCompFrames < 0 &&
+			 ( LittleShort( 1 ) != 1 || !R_CheckMdbSurface( surf, mod->mdc[lod]->numFrames ) ) ) {
+			ri.Printf( PRINT_WARNING, "R_LoadMDC: %s has a bad .mdb surface %s (or isn't little endian)\n", mod_name, surf->name );
 			return qfalse;
 		}
 

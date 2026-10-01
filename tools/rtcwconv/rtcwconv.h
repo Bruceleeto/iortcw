@@ -81,6 +81,51 @@ struct AasStats {
  * False (with a message) if it isn't one. */
 bool ConvertAas(const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasStats &st, const char *name);
 
+/* ---- col.cpp ---- */
+
+struct ColStats {
+	int files;
+	size_t bytesIn, bytesOut;
+	int patches, patchesSkipped;
+};
+
+/* .bsp -> .col: what the collision code reads, curve collision included.
+ * False (with a message) if it isn't a bsp. */
+bool ConvertCol(const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, ColStats &st, const char *name);
+
+/* ---- mdc.cpp ---- */
+
+struct MdcStats {
+	int files, converted, kept;
+	size_t bytesIn;             /* every .mdc */
+	size_t bytesConverted;      /* the ones made into .mdb */
+	size_t bytesOut;            /* their .mdb */
+	long bones;
+	long surfaces, boneSurfaces;
+	long frames, keys;          /* surface frames, and those kept */
+	double maxErr, sumErr;      /* how far a vertex is off, in units */
+	long numErr;
+};
+
+/* .mdc -> .mdb: its animated surfaces as rigid bones, or its own vertexes,
+ * at the frames that can't be lerped. out is left empty when
+ * the .mdc is better kept (nothing moves, or bones don't fit or save).
+ * False (with a message) if it isn't an .mdc. */
+bool ConvertMdc(const std::vector<uint8_t> &in, std::vector<uint8_t> &out, MdcStats &st, const char *name);
+
+/* ---- wld.cpp ---- */
+
+struct WldStats {
+	int files;
+	size_t bytesIn, bytesOut;
+	long surfacesIn, surfacesOut, verts, triangles;
+	size_t gridIn, gridOut;
+};
+
+/* .bsp -> .wld: the surfaces ready to draw, curves cut at r_subdivisions
+ * subdivisions. False (with a message) if it isn't a bsp. */
+bool ConvertWld(const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, WldStats &st, const char *name, float subdivisions);
+
 /* ---- bsp.cpp ---- */
 
 /* the lightmap shift the renderer does on PVR with the default cvars

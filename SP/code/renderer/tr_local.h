@@ -37,6 +37,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "tr_public.h"
 #include "qgl.h"
 #include "iqm.h"
+#include "wldfile.h"
 
 #define GLE(ret, name, ...) extern name##proc * qgl##name;
 QGL_1_1_PROCS;
@@ -605,6 +606,7 @@ typedef enum {
 	SF_IQM,
 	SF_FLARE,
 	SF_ENTITY,              // beams, rails, lightning, etc that can be determined by entity
+	SF_WORLD,               // a .wld surface
 
 	SF_NUM_SURFACE_TYPES,
 	SF_MAX = 0xffffffff         // ensures that sizeof( surfaceType_t ) == sizeof( int )
@@ -702,6 +704,26 @@ typedef struct {
 	int numVerts;
 	drawVert_t      *verts;
 } srfTriangles_t;
+
+// what a .wld holds in place of faces, curves and triangle soups: triangles
+// ready to draw, of one shader, maybe many of them joined (wldfile.h)
+typedef struct {
+	surfaceType_t surfaceType;
+	int dlightBits;
+	int kind;                       // WLD_PLANAR, WLD_CURVE or WLD_TRIANGLES
+	qboolean hasPlane;              // every triangle on plane
+	cplane_t plane;
+	vec3_t bounds[2];
+	vec3_t origin;                  // the verts' xyz are from here
+	float xyzStep;                  // in steps this big
+	int numVerts;
+	int numIndexes;
+	wldVert_t       *verts;
+	unsigned short  *indexes;
+} srfWorld_t;
+
+#define R_WorldVertXyz( srf, v, out ) VectorMA( ( srf )->origin, ( srf )->xyzStep, ( v )->xyz, out )
+#define R_WorldVertNormal( v, out ) R_LatLongToNormal( out, ( ( v )->normal[0] << 8 ) | ( v )->normal[1] )
 
 typedef struct {
 	vec3_t translate;
@@ -846,6 +868,7 @@ typedef struct {
 	vec3_t lightGridInverseSize;
 	int lightGridBounds[3];
 	byte        *lightGridData;
+	unsigned short *lightGridIndex; // when set, each point's 8 bytes in lightGridData
 
 	int numClusters;
 	int clusterBytes;
@@ -1633,6 +1656,10 @@ srfGridMesh_t *R_SubdividePatchToGrid( int width, int height,
 srfGridMesh_t *R_GridInsertColumn( srfGridMesh_t *grid, int column, int row, vec3_t point, float loderror );
 srfGridMesh_t *R_GridInsertRow( srfGridMesh_t *grid, int row, int column, vec3_t point, float loderror );
 void R_FreeSurfaceGridMesh( srfGridMesh_t *grid );
+
+// tr_stitch.c, over surfs[], swapping in the grids they grow
+void R_StitchAllPatches( surfaceType_t **surfs, int numSurfs );
+void R_FixSharedVertexLodError( surfaceType_t **surfs, int numSurfs );
 
 /*
 ============================================================

@@ -422,10 +422,10 @@ PATCH COLLIDE GENERATION
 */
 
 static int numPlanes;
-static patchPlane_t planes[MAX_PATCH_PLANES];
+static patchPlane_t *planes;    // MAX_PATCH_PLANES, temp memory while a patch is made
 
 static int numFacets;
-static facet_t facets[MAX_FACETS];
+static facet_t *facets;        // MAX_FACETS, likewise
 
 #define NORMAL_EPSILON  0.0001
 #define DIST_EPSILON    0.02
@@ -1029,6 +1029,8 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 
 	numPlanes = 0;
 	numFacets = 0;
+	facets = Hunk_AllocateTempMemory( MAX_FACETS * sizeof( *facets ) );
+	planes = Hunk_AllocateTempMemory( MAX_PATCH_PLANES * sizeof( *planes ) );
 	gridPlanes = Hunk_AllocateTempMemory( MAX_GRID_SIZE * sizeof( *gridPlanes ) );
 
 	// find the planes for each triangle of the grid
@@ -1177,6 +1179,11 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	Com_Memcpy( pf->facets, facets, numFacets * sizeof( *pf->facets ) );
 	pf->planes = Hunk_Alloc( numPlanes * sizeof( *pf->planes ), h_high );
 	Com_Memcpy( pf->planes, planes, numPlanes * sizeof( *pf->planes ) );
+
+	Hunk_FreeTempMemory( planes );
+	Hunk_FreeTempMemory( facets );
+	planes = NULL;
+	facets = NULL;
 }
 
 

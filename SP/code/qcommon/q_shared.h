@@ -1227,7 +1227,7 @@ typedef enum {
 //
 // per-level limits
 //
-#define MAX_CLIENTS         128     // absolute limit
+#define MAX_CLIENTS         MAX_SP_CLIENTS  // absolute limit: single player only, and no map needs more than 61
 #define MAX_LOCATIONS       64
 
 #define GENTITYNUM_BITS     10      // don't need to send any more

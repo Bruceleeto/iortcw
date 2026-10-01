@@ -115,6 +115,8 @@ void R_DlightBmodel( bmodel_t *bmodel ) {
 			( (srfGridMesh_t *)surf->data )->dlightBits = mask;
 		} else if ( *surf->data == SF_TRIANGLES ) {
 			( (srfTriangles_t *)surf->data )->dlightBits = mask;
+		} else if ( *surf->data == SF_WORLD ) {
+			( (srfWorld_t *)surf->data )->dlightBits = mask;
 		}
 	}
 }
@@ -142,7 +144,7 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 	vec3_t lightOrigin;
 	int pos[3];
 	int i, j;
-	byte    *gridData;
+	int gridPoint, point;
 	float frac[3];
 	int gridStep[3];
 	vec3_t direction;
@@ -177,12 +179,11 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 
 	assert( tr.world->lightGridData ); // NULL with -nolight maps
 
-	// trilerp the light value
-	gridStep[0] = 8;
-	gridStep[1] = 8 * tr.world->lightGridBounds[0];
-	gridStep[2] = 8 * tr.world->lightGridBounds[0] * tr.world->lightGridBounds[1];
-	gridData = tr.world->lightGridData + pos[0] * gridStep[0]
-			   + pos[1] * gridStep[1] + pos[2] * gridStep[2];
+	// trilerp the light value; the steps are in points
+	gridStep[0] = 1;
+	gridStep[1] = tr.world->lightGridBounds[0];
+	gridStep[2] = tr.world->lightGridBounds[0] * tr.world->lightGridBounds[1];
+	gridPoint = pos[0] * gridStep[0] + pos[1] * gridStep[1] + pos[2] * gridStep[2];
 
 	totalFactor = 0;
 	for ( i = 0 ; i < 8 ; i++ ) {
@@ -194,14 +195,14 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		float d0, d1, d2, d3, d4, d5;
 		#endif
 		factor = 1.0;
-		data = gridData;
+		point = gridPoint;
 		for ( j = 0 ; j < 3 ; j++ ) {
 			if ( i & ( 1 << j ) ) {
 				if ( pos[j] + 1 > tr.world->lightGridBounds[j] - 1 ) {
 					break; // ignore values outside lightgrid
 				}
 				factor *= frac[j];
-				data += gridStep[j];
+				point += gridStep[j];
 			} else {
 				factor *= ( 1.0f - frac[j] );
 			}
@@ -210,6 +211,10 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		if ( j != 3 ) {
 			continue;
 		}
+		if ( tr.world->lightGridIndex ) {
+			point = tr.world->lightGridIndex[point];
+		}
+		data = tr.world->lightGridData + point * 8;
 		if ( !( data[0] + data[1] + data[2] ) ) {
 			continue;   // ignore samples in walls
 		}

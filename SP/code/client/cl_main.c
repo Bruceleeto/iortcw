@@ -1097,6 +1097,7 @@ void CL_InitRef( void ) {
 	ri.CM_WorldPlanes = CM_WorldPlanes;
 	ri.CM_WorldVis = CM_WorldVis;
 	ri.CM_EntityString = CM_EntityString;
+	ri.FS_FOpenFileRead = FS_FOpenFileRead;
 	ri.FS_FCloseFile = FS_FCloseFile;
 	ri.CM_DrawDebugSurface = CM_DrawDebugSurface;
 	ri.FS_ReadFile = FS_ReadFile;

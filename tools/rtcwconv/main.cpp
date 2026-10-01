@@ -10,7 +10,14 @@
  *   .tga / .jpg   images -> .dt (tex.cpp, with -p), which the PVR renderer
  *          looks for first; a .tga wins over a .jpg of the same name, as
  *          in the game
- *   .bsp   its lightmaps -> maps/<map>/lm_NNNN.dt (bsp.cpp, with -p)
+ *   .bsp   its lightmaps -> maps/<map>/lm_NNNN.dt (bsp.cpp, with -p);
+ *          its collision -> maps/<map>.col (col.cpp), which the collision
+ *          code loads in place of the .bsp;
+ *          its surfaces -> maps/<map>.wld (wld.cpp), which the renderer
+ *          loads in place of the .bsp
+ *   .mdc   vertex animated models -> .mdb with rigid bones in place of
+ *          the vertexes a frame (mdc.cpp), which the renderer looks for
+ *          first; none when the .mdc is better kept
  *   .aas   bot navigation -> .aasc without the faces the game doesn't read
  *          (aas.cpp), which the botlib looks for first
  */
@@ -60,6 +67,7 @@ static void Usage( void ) {
 		"  -p <f>   pvrtex binary: convert images to .dt too\n"
 		"  -t <n>   largest texture side (default 128; 2D art 256)\n"
 		"  -j <n>   pvrtex runs at once (default: one per core)\n"
+		"  -c <f>   curve subdivisions, as r_subdivisions (default 12)\n"
 		"  -v       a line per file\n" );
 	exit( 1 );
 }
@@ -68,6 +76,7 @@ int main( int argc, char **argv ) {
 	MdsOptions opt = { 0.5f, 0.1f, 255 };
 	TexOptions texOpt = { "", 128, 256, 0, false };
 	bool verbose = false;
+	float subdivisions = 12;
 	int i;
 
 	for ( i = 1; i < argc && argv[i][0] == '-'; i++ ) {
@@ -85,6 +94,8 @@ int main( int argc, char **argv ) {
 			texOpt.maxSize = atoi( argv[++i] );
 		} else if ( i + 1 < argc && !strcmp( argv[i], "-j" ) ) {
 			texOpt.jobs = atoi( argv[++i] );
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-c" ) ) {
+			subdivisions = atof( argv[++i] );
 		} else {
 			Usage();
 		}
@@ -98,6 +109,9 @@ int main( int argc, char **argv ) {
 	MdsStats mds = {};
 	TexStats tex = {};
 	AasStats aas = {};
+	ColStats col = {};
+	WldStats wld = {};
+	MdcStats mdc = {};
 	std::map<std::string, TexJob> images;	/* by name without extension */
 	std::vector<TexJob> lightmaps;
 	int failed = 0;
@@ -123,6 +137,16 @@ int main( int argc, char **argv ) {
 						( mds.bytesIn - before.bytesIn ) / 1048576.0, ( mds.bytesOut - before.bytesOut ) / 1048576.0,
 						100.0 * ( mds.keysOut - before.keysOut ) / ( mds.framesIn - before.framesIn ) );
 			}
+		} else if ( !strcasecmp( ext.c_str(), ".mdc" ) ) {
+			std::vector<uint8_t> in, out;
+			fs::path mdbPath = outDir / rel;
+			mdbPath.replace_extension( ".mdb" );
+			if ( !ReadFile( e.path(), in ) || !ConvertMdc( in, out, mdc, rel.c_str() ) ||
+				 ( !out.empty() && !WriteFile( mdbPath, out ) ) ) {
+				failed++;
+			} else if ( verbose && !out.empty() ) {
+				printf( "%-48s %6.1f K -> %6.1f K\n", rel.c_str(), in.size() / 1024.0, out.size() / 1024.0 );
+			}
 		} else if ( !strcasecmp( ext.c_str(), ".aas" ) ) {
 			std::vector<uint8_t> in, out;
 			if ( !ReadFile( e.path(), in ) || !ConvertAas( in, out, aas, rel.c_str() ) ||
@@ -142,9 +166,15 @@ int main( int argc, char **argv ) {
 				job.out = ( outDir / stem ).concat( ".dt" );
 				images[stem.string()] = job;
 			}
-		} else if ( !texOpt.pvrtex.empty() && !strcasecmp( ext.c_str(), ".bsp" ) ) {
-			std::vector<uint8_t> in;
-			if ( !ReadFile( e.path(), in ) || !BspLightmapJobs( in, e.path().stem().string(), outDir, lightmaps ) ) {
+		} else if ( !strcasecmp( ext.c_str(), ".bsp" ) ) {
+			std::vector<uint8_t> in, out, wldOut;
+			fs::path colPath = outDir / rel, wldPath = outDir / rel;
+			colPath.replace_extension( ".col" );
+			wldPath.replace_extension( ".wld" );
+			if ( !ReadFile( e.path(), in ) || !ConvertCol( in, out, col, rel.c_str() ) || !WriteFile( colPath, out ) ||
+				 !ConvertWld( in, wldOut, wld, rel.c_str(), subdivisions ) || !WriteFile( wldPath, wldOut ) ) {
+				failed++;
+			} else if ( !texOpt.pvrtex.empty() && !BspLightmapJobs( in, e.path().stem().string(), outDir, lightmaps ) ) {
 				failed++;
 			}
 		}
@@ -168,6 +198,22 @@ int main( int argc, char **argv ) {
 				mds.files, mds.bytesIn / 1048576.0, mds.bytesOut / 1048576.0,
 				100.0 * mds.keysOut / mds.framesIn, 100.0 * mds.dirKeys / mds.framesIn, mds.sumErr / mds.numErr, mds.maxErr, mds.maxAngle,
 				mds.stripTris, mds.tris, mds.strips );
+	}
+	if ( mdc.files ) {
+		printf( "mdc: %d files, %.1f MB; %d animated ones to .mdb, %.1f MB -> %.1f MB, %ld of %ld surfaces as %ld bones, %.1f%% of frames kept,\n"
+				"     vertexes off by %.3f units on average, %.2f at most; %d kept\n",
+				mdc.files, mdc.bytesIn / 1048576.0, mdc.converted, mdc.bytesConverted / 1048576.0, mdc.bytesOut / 1048576.0,
+				mdc.boneSurfaces, mdc.surfaces, mdc.bones, mdc.frames ? 100.0 * mdc.keys / mdc.frames : 0.0,
+				mdc.numErr ? mdc.sumErr / mdc.numErr : 0.0, mdc.maxErr, mdc.kept );
+	}
+	if ( col.files ) {
+		printf( "col: %d files, %.1f MB of bsp -> %.1f MB; %d patches (%d with no contents left out)\n",
+				col.files, col.bytesIn / 1048576.0, col.bytesOut / 1048576.0, col.patches, col.patchesSkipped );
+	}
+	if ( wld.files ) {
+		printf( "wld: %d files, %.1f MB of bsp -> %.1f MB; %ld surfaces -> %ld; %ld vertexes, %ld triangles; light grids %.1f MB -> %.1f MB\n",
+				wld.files, wld.bytesIn / 1048576.0, wld.bytesOut / 1048576.0, wld.surfacesIn, wld.surfacesOut,
+				wld.verts, wld.triangles, wld.gridIn / 1048576.0, wld.gridOut / 1048576.0 );
 	}
 	if ( aas.files ) {
 		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces kept\n",

@@ -986,6 +986,24 @@ void R_PlaneForSurface( surfaceType_t *surfType, cplane_t *plane ) {
 		VectorCopy( plane4, plane->normal );
 		plane->dist = plane4[3];
 		return;
+	case SF_WORLD:
+		{
+			srfWorld_t *w = (srfWorld_t *)surfType;
+			if ( w->hasPlane ) {
+				*plane = w->plane;
+				return;
+			}
+			vec3_t p[3];
+			int i;
+
+			for ( i = 0 ; i < 3 ; i++ ) {
+				R_WorldVertXyz( w, &w->verts[w->indexes[i]], p[i] );
+			}
+			PlaneFromPoints( plane4, p[0], p[1], p[2] );
+			VectorCopy( plane4, plane->normal );
+			plane->dist = plane4[3];
+		}
+		return;
 	case SF_POLY:
 		poly = (srfPoly_t *)surfType;
 		PlaneFromPoints( plane4, poly->verts[0].xyz, poly->verts[1].xyz, poly->verts[2].xyz );

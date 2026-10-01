@@ -44,7 +44,7 @@ typedef struct {
 } cvarTable_t;
 
 gentity_t g_entities[MAX_GENTITIES];
-gclient_t g_clients[MAX_CLIENTS];
+gclient_t *g_clients;   // level.maxclients of them, from G_Alloc
 
 gentity_t       *g_camEnt = NULL;   //----(SA)	script camera
 
@@ -1257,7 +1257,8 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// initialize all clients for this game
 	level.maxclients = g_maxclients.integer;
-	memset( g_clients, 0, MAX_CLIENTS * sizeof( g_clients[0] ) );
+	g_clients = G_Alloc( level.maxclients * sizeof( g_clients[0] ) );
+	memset( g_clients, 0, level.maxclients * sizeof( g_clients[0] ) );
 	level.clients = g_clients;
 
 	// set client fields on player ents

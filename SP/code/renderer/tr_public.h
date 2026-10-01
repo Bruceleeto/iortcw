@@ -170,6 +170,7 @@ typedef struct {
 	cplane_t *( *CM_WorldPlanes )( int *numPlanes );
 	byte *( *CM_WorldVis )( int *numClusters, int *clusterBytes );
 	char *( *CM_EntityString )( void );
+	long ( *FS_FOpenFileRead )( const char *qpath, fileHandle_t *file, qboolean uniqueFILE );
 	void ( *FS_FCloseFile )( fileHandle_t f );
 
 	// visualization for debugging collision detection
