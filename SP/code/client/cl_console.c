@@ -775,7 +775,7 @@ void Con_DrawConsole( void ) {
 	case CA_UNINITIALIZED:
 	case CA_CONNECTING:         // sending request packets to the server
 	case CA_CHALLENGING:        // sending challenge packets to the server
-	case CA_CONNECTED:          // netchan_t established, getting gamestate
+	case CA_CONNECTED:          // connected to the server, getting gamestate
 	case CA_PRIMED:             // got gamestate, waiting for first frame
 	case CA_LOADING:            // only during cgame initialization, never during main loop
 		if ( !con_debug->integer ) { // these are all 'no console at all' when con_debug is not set

@@ -294,7 +294,6 @@ static __attribute__ ((noreturn)) void Sys_Exit( int exitCode )
 		Sys_RemovePIDFile( FS_GetCurrentGameDir() );
 	}
 
-	NET_Shutdown( );
 
 	Sys_PlatformExit( );
 
@@ -751,7 +750,6 @@ int main( int argc, char **argv )
 
 	CON_Init( );
 	Com_Init( commandLine );
-	NET_Init( );
 
 	signal( SIGILL, Sys_SigHandler );
 	signal( SIGFPE, Sys_SigHandler );

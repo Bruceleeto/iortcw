@@ -293,31 +293,6 @@ void SV_InitReliableCommandsForClient( client_t *cl, int commands ) {
 
 /*
 ===============
-SV_InitReliableCommands
-===============
-*/
-void SV_InitReliableCommands( client_t *clients ) {
-	int i;
-	client_t *cl;
-
-	if ( sv_gametype->integer == GT_SINGLE_PLAYER ) {
-		// single player
-		// init the actual player
-		SV_InitReliableCommandsForClient( clients, MAX_RELIABLE_COMMANDS );
-		// all others can only be bots, so are not required
-		for ( i = 1, cl = &clients[1]; i < sv_maxclients->integer; i++, cl++ ) {
-			SV_InitReliableCommandsForClient( cl, MAX_RELIABLE_COMMANDS );  // TODO, make 0's
-		}
-	} else {
-		// multiplayer
-		for ( i = 0, cl = clients; i < sv_maxclients->integer; i++, cl++ ) {
-			SV_InitReliableCommandsForClient( clients, MAX_RELIABLE_COMMANDS );
-		}
-	}
-}
-
-/*
-===============
 SV_FreeReliableCommandsForClient
 ===============
 */
@@ -462,15 +437,9 @@ the menu system first.
 ===============
 */
 static void SV_SetSnapshotEntityCapacity( void ) {
-	if ( sv_gametype->integer == GT_SINGLE_PLAYER ) {
-		// Cast AI never build snapshots; keep a full history for the human player.
-		svs.numSnapshotEntities = PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-	} else if ( com_dedicated->integer ) {
-		svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-	} else {
-		// we don't need nearly as many when playing locally
-		svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-	}
+	// only the player's snapshots are built, and the client reads each
+	// one right away
+	svs.numSnapshotEntities = PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
 }
 
 static void SV_Startup( void ) {
@@ -488,7 +457,6 @@ static void SV_Startup( void ) {
 		Com_Error( ERR_FATAL, "SV_Startup: unable to allocate svs.clients" );
 	}
 #endif
-//	SV_InitReliableCommands( svs.clients );	// RF
 
 	SV_SetSnapshotEntityCapacity();
 	svs.initialized = qtrue;
@@ -499,9 +467,6 @@ static void SV_Startup( void ) {
 	}
 
 	Cvar_Set( "sv_running", "1" );
-
-	// Join the ipv6 multicast group now that a map is running so clients can scan for us on the local network.
-	NET_JoinMulticast6();
 }
 
 
@@ -880,7 +845,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 		if ( svs.clients[i].state >= CS_CONNECTED ) {
 			char    *denied;
 
-			if ( svs.clients[i].netchan.remoteAddress.type == NA_BOT ) {
+			if ( svs.clients[i].bot ) {
 				if ( killBots || Cvar_VariableValue( "g_gametype" ) == GT_SINGLE_PLAYER ) {
 					SV_DropClient( &svs.clients[i], " gametype is Single Player" );      //DAJ added message
 					continue;
@@ -911,7 +876,6 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 					ent->s.number = i;
 					client->gentity = ent;
 
-					client->deltaMessage = -1;
 					client->lastSnapshotTime = 0;	// generate a snapshot immediately
 
 					VM_Call( gvm, GAME_CLIENT_BEGIN, i );
@@ -966,8 +930,6 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	// to all clients
 	sv.state = SS_GAME;
 
-	// send a heartbeat now so the master will get up to date info
-	SV_Heartbeat_f();
 
 	Hunk_SetMark();
 
@@ -994,8 +956,6 @@ Only called at main exe startup, not for each game
 */
 void SV_Init (void)
 {
-	int index;
-
 	SV_AddOperatorCommands();
 
 	// serverinfo vars
@@ -1010,16 +970,8 @@ void SV_Init (void)
 
 	Cvar_Get( "sv_keywords", "", CVAR_SERVERINFO );
 	sv_mapname = Cvar_Get( "mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM );
-	sv_privateClients = Cvar_Get( "sv_privateClients", "0", CVAR_SERVERINFO );
 	sv_hostname = Cvar_Get( "sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE );
 	sv_maxclients = Cvar_Get( "sv_maxclients", "8", CVAR_SERVERINFO | CVAR_LATCH );
-
-	sv_minRate = Cvar_Get ("sv_minRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO );
-	sv_maxRate = Cvar_Get( "sv_maxRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO );
-	sv_dlRate = Cvar_Get("sv_dlRate", "100", CVAR_ARCHIVE | CVAR_SERVERINFO);
-	sv_minPing = Cvar_Get( "sv_minPing", "0", CVAR_ARCHIVE | CVAR_SERVERINFO );
-	sv_maxPing = Cvar_Get( "sv_maxPing", "0", CVAR_ARCHIVE | CVAR_SERVERINFO );
-	sv_allowAnonymous = Cvar_Get( "sv_allowAnonymous", "0", CVAR_SERVERINFO );
 
 	// systeminfo
 	Cvar_Get( "sv_cheats", "1", CVAR_SYSTEMINFO | CVAR_ROM );
@@ -1035,28 +987,13 @@ void SV_Init (void)
 	Cvar_Get( "sv_referencedPakNames", "", CVAR_SYSTEMINFO | CVAR_ROM );
 
 	// server vars
-	sv_rconPassword = Cvar_Get( "rconPassword", "", CVAR_TEMP );
-	sv_privatePassword = Cvar_Get( "sv_privatePassword", "", CVAR_TEMP );
 	sv_fps = Cvar_Get( "sv_fps", "20", CVAR_TEMP );
 	sv_timeout = Cvar_Get( "sv_timeout", "120", CVAR_TEMP );
 	sv_zombietime = Cvar_Get( "sv_zombietime", "2", CVAR_TEMP );
 	Cvar_Get( "nextmap", "", CVAR_TEMP );
 
-	sv_allowDownload = Cvar_Get( "sv_allowDownload", "1", 0 );
-//----(SA)	heh, whoops.  we've been talking to id masters since we got a connection...
-	Cvar_Get ("sv_dlURL", "", CVAR_SERVERINFO | CVAR_ARCHIVE);
-	
-//	sv_master[0] = Cvar_Get("sv_master1", MASTER_SERVER_NAME, 0);
-//	sv_master[1] = Cvar_Get("sv_master2", "master.iortcw.org", 0);
-	for(index = 2; index < MAX_MASTER_SERVERS; index++)
-		sv_master[index] = Cvar_Get(va("sv_master%d", index + 1), "", CVAR_ARCHIVE);
-
-	sv_reconnectlimit = Cvar_Get( "sv_reconnectlimit", "3", 0 );
-	sv_showloss = Cvar_Get( "sv_showloss", "0", 0 );
-	sv_padPackets = Cvar_Get( "sv_padPackets", "0", 0 );
 	sv_killserver = Cvar_Get( "sv_killserver", "0", 0 );
 	sv_mapChecksum = Cvar_Get( "sv_mapChecksum", "", CVAR_ROM );
-	sv_lanForceRate = Cvar_Get ("sv_lanForceRate", "1", CVAR_ARCHIVE );
 
 	sv_reloading = Cvar_Get( "g_reloading", "0", CVAR_ROM );   //----(SA)	added
 
@@ -1065,43 +1002,7 @@ void SV_Init (void)
 	SV_BotInitCvars();
 
 	// init the botlib here because we need the pre-compiler in the UI
-	SV_BotInitBotLib();
-
-	// Load saved bans
-	Cbuf_AddText("rehashbans\n");
-}
-
-
-/*
-==================
-SV_FinalMessage
-
-Used by SV_Shutdown to send a final message to all
-connected clients before the server goes down.  The messages are sent immediately,
-not just stuck on the outgoing message list, because the server is going
-to totally exit after returning from this function.
-==================
-*/
-void SV_FinalMessage( char *message ) {
-	int i, j;
-	client_t    *cl;
-
-	// send it twice, ignoring rate
-	for ( j = 0 ; j < 2 ; j++ ) {
-		for ( i = 0, cl = svs.clients ; i < sv_maxclients->integer ; i++, cl++ ) {
-			if ( cl->state >= CS_CONNECTED ) {
-				// don't send a disconnect to a local client
-				if ( cl->netchan.remoteAddress.type != NA_LOOPBACK ) {
-					SV_SendServerCommand( cl, "print \"%s\n\"\n", message );
-					SV_SendServerCommand( cl, "disconnect \"%s\"", message );
-				}
-				// force a snapshot to be sent
-				cl->lastSnapshotTime = 0;
-				SV_SendClientSnapshot( cl );
-			}
-		}
-	}
-}
+	SV_BotInitBotLib();}
 
 
 /*
@@ -1119,14 +1020,7 @@ void SV_Shutdown( char *finalmsg ) {
 
 	Com_Printf( "----- Server Shutdown (%s) -----\n", finalmsg );
 
-	NET_LeaveMulticast6();
-
-	if ( svs.clients && !com_errorEntered ) {
-		SV_FinalMessage( finalmsg );
-	}
-
 	SV_RemoveOperatorCommands();
-	SV_MasterShutdown();
 	SV_ShutdownGameProgs();
 
 	// free current level

@@ -64,8 +64,7 @@ int SV_BotAllocateClient( void ) {
 	cl->gentity->s.number = i;
 	cl->state = CS_ACTIVE;
 	cl->lastPacketTime = svs.time;
-	cl->netchan.remoteAddress.type = NA_BOT;
-	cl->rate = 16384;
+	cl->bot = qtrue;
 
 	return i;
 }
@@ -562,7 +561,7 @@ int EntityInPVS( int client, int entityNum ) {
 
 	cl = &svs.clients[client];
 	if ( !cl->frames ) return -1;
-	frame = &cl->frames[cl->netchan.outgoingSequence & PACKET_MASK];
+	frame = &cl->frames[cl->snapshotNum & PACKET_MASK];
 	for ( i = 0; i < frame->num_entities; i++ ) {
 		if ( svs.snapshotEntities[( frame->first_entity + i ) % svs.numSnapshotEntities].number == entityNum ) {
 			return qtrue;
@@ -583,7 +582,7 @@ int SV_BotGetSnapshotEntity( int client, int sequence ) {
 
 	cl = &svs.clients[client];
 	if ( !cl->frames ) return -1;
-	frame = &cl->frames[cl->netchan.outgoingSequence & PACKET_MASK];
+	frame = &cl->frames[cl->snapshotNum & PACKET_MASK];
 	if ( sequence < 0 || sequence >= frame->num_entities ) {
 		return -1;
 	}

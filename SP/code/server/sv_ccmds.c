@@ -441,7 +441,7 @@ static void SV_MapRestart_f( void ) {
 			continue;
 		}
 
-		if ( client->netchan.remoteAddress.type == NA_BOT ) {
+		if ( client->bot ) {
 			isBot = qtrue;
 		} else {
 			isBot = qfalse;
@@ -589,7 +589,7 @@ static void SV_Kick_f( void ) {
 				if ( !cl->state ) {
 					continue;
 				}
-				if ( cl->netchan.remoteAddress.type == NA_LOOPBACK ) {
+				if ( !cl->bot ) {
 					continue;
 				}
 				SV_DropClient( cl, "was kicked" );
@@ -600,7 +600,7 @@ static void SV_Kick_f( void ) {
 				if ( !cl->state ) {
 					continue;
 				}
-				if ( cl->netchan.remoteAddress.type != NA_BOT ) {
+				if ( !cl->bot ) {
 					continue;
 				}
 				SV_DropClient( cl, "was kicked" );
@@ -609,7 +609,7 @@ static void SV_Kick_f( void ) {
 		}
 		return;
 	}
-	if ( cl->netchan.remoteAddress.type == NA_LOOPBACK ) {
+	if ( !cl->bot ) {
 		Com_Printf("Cannot kick host player\n");
 		return;
 	}
@@ -640,7 +640,7 @@ static void SV_KickBots_f( void ) {
 			continue;
 		}
 
-		if( cl->netchan.remoteAddress.type != NA_BOT ) {
+		if( !cl->bot ) {
 			continue;
 		}
 
@@ -670,7 +670,7 @@ static void SV_KickAll_f( void ) {
 			continue;
 		}
 
-		if( cl->netchan.remoteAddress.type == NA_LOOPBACK ) {
+		if( !cl->bot ) {
 			continue;
 		}
 
@@ -704,7 +704,7 @@ static void SV_KickNum_f( void ) {
 	if ( !cl ) {
 		return;
 	}
-	if( cl->netchan.remoteAddress.type == NA_LOOPBACK ) {
+	if( !cl->bot ) {
 		Com_Printf("Cannot kick host player\n");
 		return;
 	}
@@ -756,8 +756,8 @@ static void SV_Status_f( void ) {
 
 	Com_Printf( "map: %s\n", sv_mapname->string );
 
-	Com_Printf( "cl score ping name            address                                 rate \n" );
-	Com_Printf( "-- ----- ---- --------------- --------------------------------------- -----\n" );
+	Com_Printf( "cl score ping name            address\n" );
+	Com_Printf( "-- ----- ---- --------------- ---------------------------------------\n" );
 	for ( i = 0,cl = svs.clients ; i < sv_maxclients->integer ; i++,cl++ )
 	{
 		if ( !cl->state ) {
@@ -789,7 +789,7 @@ static void SV_Status_f( void ) {
 		} while(j < l);
 
 		// TTimo adding a ^7 to reset the color
-		s = NET_AdrToString( cl->netchan.remoteAddress );
+		s = cl->bot ? "bot" : "localhost";
 		Com_Printf( "^7%s", s );
 		l = 39 - strlen( s );
 		j = 0;
@@ -799,8 +799,6 @@ static void SV_Status_f( void ) {
 			Com_Printf(" ");
 			j++;
 		} while(j < l);
-
-		Com_Printf( " %5i", cl->rate );
 
 		Com_Printf( "\n" );
 	}
@@ -879,18 +877,6 @@ static void SV_ConTell_f(void) {
 	Com_Printf("%s\n", text);
 	SV_SendServerCommand(cl, "chat \"%s\"", text);
 }
-
-/*
-==================
-SV_Heartbeat_f
-
-Also called by SV_DropClient, SV_DirectConnect, and SV_SpawnServer
-==================
-*/
-void SV_Heartbeat_f( void ) {
-	svs.nextHeartbeatTime = -9999999;
-}
-
 
 /*
 ===========
@@ -997,7 +983,6 @@ void SV_AddOperatorCommands( void ) {
 	}
 	initialized = qtrue;
 
-	Cmd_AddCommand( "heartbeat", SV_Heartbeat_f );
 	Cmd_AddCommand( "kick", SV_Kick_f );
 #ifndef STANDALONE
 #endif
@@ -1038,7 +1023,6 @@ SV_RemoveOperatorCommands
 void SV_RemoveOperatorCommands( void ) {
 #if 0
 	// removing these won't let the server start again
-	Cmd_RemoveCommand( "heartbeat" );
 	Cmd_RemoveCommand( "kick" );
 	Cmd_RemoveCommand ("kicknum");
 	Cmd_RemoveCommand ("clientkick");

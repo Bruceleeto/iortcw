@@ -37,29 +37,14 @@ vm_t            *gvm = NULL;                // game virtual machine
 cvar_t  *sv_fps = NULL;		// time rate for running non-clients
 cvar_t  *sv_timeout;            // seconds without any message
 cvar_t  *sv_zombietime;         // seconds to sink messages after disconnect
-cvar_t  *sv_rconPassword;       // password for remote server commands
-cvar_t  *sv_privatePassword;    // password for the privateClient slots
-cvar_t  *sv_allowDownload;
 cvar_t  *sv_maxclients;
-cvar_t  *sv_privateClients;     // number of clients reserved for password
 cvar_t  *sv_hostname;
-cvar_t  *sv_master[MAX_MASTER_SERVERS];     // master server ip address
-cvar_t  *sv_reconnectlimit;     // minimum seconds between connect messages
-cvar_t  *sv_showloss;           // report when usercmds are lost
-cvar_t  *sv_padPackets;         // add nop bytes to messages
 cvar_t  *sv_killserver;         // menu system can set to 1 to shut server down
 cvar_t  *sv_mapname;
 cvar_t  *sv_mapChecksum;
 cvar_t  *sv_serverid;
-cvar_t	*sv_minRate;
-cvar_t  *sv_maxRate;
-cvar_t	*sv_dlRate;
-cvar_t  *sv_minPing;
-cvar_t  *sv_maxPing;
 cvar_t  *sv_gametype;
 cvar_t  *sv_pure;
-cvar_t	*sv_lanForceRate; // dedicated 1 (LAN) server forces local client rates to 99999 (bug #491)
-cvar_t  *sv_allowAnonymous;
 
 
 // Rafael gameskill
@@ -125,7 +110,7 @@ static int SV_ReplacePendingServerCommands( client_t *client, const char *cmd ) 
 				//Q_strncpyz( client->reliableCommands[ index ], cmd, sizeof( client->reliableCommands[ index ] ) );
 
 				/*
-				if ( client->netchan.remoteAddress.type != NA_BOT ) {
+				if ( !client->bot ) {
 					Com_Printf( "WARNING: client %i removed double pending config string %i: %s\n", client-svs.clients, csnum1, cmd );
 				}
 				*/
@@ -184,7 +169,7 @@ A NULL client will broadcast to all clients
 */
 void QDECL SV_SendServerCommand( client_t *cl, const char *fmt, ... ) {
 	va_list argptr;
-	byte message[MAX_MSGLEN];
+	byte message[BIG_INFO_STRING];
 	client_t    *client;
 	int j;
 
@@ -223,338 +208,6 @@ void QDECL SV_SendServerCommand( client_t *cl, const char *fmt, ... ) {
 
 
 /*
-==============================================================================
-
-MASTER SERVER FUNCTIONS
-
-==============================================================================
-*/
-
-/*
-================
-SV_MasterHeartbeat
-
-Send a message to the masters every few minutes to
-let it know we are alive, and log information.
-We will also have a heartbeat sent when a server
-changes from empty to non-empty, and full to non-full,
-but not on every player enter or exit.
-================
-*/
-#define HEARTBEAT_MSEC	300 * 1000
-#define MASTERDNS_MSEC	24 * 60 * 60 * 1000
-void SV_MasterHeartbeat(const char *message)
-{
-	static netadr_t	adr[MAX_MASTER_SERVERS][2]; // [2] for v4 and v6 address for the same address string.
-	int			i;
-	int			res;
-	int			netenabled;
-	static qboolean		firstRes = qtrue;
-
-	netenabled = Cvar_VariableIntegerValue("net_enabled");
-
-	// "dedicated 1" is for lan play, "dedicated 2" is for inet public play
-	if (!com_dedicated || com_dedicated->integer != 2 || !(netenabled & (NET_ENABLEV4 | NET_ENABLEV6)))
-		return;		// only dedicated servers send heartbeats
-
-	// if not time yet, don't send anything
-	if ( svs.time < svs.nextHeartbeatTime )
-		return;
-
-	if ( !Q_stricmp( com_gamename->string, LEGACY_MASTER_GAMENAME ) )
-		message = LEGACY_HEARTBEAT_FOR_MASTER;
-
-	svs.nextHeartbeatTime = svs.time + HEARTBEAT_MSEC;
-
-	// send to group masters
-	for (i = 0; i < MAX_MASTER_SERVERS; i++)
-	{
-		if(!sv_master[i]->string[0])
-			continue;
-
-		// if server resolves on first attempt, attempt resolution on subsequent heartbeats
-		// if server does not resolve on first attempt, do not attempt another dns lookup for 24 hours
-		if(sv_master[i]->modified || svs.time > svs.masterResolveTime[i])
-		{
-			sv_master[i]->modified = qfalse;
-			
-			if(svs.time > svs.masterResolveTime[i])
-			{
-				svs.masterResolveTime[i] = svs.time + MASTERDNS_MSEC;
-				firstRes = qtrue;
-			}
-
-			if(netenabled & NET_ENABLEV4)
-			{
-				if(firstRes || adr[i][0].type != NA_BAD) {
-					Com_Printf("Resolving %s (IPv4)\n", sv_master[i]->string);
-					res = NET_StringToAdr(sv_master[i]->string, &adr[i][0], NA_IP);
-
-					if(res == 2)
-					{
-						// if no port was specified, use the default master port
-						adr[i][0].port = BigShort(PORT_MASTER);
-					}
-				
-					if(res) {
-						Com_Printf( "%s resolved to %s\n", sv_master[i]->string, NET_AdrToStringwPort(adr[i][0]));
-
-						if(adr[i][0].type != NA_BAD) {
-							Com_Printf ("Sending heartbeat to %s (IPv4)\n", sv_master[i]->string );
-							NET_OutOfBandPrint( NS_SERVER, adr[i][0], "heartbeat %s\n", message);
-						}
-						sv_master[i]->modified = qtrue;
-					} else {
-						Com_Printf( "%s has no IPv4 address.\n", sv_master[i]->string);
-					}
-				}
-			}
-			
-			if(netenabled & NET_ENABLEV6)
-			{
-				if(firstRes || adr[i][1].type != NA_BAD) {
-					Com_Printf("Resolving %s (IPv6)\n", sv_master[i]->string);
-					res = NET_StringToAdr(sv_master[i]->string, &adr[i][1], NA_IP6);
-
-					if(res == 2)
-					{
-						// if no port was specified, use the default master port
-						adr[i][1].port = BigShort(PORT_MASTER);
-					}
-				
-					if(res) {
-						Com_Printf( "%s resolved to %s\n", sv_master[i]->string, NET_AdrToStringwPort(adr[i][1]));
-						if(adr[i][1].type != NA_BAD) {
-							Com_Printf ("Sending heartbeat to %s (IPv6)\n", sv_master[i]->string );
-							NET_OutOfBandPrint( NS_SERVER, adr[i][1], "heartbeat %s\n", message);
-						}
-						sv_master[i]->modified = qtrue;
-					} else {
-						Com_Printf( "%s has no IPv6 address.\n", sv_master[i]->string);
-					}
-				}
-			}
-
-			if(adr[i][0].type == NA_BAD && adr[i][1].type == NA_BAD)
-			{
-				Com_Printf("Couldn't resolve address: %s\n", sv_master[i]->string);
-				continue;
-			}
-		}
-	}
-
-	firstRes = qfalse;
-}
-
-/*
-=================
-SV_MasterShutdown
-
-Informs all masters that this server is going down
-=================
-*/
-void SV_MasterShutdown( void ) {
-	// send a heartbeat right now
-	svs.nextHeartbeatTime = -9999;
-	SV_MasterHeartbeat(FLATLINE_FOR_MASTER);
-
-	// send it again to minimize chance of drops
-//	svs.nextHeartbeatTime = -9999;
-//	SV_MasterHeartbeat(FLATLINE_FOR_MASTER);
-
-	// when the master tries to poll the server, it won't respond, so
-	// it will be removed from the list
-}
-
-/*
-==============================================================================
-
-CONNECTIONLESS COMMANDS
-
-==============================================================================
-*/
-
-
-/*
-==============
-SV_FlushRedirect
-
-==============
-*/
-static void SV_FlushRedirect( char *outputbuf ) {
-	NET_OutOfBandPrint( NS_SERVER, svs.redirectAddress, "print\n%s", outputbuf );
-}
-
-/*
-===============
-SVC_RemoteCommand
-
-An rcon packet arrived from the network.
-Shift down the remaining args
-Redirect all printfs
-===============
-*/
-static void SVC_RemoteCommand( netadr_t from, msg_t *msg ) {
-	qboolean valid;
-	char remaining[1024];
-#define SV_OUTPUTBUF_LENGTH ( MAX_MSGLEN - 16 )
-	char sv_outputbuf[SV_OUTPUTBUF_LENGTH];
-	char *cmd_aux;
-
-	if ( !strlen( sv_rconPassword->string ) ||
-		 strcmp( Cmd_Argv( 1 ), sv_rconPassword->string ) ) {
-
-
-		valid = qfalse;
-		Com_DPrintf( "Bad rcon from %s:\n%s\n", NET_AdrToString( from ), Cmd_Argv( 2 ) );
-	} else {
-		valid = qtrue;
-		Com_DPrintf( "Rcon from %s:\n%s\n", NET_AdrToString( from ), Cmd_Argv( 2 ) );
-	}
-
-	// start redirecting all print outputs to the packet
-	svs.redirectAddress = from;
-	Com_BeginRedirect( sv_outputbuf, SV_OUTPUTBUF_LENGTH, SV_FlushRedirect );
-
-
-	if ( !strlen( sv_rconPassword->string ) ) {
-		Com_Printf( "No rconpassword set.\n" );
-	} else if ( !valid ) {
-		Com_Printf( "Bad rconpassword.\n" );
-	} else {
-		remaining[0] = 0;
-
-		// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=543
-		// get the command directly, "rcon <pass> <command>" to avoid quoting issues
-		// extract the command by walking
-		// since the cmd formatting can fuckup (amount of spaces), using a dumb step by step parsing
-		cmd_aux = Cmd_Cmd();
-		cmd_aux+=4;
-		while(cmd_aux[0]==' ')
-			cmd_aux++;
-		while(cmd_aux[0] && cmd_aux[0]!=' ') // password
-			cmd_aux++;
-		while(cmd_aux[0]==' ')
-			cmd_aux++;
-		
-		Q_strcat( remaining, sizeof(remaining), cmd_aux);
-		
-		Cmd_ExecuteString (remaining);
-
-	}
-
-	Com_EndRedirect();
-}
-
-/*
-=================
-SV_ConnectionlessPacket
-
-A connectionless packet has four leading 0xff
-characters to distinguish it from a game channel.
-Clients that are in the game can still send
-connectionless packets.
-=================
-*/
-static void SV_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
-	char    *s;
-	char    *c;
-
-	MSG_BeginReadingOOB( msg );
-	MSG_ReadLong( msg );        // skip the -1 marker
-
-	if (!Q_strncmp("connect", (char *) &msg->data[4], 7)) {
-		Huff_Decompress( msg, 12 );
-	}	
-
-	s = MSG_ReadStringLine( msg );
-
-	Cmd_TokenizeString( s );
-
-	c = Cmd_Argv( 0 );
-	Com_DPrintf( "SV packet %s : %s\n", NET_AdrToString( from ), c );
-
-	if ( !Q_stricmp( c,"getchallenge" ) ) {
-		SV_GetChallenge( from );
-	} else if ( !Q_stricmp( c,"connect" ) ) {
-		SV_DirectConnect( from );
-#ifndef STANDALONE
-#endif
-	} else if ( !Q_stricmp( c, "rcon" ) ) {
-		SVC_RemoteCommand( from, msg );
-	} else if ( !Q_stricmp( c,"disconnect" ) ) {
-		// if a client starts up a local server, we may see some spurious
-		// server disconnect messages when their new server sees our final
-		// sequenced messages to the old client
-	} else {
-		Com_DPrintf ("bad connectionless packet from %s:\n%s\n",
-			NET_AdrToString (from), s);
-	}
-}
-
-
-//============================================================================
-
-/*
-=================
-SV_PacketEvent
-=================
-*/
-void SV_PacketEvent( netadr_t from, msg_t *msg ) {
-	int i;
-	client_t    *cl;
-	int qport;
-
-	// check for connectionless packet (0xffffffff) first
-	if ( msg->cursize >= 4 && *(int *)msg->data == -1 ) {
-		SV_ConnectionlessPacket( from, msg );
-		return;
-	}
-
-	// read the qport out of the message so we can fix up
-	// stupid address translating routers
-	MSG_BeginReadingOOB( msg );
-	MSG_ReadLong( msg );                // sequence number
-	qport = MSG_ReadShort( msg ) & 0xffff;
-
-	// find which client the message is from
-	for ( i = 0, cl = svs.clients ; i < sv_maxclients->integer ; i++,cl++ ) {
-		if ( cl->state == CS_FREE ) {
-			continue;
-		}
-		if ( !NET_CompareBaseAdr( from, cl->netchan.remoteAddress ) ) {
-			continue;
-		}
-		// it is possible to have multiple clients from a single IP
-		// address, so they are differentiated by the qport variable
-		if ( cl->netchan.qport != qport ) {
-			continue;
-		}
-
-		// the IP port can't be used to differentiate them, because
-		// some address translating routers periodically change UDP
-		// port assignments
-		if ( cl->netchan.remoteAddress.port != from.port ) {
-			Com_Printf( "SV_ReadPackets: fixing up a translated port\n" );
-			cl->netchan.remoteAddress.port = from.port;
-		}
-
-		// make sure it is a valid, in sequence packet
-		if ( SV_Netchan_Process( cl, msg ) ) {
-			// zombie clients still need to do the Netchan_Process
-			// to make sure they don't need to retransmit the final
-			// reliable message, but they don't do any other processing
-			if ( cl->state != CS_ZOMBIE ) {
-				cl->lastPacketTime = svs.time;  // don't timeout
-				SV_ExecuteClientMessage( cl, msg );
-			}
-		}
-		return;
-	}
-}
-
-
-/*
 ===================
 SV_CalcPings
 
@@ -562,10 +215,8 @@ Updates the cl->ping variables
 ===================
 */
 static void SV_CalcPings( void ) {
-	int i, j;
+	int i;
 	client_t    *cl;
-	int total, count;
-	int delta;
 	playerState_t   *ps;
 
 	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
@@ -587,24 +238,8 @@ static void SV_CalcPings( void ) {
 			cl->ping = 999;
 			continue;
 		}
-		total = 0;
-		count = 0;
-		for ( j = 0 ; j < PACKET_BACKUP ; j++ ) {
-			if ( cl->frames[j].messageAcked <= 0 ) {
-				continue;
-			}
-			delta = cl->frames[j].messageAcked - cl->frames[j].messageSent;
-			count++;
-			total += delta;
-		}
-		if ( !count ) {
-			cl->ping = 999;
-		} else {
-			cl->ping = total / count;
-			if ( cl->ping > 999 ) {
-				cl->ping = 999;
-			}
-		}
+		// the player is in the same program
+		cl->ping = 0;
 
 		// let the game dll know about the ping
 		ps = SV_GameClientNum( i );
@@ -680,7 +315,7 @@ static qboolean SV_CheckPaused( void ) {
 	// only pause if there is just a single client connected
 	count = 0;
 	for ( i = 0,cl = svs.clients ; i < sv_maxclients->integer ; i++,cl++ ) {
-		if ( cl->state >= CS_CONNECTED && cl->netchan.remoteAddress.type != NA_BOT ) {
+		if ( cl->state >= CS_CONNECTED && !cl->bot ) {
 			count++;
 		}
 	}
@@ -833,138 +468,4 @@ void SV_Frame( int msec ) {
 
 	// send messages back to the clients
 	SV_SendClientMessages();
-
-	// send a heartbeat to the master if needed
-	SV_MasterHeartbeat(HEARTBEAT_FOR_MASTER);
 }
-
-/*
-====================
-SV_RateMsec
-
-Return the number of msec until another message can be sent to
-a client based on its rate settings
-====================
-*/
-
-#define UDPIP_HEADER_SIZE 28
-#define UDPIP6_HEADER_SIZE 48
-
-int SV_RateMsec(client_t *client)
-{
-	int rate, rateMsec;
-	int messageSize;
-	
-	messageSize = client->netchan.lastSentSize;
-	rate = client->rate;
-
-	if(sv_maxRate->integer)
-	{
-		if(sv_maxRate->integer < 1000)
-			Cvar_Set( "sv_MaxRate", "1000" );
-		if(sv_maxRate->integer < rate)
-			rate = sv_maxRate->integer;
-	}
-
-	if(sv_minRate->integer)
-	{
-		if(sv_minRate->integer < 1000)
-			Cvar_Set("sv_minRate", "1000");
-		if(sv_minRate->integer > rate)
-			rate = sv_minRate->integer;
-	}
-
-	if(client->netchan.remoteAddress.type == NA_IP6)
-		messageSize += UDPIP6_HEADER_SIZE;
-	else
-		messageSize += UDPIP_HEADER_SIZE;
-		
-	rateMsec = messageSize * 1000 / ((int) (rate * com_timescale->value));
-	rate = Sys_Milliseconds() - client->netchan.lastSentTime;
-	
-	if(rate > rateMsec)
-		return 0;
-	else
-		return rateMsec - rate;
-}
-
-/*
-====================
-SV_SendQueuedPackets
-
-Send download messages and queued packets in the time that we're idle, i.e.
-not computing a server frame or sending client snapshots.
-Return the time in msec until we expect to be called next
-====================
-*/
-
-int SV_SendQueuedPackets()
-{
-	int numBlocks;
-	int dlStart, deltaT, delayT;
-	static int dlNextRound = 0;
-	int timeVal = INT_MAX;
-
-	// Send out fragmented packets now that we're idle
-	delayT = SV_SendQueuedMessages();
-	if(delayT >= 0)
-		timeVal = delayT;
-
-	if(sv_dlRate->integer)
-	{
-		// Rate limiting. This is very imprecise for high
-		// download rates due to millisecond timedelta resolution
-		dlStart = Sys_Milliseconds();
-		deltaT = dlNextRound - dlStart;
-
-		if(deltaT > 0)
-		{
-			if(deltaT < timeVal)
-				timeVal = deltaT + 1;
-		}
-		else
-		{
-			numBlocks = SV_SendDownloadMessages();
-
-			if(numBlocks)
-			{
-				// There are active downloads
-				deltaT = Sys_Milliseconds() - dlStart;
-
-				delayT = 1000 * numBlocks * MAX_DOWNLOAD_BLKSIZE;
-				delayT /= sv_dlRate->integer * 1024;
-
-				if(delayT <= deltaT + 1)
-				{
-					// Sending the last round of download messages
-					// took too long for given rate, don't wait for
-					// next round, but always enforce a 1ms delay
-					// between DL message rounds so we don't hog
-					// all of the bandwidth. This will result in an
-					// effective maximum rate of 1MB/s per user, but the
-					// low download window size limits this anyways.
-					if(timeVal > 2)
-						timeVal = 2;
-
-					dlNextRound = dlStart + deltaT + 1;
-				}
-				else
-				{
-					dlNextRound = dlStart + delayT;
-					delayT -= deltaT;
-
-					if(delayT < timeVal)
-						timeVal = delayT;
-				}
-			}
-		}
-	}
-	else
-	{
-		if(SV_SendDownloadMessages())
-			timeVal = 0;
-	}
-
-	return timeVal;
-}
-

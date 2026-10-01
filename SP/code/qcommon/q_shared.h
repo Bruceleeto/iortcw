@@ -1674,7 +1674,7 @@ typedef enum {
 	CA_AUTHORIZING,     // not used any more, was checking cd key
 	CA_CONNECTING,      // sending request packets to the server
 	CA_CHALLENGING,     // sending challenge packets to the server
-	CA_CONNECTED,       // netchan_t established, getting gamestate
+	CA_CONNECTED,       // connected to the server, getting gamestate
 	CA_LOADING,         // only during cgame initialization, never during main loop
 	CA_PRIMED,          // got gamestate, waiting for first frame
 	CA_ACTIVE,          // game views should be displayed

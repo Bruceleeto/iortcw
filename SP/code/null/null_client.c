@@ -30,7 +30,6 @@ If you have questions concerning this license or the applicable additional terms
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
 
-cvar_t *cl_shownet;
 // TTimo: win32 dedicated
 cvar_t  *cl_language;
 
@@ -38,7 +37,6 @@ void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit) {
 }
 
 void CL_Init( void ) {
-	cl_shownet = Cvar_Get( "cl_shownet", "0", CVAR_TEMP );
 	// TTimo: localisation, prolly not any use in dedicated / null client
 	cl_language = Cvar_Get( "cl_language", "0", CVAR_ARCHIVE );
 }
@@ -50,9 +48,6 @@ void Key_WriteBindings( fileHandle_t f ) {
 }
 
 void CL_Frame( int msec ) {
-}
-
-void CL_PacketEvent( netadr_t from, msg_t *msg ) {
 }
 
 void CL_CharEvent( int key ) {

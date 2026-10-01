@@ -41,226 +41,25 @@ If you have questions concerning this license or the applicable additional terms
 
 //============================================================================
 
-//
-// msg.c
-//
-typedef struct {
-	qboolean allowoverflow;     // if false, do a Com_Error
-	qboolean overflowed;        // set to true if the buffer size failed (with allowoverflow set)
-	qboolean oob;               // set to true if the buffer size failed (with allowoverflow set)
-	byte    *data;
-	int maxsize;
-	int cursize;
-	int readcount;
-	int bit;                    // for bitwise reads and writes
-} msg_t;
-
-void MSG_Init( msg_t *buf, byte *data, int length );
-void MSG_InitOOB( msg_t *buf, byte *data, int length );
-void MSG_Clear( msg_t *buf );
-void *MSG_GetSpace( msg_t *buf, int length );
-void MSG_WriteData( msg_t *buf, const void *data, int length );
-void MSG_Bitstream( msg_t *buf );
-
-// TTimo
-// copy a msg_t in case we need to store it as is for a bit
-// (as I needed this to keep an msg_t from a static var for later use)
-// sets data buffer as MSG_Init does prior to do the copy
-void MSG_Copy(msg_t *buf, byte *data, int length, msg_t *src);
-
-struct usercmd_s;
-struct entityState_s;
-struct playerState_s;
-
-void MSG_WriteBits( msg_t *msg, int value, int bits );
-
-void MSG_WriteChar( msg_t *sb, int c );
-void MSG_WriteByte( msg_t *sb, int c );
-void MSG_WriteShort( msg_t *sb, int c );
-void MSG_WriteLong( msg_t *sb, int c );
-void MSG_WriteFloat( msg_t *sb, float f );
-void MSG_WriteString( msg_t *sb, const char *s );
-void MSG_WriteBigString( msg_t *sb, const char *s );
-void MSG_WriteAngle16( msg_t *sb, float f );
-int MSG_HashKey(const char *string, int maxlen);
-
-void    MSG_BeginReading( msg_t *sb );
-void    MSG_BeginReadingOOB( msg_t *sb );
-
-int     MSG_ReadBits( msg_t *msg, int bits );
-
-int     MSG_ReadChar( msg_t *sb );
-int     MSG_ReadByte( msg_t *sb );
-int     MSG_ReadShort( msg_t *sb );
-int     MSG_ReadLong( msg_t *sb );
-float   MSG_ReadFloat( msg_t *sb );
-char    *MSG_ReadString( msg_t *sb );
-char    *MSG_ReadBigString( msg_t *sb );
-char    *MSG_ReadStringLine( msg_t *sb );
-float   MSG_ReadAngle16( msg_t *sb );
-void    MSG_ReadData( msg_t *sb, void *buffer, int size );
-
-int		MSG_LookaheadByte (msg_t *msg);
-
-void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *to );
-void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *to );
-
-void MSG_WriteDeltaEntity( msg_t *msg, struct entityState_s *from, struct entityState_s *to
-						   , qboolean force );
-void MSG_ReadDeltaEntity( msg_t *msg, entityState_t *from, entityState_t *to,
-						  int number );
-
-void MSG_WriteDeltaPlayerstate( msg_t *msg, struct playerState_s *from, struct playerState_s *to );
-void MSG_ReadDeltaPlayerstate( msg_t *msg, struct playerState_s *from, struct playerState_s *to );
-
-
-void MSG_ReportChangeVectors_f( void );
-
-//============================================================================
-
 /*
 ==============================================================
 
-NET
+CLIENT / SERVER
 
+The client and the server run in the same program and call each other
 ==============================================================
 */
 
-// TTimo: set to 1 to perform net encoding, 0 to drop
-// single player game with no networking doesn't need encoding
-// show_bug.cgi?id=404
-#define DO_NET_ENCODE 0
-
-#define NET_ENABLEV4            0x01
-#define NET_ENABLEV6            0x02
-// if this flag is set, always attempt ipv6 connections instead of ipv4 if a v6 address is found.
-#define NET_PRIOV6              0x04
-// disables ipv6 multicast support if set.
-#define NET_DISABLEMCAST        0x08
-
-#define PACKET_BACKUP   32  // number of old messages that must be kept on client and
-							// server for delta comrpession and ping estimation
+#define PACKET_BACKUP   4   // snapshots the server keeps for the client, which
+							// reads each one the frame it is built
 #define PACKET_MASK     ( PACKET_BACKUP - 1 )
 
-#define MAX_PACKET_USERCMDS     32      // max number of usercmd_t in a packet
-
 #define	MAX_SNAPSHOT_ENTITIES	256
-
-#define PORT_ANY            -1
 
 // RF, increased this, seems to keep causing problems when set to 64, especially when loading
 // a savegame, which is hard to fix on that side, since we can't really spread out a loadgame
 // among several frames
-//#define	MAX_RELIABLE_COMMANDS	64			// max string commands buffered for restransmit
-//#define	MAX_RELIABLE_COMMANDS	128			// max string commands buffered for restransmit
 #define MAX_RELIABLE_COMMANDS   256 // bigger!
-
-typedef enum {
-	NA_BAD = 0,		// an address lookup failed
-	NA_BOT,
-	NA_LOOPBACK,
-	NA_BROADCAST,
-	NA_IP,
-	NA_IP6,
-	NA_MULTICAST6,
-	NA_UNSPEC
-} netadrtype_t;
-
-typedef enum {
-	NS_CLIENT,
-	NS_SERVER
-} netsrc_t;
-
-#define NET_ADDRSTRMAXLEN 48	// maximum length of an IPv6 address string including trailing '\0'
-typedef struct {
-	netadrtype_t type;
-
-	byte ip[4];
-	byte	ip6[16];
-
-	unsigned short port;
-	unsigned long	scope_id;	// Needed for IPv6 link-local addresses
-} netadr_t;
-
-void        NET_Init( void );
-void        NET_Shutdown( void );
-void	    NET_Restart_f( void );
-void        NET_Config( qboolean enableNetworking );
-
-void	    NET_FlushPacketQueue(void);
-void        NET_SendPacket( netsrc_t sock, int length, const void *data, netadr_t to );
-void		QDECL NET_OutOfBandPrint( netsrc_t net_socket, netadr_t adr, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
-void		QDECL NET_OutOfBandData( netsrc_t sock, netadr_t adr, byte *format, int len );
-
-qboolean    NET_CompareAdr( netadr_t a, netadr_t b );
-qboolean    NET_CompareBaseAdrMask(netadr_t a, netadr_t b, int netmask);
-qboolean    NET_CompareBaseAdr( netadr_t a, netadr_t b );
-qboolean    NET_IsLocalAddress( netadr_t adr );
-const char  *NET_AdrToString( netadr_t a );
-const char  *NET_AdrToStringwPort (netadr_t a);
-int	    NET_StringToAdr ( const char *s, netadr_t *a, netadrtype_t family);
-qboolean    NET_GetLoopPacket( netsrc_t sock, netadr_t *net_from, msg_t *net_message );
-void	    NET_JoinMulticast6(void);
-void	    NET_LeaveMulticast6(void);
-void        NET_Sleep( int msec );
-
-
-//----(SA)	increased for larger submodel entity counts
-#define MAX_MSGLEN              32768       // max length of a message, which may
-//#define	MAX_MSGLEN				16384		// max length of a message, which may
-// be fragmented into multiple packets
-#define MAX_DOWNLOAD_WINDOW		48	// ACK window of 48 download chunks. Cannot set this higher, or clients
-						// will overflow the reliable commands buffer
-#define MAX_DOWNLOAD_BLKSIZE		1024	// 896 byte block chunks
-
-#define NETCHAN_GENCHECKSUM(challenge, sequence) ((challenge) ^ ((sequence) * (challenge)))
-
-
-/*
-Netchan handles packet fragmentation and out of order / duplicate suppression
-*/
-
-typedef struct {
-	netsrc_t sock;
-
-	int dropped;                    // between last packet and previous
-
-	netadr_t remoteAddress;
-	int qport;                      // qport value to write when transmitting
-
-	// sequencing variables
-	int incomingSequence;
-	int outgoingSequence;
-
-	// incoming fragment assembly buffer
-	int fragmentSequence;
-	int fragmentLength;
-	byte *fragmentBuffer;
-
-	// outgoing fragment buffer
-	// we need to space out the sending of large fragmented messages
-	qboolean unsentFragments;
-	int unsentFragmentStart;
-	int unsentLength;
-	byte *unsentBuffer;
-
-	int			challenge;
-	int		lastSentTime;
-	int		lastSentSize;
-
-} netchan_t;
-
-void Netchan_Init( int qport );
-void Netchan_Free( netchan_t *chan );
-void Netchan_Setup(netsrc_t sock, netchan_t *chan, netadr_t adr, int qport, int challenge, qboolean compat);
-
-void Netchan_Transmit( netchan_t *chan, int length, const byte *data );
-void Netchan_TransmitNextFragment( netchan_t *chan );
-
-qboolean Netchan_Process( netchan_t *chan, msg_t *msg );
-
-
-
 
 /*
 ==============================================================
@@ -287,51 +86,6 @@ PROTOCOL
 
 #ifndef STANDALONE
 #endif
-
-#define PORT_MASTER         27950
-#define PORT_UPDATE         27951
-#define PORT_SERVER         27960
-#define NUM_SERVER_PORTS    4       // broadcast scan this many ports after
-									// PORT_SERVER so a single machine can
-									// run multiple servers
-
-
-// the svc_strings[] array in cl_parse.c should mirror this
-//
-// server to client
-//
-enum svc_ops_e {
-	svc_bad,
-	svc_nop,
-	svc_gamestate,
-	svc_configstring,           // [short] [string] only in gamestate messages
-	svc_baseline,               // only in gamestate messages
-	svc_serverCommand,          // [string] to be executed by client game module
-	svc_download,               // [short] size [size bytes]
-	svc_snapshot,
-	svc_EOF,
-
-	// new commands, supported only by ioquake3 protocol but not legacy
-	svc_voipSpeex,     // not wrapped in USE_VOIP, so this value is reserved.
-	svc_voipOpus,      //
-};
-
-
-//
-// client to server
-//
-enum clc_ops_e {
-	clc_bad,
-	clc_nop,
-	clc_move,               // [[usercmd_t]
-	clc_moveNoDelta,        // [[usercmd_t]
-	clc_clientCommand,      // [string] message
-	clc_EOF,
-
-	// new commands, supported only by ioquake3 protocol but not legacy
-	clc_voipSpeex,   // not wrapped in USE_VOIP, so this value is reserved.
-	clc_voipOpus,    //
-};
 
 /*
 ==============================================================
@@ -861,7 +615,6 @@ int         Com_Filter( char *filter, char *name, int casesensitive );
 int         Com_FilterPath( char *filter, char *name, int casesensitive );
 int         Com_RealTime( qtime_t *qtime );
 qboolean    Com_SafeMode( void );
-void		Com_RunAndTimeServerPacket(netadr_t *evFrom, msg_t *buf);
 
 qboolean	Com_IsVoipTarget(uint8_t *voipTargets, int voipTargetsSize, int clientNum);
 
@@ -1006,8 +759,6 @@ void CL_MouseEvent( int dx, int dy, int time );
 
 void CL_JoystickEvent( int axis, int value, int time );
 
-void CL_PacketEvent( netadr_t from, msg_t *msg );
-
 void CL_ConsolePrint( char *text );
 
 void CL_MapLoading( void );
@@ -1064,11 +815,33 @@ void SCR_DebugGraph (float value);	// FIXME: move logging to common?
 void SV_Init( void );
 void SV_Shutdown( char *finalmsg );
 void SV_Frame( int msec );
-void SV_PacketEvent( netadr_t from, msg_t *msg );
 int SV_FrameMsec(void);
 qboolean SV_GameCommand( void );
 
-int SV_SendQueuedPackets(void);
+//
+// the client's link to the server it runs with: what packets
+// carried once, read and written in place
+//
+struct snapshot_s;
+
+int SV_LocalConnect( const char *userinfo );
+// the client number, or -1 if the server can't take the client yet
+
+qboolean SV_LocalConnected( void );
+
+int SV_LocalClientMessage( int serverId, int serverCommandAck, char **commands,
+						   int firstCommand, int lastCommand, usercmd_t *cmd );
+// commands[] is a ring of MAX_RELIABLE_COMMANDS; runs the ones the server
+// hasn't, then cmd if not NULL. Returns the last command the server ran.
+
+qboolean SV_LocalGameState( int *clientNum, int *checksumFeed, int *serverCommandSequence, int *snapshotNum );
+// true once for each gamestate the server sends
+const char *SV_LocalConfigstring( int index );
+
+int SV_LocalSnapshotInfo( int *serverTime, int *snapFlags, int *serverCommandSequence, playerState_t *ps );
+// the newest snapshot number, 0 if none
+qboolean SV_LocalSnapshot( int snapshotNum, struct snapshot_s *snapshot );
+const char *SV_LocalServerCommand( int serverCommandNum );
 
 //
 // UI interface
@@ -1129,14 +902,6 @@ cpuFeatures_t Sys_GetProcessorFeatures( void );
 
 void    Sys_SetErrorText( const char *text );
 
-void    Sys_SendPacket( int length, const void *data, netadr_t to );
-
-qboolean	Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family );
-//Does NOT parse port numbers, only base addresses.
-
-qboolean    Sys_IsLANAddress( netadr_t adr );
-void        Sys_ShowIP( void );
-
 FILE	*Sys_FOpen( const char *ospath, const char *mode );
 qboolean Sys_Mkdir( const char *path );
 FILE	*Sys_Mkfifo( const char *ospath );
@@ -1194,69 +959,5 @@ void Sys_StartProcess( char *cmdline, qboolean doexit );            // NERVE - S
 //int Sys_ShellExecute(char *op, char *file, qboolean doexit, char *params, char *dir);	//----(SA) added
 void Sys_OpenURL( char *url, qboolean doexit );                     // NERVE - SMF
 int Sys_GetHighQualityCPU( void );
-
-/* This is based on the Adaptive Huffman algorithm described in Sayood's Data
- * Compression book.  The ranks are not actually stored, but implicitly defined
- * by the location of a node within a doubly-linked list */
-
-#define NYT HMAX                    /* NYT = Not Yet Transmitted */
-#define INTERNAL_NODE ( HMAX + 1 )
-
-typedef struct nodetype {
-	struct  nodetype *left, *right, *parent; /* tree structure */
-	struct  nodetype *next, *prev; /* doubly-linked list */
-	struct  nodetype **head; /* highest ranked node in block */
-	int weight;
-	int symbol;
-} node_t;
-
-#define HMAX 256 /* Maximum symbol */
-
-typedef struct {
-	int blocNode;
-	int blocPtrs;
-
-	node_t*     tree;
-	node_t*     lhead;
-	node_t*     ltail;
-	node_t*     loc[HMAX + 1];
-	node_t**    freelist;
-
-	node_t nodeList[768];
-	node_t*     nodePtrs[768];
-} huff_t;
-
-typedef struct {
-	huff_t compressor;
-	huff_t decompressor;
-} huffman_t;
-
-void    Huff_Compress( msg_t *buf, int offset );
-void    Huff_Decompress( msg_t *buf, int offset );
-void    Huff_Init( huffman_t *huff );
-void    Huff_addRef( huff_t* huff, byte ch );
-int     Huff_Receive( node_t *node, int *ch, byte *fin );
-void    Huff_transmit( huff_t *huff, int ch, byte *fout, int maxoffset );
-void    Huff_offsetReceive( node_t *node, int *ch, byte *fin, int *offset, int maxoffset );
-void    Huff_offsetTransmit( huff_t *huff, int ch, byte *fout, int *offset, int maxoffset );
-void    Huff_putBit( int bit, byte *fout, int *offset );
-int     Huff_getBit( byte *fout, int *offset );
-
-// don't use if you don't know what you're doing.
-int		Huff_getBloc(void);
-void	Huff_setBloc(int _bloc);
-
-extern huffman_t clientHuffTables;
-
-#define SV_ENCODE_START     4
-#define SV_DECODE_START     12
-#define CL_ENCODE_START     12
-#define CL_DECODE_START     4
-
-// flags for sv_allowDownload and cl_allowDownload
-#define DLF_ENABLE 1
-#define DLF_NO_REDIRECT 2
-#define DLF_NO_UDP 4
-#define DLF_NO_DISCONNECT 8
 
 #endif // _QCOMMON_H_

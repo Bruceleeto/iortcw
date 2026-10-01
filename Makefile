@@ -312,7 +312,7 @@ ENGINE_SRC = \
   $(filter-out client/snd_%,$(call rel,client/*.c)) \
   $(filter-out server/sv_wallhack.c,$(call rel,server/*.c)) \
   $(filter-out qcommon/vm_armv7l.c qcommon/vm_none.c qcommon/vm_powerpc.c \
-    qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c qcommon/vm_x86.c qcommon/net_ip.c,$(call rel,qcommon/*.c)) \
+    qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c qcommon/vm_x86.c,$(call rel,qcommon/*.c)) \
   sys/con_log.c sys/sys_main.c sys/sys_unix.c \
   $(filter-out splines/q_shared.cpp,$(call rel,splines/*.cpp)) \
   $(call rel,zlib-1.2.11/*.c)
@@ -328,10 +328,9 @@ ifeq ($(PLATFORM),dc)
   # no VM compiler on SH4 (all modules are static anyway)
   ENGINE_SRC += qcommon/vm_none.c sys/con_passive.c
   # maple keyboard and mouse instead of SDL input
-  # and no network: loopback only
-  DC_OBJ = $(B)/dc/dc_input.c.o $(B)/dc/dc_net.c.o $(B)/dc/dc_posix.c.o
+  DC_OBJ = $(B)/dc/dc_input.c.o $(B)/dc/dc_posix.c.o
 else
-  ENGINE_SRC += qcommon/vm_x86.c qcommon/net_ip.c sdl/sdl_input.c sys/con_tty.c asm/snapvector.c asm/ftola.c
+  ENGINE_SRC += qcommon/vm_x86.c sdl/sdl_input.c sys/con_tty.c asm/snapvector.c asm/ftola.c
   DC_OBJ =
 endif
 ifeq ($(ARCH),x86)

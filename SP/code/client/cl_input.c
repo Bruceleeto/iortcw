@@ -712,187 +712,31 @@ void CL_CreateNewCommands( void ) {
 }
 
 /*
-=================
-CL_ReadyToSendPacket
-
-Returns qfalse if we are over the maxpackets limit
-and should choke back the bandwidth a bit by not sending
-a packet this frame.  All the commands will still get
-delivered in the next packet, but saving a header and
-getting more delta compression will reduce total bandwidth.
-=================
-*/
-qboolean CL_ReadyToSendPacket( void ) {
-	int oldPacketNum;
-	int delta;
-
-	if ( clc.state == CA_CINEMATIC ) {
-		return qfalse;
-	}
-
-	// If we are downloading, we send no less than 50ms between packets
-	if ( *clc.downloadTempName &&
-		 cls.realtime - clc.lastPacketSentTime < 50 ) {
-		return qfalse;
-	}
-
-	// if we don't have a valid gamestate yet, only send
-	// one packet a second
-	if ( clc.state != CA_ACTIVE &&
-		 clc.state != CA_PRIMED &&
-		 !*clc.downloadTempName &&
-		 cls.realtime - clc.lastPacketSentTime < 1000 ) {
-		return qfalse;
-	}
-
-	// send every frame for loopbacks
-	if ( clc.netchan.remoteAddress.type == NA_LOOPBACK ) {
-		return qtrue;
-	}
-
-	// send every frame for LAN
-	if ( cl_lanForcePackets->integer && Sys_IsLANAddress( clc.netchan.remoteAddress ) ) {
-		return qtrue;
-	}
-
-	// check for exceeding cl_maxpackets
-	if ( cl_maxpackets->integer < 25 ) {
-		Cvar_Set( "cl_maxpackets", "25" );
-	} else if ( cl_maxpackets->integer > 125 ) {
-		Cvar_Set( "cl_maxpackets", "125" );
-	}
-	oldPacketNum = ( clc.netchan.outgoingSequence - 1 ) & PACKET_MASK;
-	delta = cls.realtime -  cl.outPackets[ oldPacketNum ].p_realtime;
-	if ( delta < 1000 / cl_maxpackets->integer ) {
-		// the accumulated commands will go out in the next packet
-		return qfalse;
-	}
-
-	return qtrue;
-}
-
-/*
 ===================
 CL_WritePacket
 
-Create and send the command packet to the server
-Including both the reliable commands and the usercmds
-
-During normal gameplay, a client packet will contain something like:
-
-4	sequence number
-2	qport
-4	serverid
-4	acknowledged sequence number
-4	clc.serverCommandSequence
-<optional reliable commands>
-1	clc_move or clc_moveNoDelta
-1	command count
-<count * usercmds>
-
+Hands the server our new client commands and the newest usercmd
 ===================
 */
 void CL_WritePacket( void ) {
-	msg_t buf;
-	byte data[MAX_MSGLEN];
-	int i, j;
-	usercmd_t   *cmd, *oldcmd;
-	usercmd_t nullcmd;
-	int packetNum;
-	int oldPacketNum;
-	int count, key;
+	usercmd_t *cmd = NULL;
+	int ack;
 
 	if ( clc.state == CA_CINEMATIC ) {
 		return;
 	}
 
-	memset( &nullcmd, 0, sizeof( nullcmd ) );
-	oldcmd = &nullcmd;
-
-	MSG_Init( &buf, data, sizeof( data ) );
-
-	MSG_Bitstream( &buf );
-	// write the current serverId so the server
-	// can tell if this is from the current gameState
-	MSG_WriteLong( &buf, cl.serverId );
-
-	// write the last message we received, which can
-	// be used for delta compression, and is also used
-	// to tell if we dropped a gamestate
-	MSG_WriteLong( &buf, clc.serverMessageSequence );
-
-	// write the last reliable message we received
-	MSG_WriteLong( &buf, clc.serverCommandSequence );
-
-	// write any unacknowledged clientCommands
-	for ( i = clc.reliableAcknowledge + 1 ; i <= clc.reliableSequence ; i++ ) {
-		MSG_WriteByte( &buf, clc_clientCommand );
-		MSG_WriteLong( &buf, i );
-		MSG_WriteString( &buf, clc.reliableCommands[ i & ( MAX_RELIABLE_COMMANDS - 1 ) ] );
+	if ( cl.cmdNumber > cl.sentCmdNumber ) {
+		cl.sentCmdNumber = cl.cmdNumber;
+		cmd = &cl.cmds[cl.cmdNumber & CMD_MASK];
 	}
 
-	// we want to send all the usercmds that were generated in the last
-	// few packet, so even if a couple packets are dropped in a row,
-	// all the cmds will make it to the server
-	if ( cl_packetdup->integer < 0 ) {
-		Cvar_Set( "cl_packetdup", "0" );
-	} else if ( cl_packetdup->integer > 5 ) {
-		Cvar_Set( "cl_packetdup", "5" );
+	ack = SV_LocalClientMessage( cl.serverId, clc.lastExecutedServerCommand, clc.reliableCommands,
+								 clc.reliableAcknowledge + 1, clc.reliableSequence, cmd );
+	if ( ack > clc.reliableAcknowledge ) {
+		clc.reliableAcknowledge = ack;
+		CL_FreeReliableCommands( ack );
 	}
-	oldPacketNum = ( clc.netchan.outgoingSequence - 1 - cl_packetdup->integer ) & PACKET_MASK;
-	count = cl.cmdNumber - cl.outPackets[ oldPacketNum ].p_cmdNumber;
-	if ( count > MAX_PACKET_USERCMDS ) {
-		count = MAX_PACKET_USERCMDS;
-		Com_Printf( "MAX_PACKET_USERCMDS\n" );
-	}
-
-
-	if ( count >= 1 ) {
-		if ( cl_showSend->integer ) {
-			Com_Printf( "(%i)", count );
-		}
-
-		// begin a client move command
-		if ( cl_nodelta->integer || !cl.snap.valid
-			 || clc.serverMessageSequence != cl.snap.messageNum ) {
-			MSG_WriteByte( &buf, clc_moveNoDelta );
-		} else {
-			MSG_WriteByte( &buf, clc_move );
-		}
-
-		// write the command count
-		MSG_WriteByte( &buf, count );
-
-		// use the checksum feed in the key
-		key = clc.checksumFeed;
-		// also use the message acknowledge
-		key ^= clc.serverMessageSequence;
-		// also use the last acknowledged server command in the key
-		key ^= MSG_HashKey(clc.serverCommands[ clc.serverCommandSequence & (MAX_RELIABLE_COMMANDS-1) ], 32);
-
-		// write all the commands, including the predicted command
-		for ( i = 0 ; i < count ; i++ ) {
-			j = ( cl.cmdNumber - count + i + 1 ) & CMD_MASK;
-			cmd = &cl.cmds[j];
-			MSG_WriteDeltaUsercmdKey( &buf, key, oldcmd, cmd );
-			oldcmd = cmd;
-		}
-	}
-
-	//
-	// deliver the message
-	//
-	packetNum = clc.netchan.outgoingSequence & PACKET_MASK;
-	cl.outPackets[ packetNum ].p_realtime = cls.realtime;
-	cl.outPackets[ packetNum ].p_serverTime = oldcmd->serverTime;
-	cl.outPackets[ packetNum ].p_cmdNumber = cl.cmdNumber;
-	clc.lastPacketSentTime = cls.realtime;
-
-	if ( cl_showSend->integer ) {
-		Com_Printf( "%i ", buf.cursize );
-	}
-
-	CL_Netchan_Transmit( &clc.netchan, &buf );
 }
 
 /*
@@ -914,14 +758,6 @@ void CL_SendCmd( void ) {
 	}
 
 	CL_CreateNewCommands();
-
-	// don't send a packet if the last packet was sent too recently
-	if ( !CL_ReadyToSendPacket() ) {
-		if ( cl_showSend->integer ) {
-			Com_Printf( ". " );
-		}
-		return;
-	}
 
 	CL_WritePacket();
 }
@@ -1013,7 +849,6 @@ void CL_InitInput( void ) {
 
 	Cmd_AddCommand( "notebook", IN_Notebook );
 
-	cl_nodelta = Cvar_Get( "cl_nodelta", "0", 0 );
 	cl_debugMove = Cvar_Get( "cl_debugMove", "0", 0 );
 }
 

@@ -1722,31 +1722,6 @@ sysEvent_t  Com_GetEvent( void ) {
 
 /*
 =================
-Com_RunAndTimeServerPacket
-=================
-*/
-void Com_RunAndTimeServerPacket( netadr_t *evFrom, msg_t *buf ) {
-	int t1, t2, msec;
-
-	t1 = 0;
-
-	if ( com_speeds->integer ) {
-		t1 = Sys_Milliseconds();
-	}
-
-	SV_PacketEvent( *evFrom, buf );
-
-	if ( com_speeds->integer ) {
-		t2 = Sys_Milliseconds();
-		msec = t2 - t1;
-		if ( com_speeds->integer == 3 ) {
-			Com_Printf( "SV_PacketEvent time: %i\n", msec );
-		}
-	}
-}
-
-/*
-=================
 Com_EventLoop
 
 Returns last event time
@@ -1754,29 +1729,12 @@ Returns last event time
 */
 int Com_EventLoop( void ) {
 	sysEvent_t ev;
-	netadr_t evFrom;
-	byte bufData[MAX_MSGLEN];
-	msg_t buf;
-
-	MSG_Init( &buf, bufData, sizeof( bufData ) );
 
 	while ( 1 ) {
 		ev = Com_GetEvent();
 
 		// if no more events are available
 		if ( ev.evType == SE_NONE ) {
-			// manually send packet events for the loopback channel
-			while ( NET_GetLoopPacket( NS_CLIENT, &evFrom, &buf ) ) {
-				CL_PacketEvent( evFrom, &buf );
-			}
-
-			while ( NET_GetLoopPacket( NS_SERVER, &evFrom, &buf ) ) {
-				// if the server just shut down, flush the events
-				if ( com_sv_running->integer ) {
-					Com_RunAndTimeServerPacket( &evFrom, &buf );
-				}
-			}
-
 			return ev.evTime;
 		}
 
@@ -1982,14 +1940,6 @@ void Com_GameRestart(int checksumFeed, qboolean disconnect)
 		// Clean out any user and VM created cvars
 		Cvar_Restart(qtrue);
 		Com_ExecuteCfg();
-
-		if(disconnect)
-		{
-			// We don't want to change any network settings if gamedir
-			// change was triggered by a connect to server because the
-			// new network settings might make the connection fail.
-			NET_Restart_f();
-		}
 
 		if(com_gameClientRestarting)
 		{
@@ -2271,7 +2221,6 @@ Com_Init
 */
 void Com_Init( char *commandLine ) {
 	char    *s;
-	int	qport;
 
 	Com_Printf( "%s %s %s\n", Q3_VERSION, PLATFORM_STRING, PRODUCT_DATE );
 
@@ -2328,7 +2277,6 @@ void Com_Init( char *commandLine ) {
 		Cmd_AddCommand ("freeze", Com_Freeze_f);
  	}
 	Cmd_AddCommand ("quit", Com_Quit_f);
-	Cmd_AddCommand ("changeVectors", MSG_ReportChangeVectors_f );
 	Cmd_AddCommand ("writeconfig", Com_WriteConfig_f );
 	Cmd_SetCommandCompletionFunc( "writeconfig", Cmd_CompleteCfgName );
 	Cmd_AddCommand("game_restart", Com_GameRestart_f);
@@ -2407,10 +2355,6 @@ void Com_Init( char *commandLine ) {
 	Sys_Init();
 
 	Sys_InitPIDFile( FS_GetCurrentGameDir() );
-
-	// Pick a random port value
-	Com_RandomBytes( (byte*)&qport, sizeof(int) );
-	Netchan_Init( qport & 0xffff );
 
 	VM_Init();
 	SV_Init();
@@ -2689,7 +2633,7 @@ Com_Frame
 void Com_Frame( void ) {
 
 	int msec, minMsec;
-	int		timeVal, timeValSV;
+	int		timeVal;
 	static int	lastTime = 0, bias = 0;
 
 	int timeBeforeFirstEvents;
@@ -2752,22 +2696,10 @@ void Com_Frame( void ) {
 
 	do
 	{
-		if(com_sv_running->integer)
-		{
-			timeValSV = SV_SendQueuedPackets();
-			
-			timeVal = Com_TimeVal(minMsec);
-
-			if(timeValSV < timeVal)
-				timeVal = timeValSV;
-		}
-		else
-			timeVal = Com_TimeVal(minMsec);
+		timeVal = Com_TimeVal(minMsec);
 		
-		if(com_busyWait->integer || timeVal < 1)
-			NET_Sleep(0);
-		else
-			NET_Sleep(timeVal - 1);
+		if(!com_busyWait->integer && timeVal > 1)
+			Sys_Sleep(timeVal - 1);
 	} while(Com_TimeVal(minMsec));
 
 	IN_Frame();
@@ -2845,8 +2777,6 @@ void Com_Frame( void ) {
 		timeBeforeClient = timeAfter;
 	}
 #endif
-
-	NET_FlushPacketQueue();
 
 	//
 	// report timing information
