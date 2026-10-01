@@ -1180,6 +1180,7 @@ static void CG_Missile( centity_t *cent ) {
 	if ( s1->weapon >= WP_NUM_WEAPONS ) {
 		s1->weapon = 0;
 	}
+	CG_RegisterWeapon( s1->weapon );   // a missile can come before its weapon is seen
 	weapon = &cg_weapons[s1->weapon];
 
 	// calculate the axis
@@ -1274,6 +1275,7 @@ static void CG_ZombieSpit( centity_t *cent ) {
 	if ( s1->weapon >= WP_NUM_WEAPONS ) {
 		s1->weapon = 0;
 	}
+	CG_RegisterWeapon( s1->weapon );   // a missile can come before its weapon is seen
 	weapon = &cg_weapons[s1->weapon];
 
 	// calculate the axis
@@ -1355,6 +1357,7 @@ static void CG_Crowbar( centity_t *cent ) {
 	if ( s1->weapon >= WP_NUM_WEAPONS ) {
 		s1->weapon = 0;
 	}
+	CG_RegisterWeapon( s1->weapon );   // a missile can come before its weapon is seen
 	weapon = &cg_weapons[s1->weapon];
 
 	// calculate the axis

@@ -1436,6 +1436,12 @@ void CG_ParticleDirtBulletDebris( vec3_t org, vec3_t vel, int duration ) {
 	int r = rand() % 3;
 	cparticle_t *p;
 
+	// dirtParticle3Shader is never registered (cg_main.c), so the third of
+	// them it would be drew nothing but a warning a frame: left out
+	if ( r == 2 ) {
+		return;
+	}
+
 	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}

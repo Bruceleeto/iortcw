@@ -1166,7 +1166,13 @@ void R_Register( void ) {
 	r_customheight = ri.Cvar_Get( "r_customheight", "1024", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customPixelAspect = ri.Cvar_Get( "r_customPixelAspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_simpleMipMaps = ri.Cvar_Get( "r_simpleMipMaps", "1", CVAR_ARCHIVE | CVAR_LATCH );
+#ifdef USE_PVR
+	// the lit colour the map has on every vertex, in place of the lightmap
+	// pass: half the world's polygons, and no lightmaps in VRAM
+	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "1", CVAR_ARCHIVE | CVAR_LATCH );
+#else
 	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
+#endif
 	r_uiFullScreen = ri.Cvar_Get( "r_uifullscreen", "0", 0 );
 	r_subdivisions = ri.Cvar_Get( "r_subdivisions", "4", CVAR_ARCHIVE | CVAR_LATCH );
 	r_stereoEnabled = ri.Cvar_Get( "r_stereoEnabled", "0", CVAR_ARCHIVE | CVAR_LATCH);

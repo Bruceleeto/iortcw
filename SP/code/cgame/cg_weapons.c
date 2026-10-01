@@ -3760,6 +3760,7 @@ void CG_PlaySwitchSound( int lastweap, int newweap ) {
 //	weap = &cg_weapons[ ent->weapon ];
 	sfxHandle_t switchsound;
 
+	CG_RegisterWeapon( newweap );
 	switchsound = cgs.media.selectSound;
 
 	if ( getAltWeapon( lastweap ) == newweap ) { // alt switch
@@ -4717,6 +4718,7 @@ void CG_FireWeapon( centity_t *cent ) {
 		CG_Error( "CG_FireWeapon: ent->weapon >= WP_NUM_WEAPONS" );
 		return;
 	}
+	CG_RegisterWeapon( ent->weapon );  // heard before it's seen
 	weap = &cg_weapons[ ent->weapon ];
 
 	cg.lastFiredWeapon = ent->weapon;   //----(SA)	added

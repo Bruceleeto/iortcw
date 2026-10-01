@@ -1443,11 +1443,16 @@ static void CG_RegisterGraphics( void ) {
 
 
 // code is almost complete for doing this correctly.  will remove when that is complete.
+#if !defined( _arch_dreamcast ) && !defined( DCSIM )
 	CG_LoadingString( " - weapons" );
 	for ( i = WP_KNIFE; i < WP_GAUNTLET; i++ ) {
 //		CG_LoadingString( va("   - %d", i) );
 		CG_RegisterWeapon( i );
 	}
+#endif
+	// (the Dreamcast loads each weapon the first time it's seen, heard or
+	// picked up: CG_RegisterWeapon where they're used. 1.2MB on escape1 for
+	// the ones that never are.)
 
 // END
 

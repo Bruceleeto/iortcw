@@ -359,6 +359,38 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 	}
 	WldFreeCurves();
 
+	/* faces and curves lit as Quake 2 on the Dreamcast does it: each vertex
+	 * gets its lightmap's light where it sits, in place of the colour the map
+	 * has for it (which q3map only works out for vertex lit surfaces), so the
+	 * renderer draws them in one pass with no lightmaps (r_vertexLight) */
+	{
+		int lightLen;
+		const uint8_t *light = BspLumpArray<uint8_t>( bsp, BSP_LIGHTMAPS, lightLen );
+		const int size = 128, page = size * size * 3;
+		int numPages = light ? lightLen / page : 0;
+		for ( int i = 0; i < numSurfaces; i++ ) {
+			const BspSurface &s = surfaces[i];
+			if ( ( kinds[i] != WLD_PLANAR && kinds[i] != WLD_CURVE ) || s.lightmapNum < 0 || s.lightmapNum >= numPages ) {
+				continue;
+			}
+			const uint8_t *lm = light + s.lightmapNum * page;
+			for ( Vert &v : pieces[i].verts ) {
+				/* bilinear, between the texel centres */
+				float x = v.lightmap[0] * size - 0.5f, y = v.lightmap[1] * size - 0.5f;
+				x = fminf( fmaxf( x, 0 ), size - 1 );
+				y = fminf( fmaxf( y, 0 ), size - 1 );
+				int x0 = (int)x, y0 = (int)y;
+				int x1 = x0 + 1 < size ? x0 + 1 : x0, y1 = y0 + 1 < size ? y0 + 1 : y0;
+				float fx = x - x0, fy = y - y0;
+				for ( int c = 0; c < 3; c++ ) {
+					float a = lm[( y0 * size + x0 ) * 3 + c] * ( 1 - fx ) + lm[( y0 * size + x1 ) * 3 + c] * fx;
+					float b = lm[( y1 * size + x0 ) * 3 + c] * ( 1 - fx ) + lm[( y1 * size + x1 ) * 3 + c] * fx;
+					v.color[c] = (uint8_t)lrintf( a * ( 1 - fy ) + b * fy );
+				}
+			}
+		}
+	}
+
 	/* the leafs each surface is seen from */
 	std::vector<std::vector<int>> leafsOf( numSurfaces );
 	for ( int l = 0; l < numLeafs; l++ ) {

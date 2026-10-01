@@ -1950,6 +1950,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 			cent->overheatTime = cg.time;   // used to make the barrels smoke when overheated
 		}
 
+		CG_RegisterWeapon( es->weapon );
 		if ( cg_weapons[es->weapon].overheatSound ) {
 			trap_S_StartSound( NULL, es->number, CHAN_AUTO, cg_weapons[es->weapon].overheatSound );
 		}
@@ -1969,6 +1970,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 
 	case EV_FILL_CLIP:
 		DEBUGNAME( "EV_FILL_CLIP" );
+		CG_RegisterWeapon( es->weapon );
 		if ( cg_weapons[es->weapon].reloadSound ) {
 			trap_S_StartSound( NULL, es->number, CHAN_WEAPON, cg_weapons[es->weapon].reloadSound ); // JPW NERVE following sherman's SP fix, should allow killing reload sound when player dies
 		}

@@ -493,8 +493,12 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	// turn off dynamic lighting globally by clearing all the
 	// dlights if it needs to be disabled or if vertex lighting is enabled
+	// (the Dreamcast keeps them with vertex lighting: they're drawn over it
+	// as they are over a lightmap)
 	if ( /*r_dynamiclight->integer == 0 ||*/    // RF, disabled so we can force things like lightning dlights
+#ifndef USE_PVR
 		r_vertexLight->integer == 1 ||
+#endif
 		glConfig.hardwareType == GLHW_PERMEDIA2 ) {
 		tr.refdef.num_dlights = 0;
 	}
