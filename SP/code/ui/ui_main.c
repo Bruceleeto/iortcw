@@ -662,6 +662,13 @@ _UI_Shutdown
 =================
 */
 void _UI_Shutdown( void ) {
+#ifndef _arch_dreamcast
+	int UI_PoolMemoryUsed( int *strings );
+	int mem, strings;
+
+	mem = UI_PoolMemoryUsed( &strings );
+	Com_Printf( "POOL ui: mem %d strings %d\n", mem, strings );
+#endif
 }
 
 char *defaultMenu = NULL;

@@ -75,7 +75,7 @@ typedef struct flameChunk_s
 } flameChunk_t;
 
 #define MAX_FLAME_CHUNKS    2048
-static flameChunk_t flameChunks[MAX_FLAME_CHUNKS];
+cgPool_t cg_flameChunkPool = { sizeof( flameChunk_t ), 128, MAX_FLAME_CHUNKS };
 static flameChunk_t *freeFlameChunks, *activeFlameChunks, *headFlameChunks;
 
 static qboolean initFlameChunks = qfalse;
@@ -436,31 +436,40 @@ CG_ClearFlameChunks
 ===============
 */
 void CG_ClearFlameChunks( void ) {
-	int i;
-
-	memset( flameChunks, 0, sizeof( flameChunks ) );
+	CG_PoolFree( &cg_flameChunkPool );
 	memset( centFlameInfo, 0, sizeof( centFlameInfo ) );
 
-	freeFlameChunks = flameChunks;
+	freeFlameChunks = NULL;
 	activeFlameChunks = NULL;
 	headFlameChunks = NULL;
 
-	for ( i = 0 ; i < MAX_FLAME_CHUNKS ; i++ )
-	{
-		flameChunks[i].nextGlobal = &flameChunks[i + 1];
-
-		if ( i > 0 ) {
-			flameChunks[i].prevGlobal = &flameChunks[i - 1];
-		} else {
-			flameChunks[i].prevGlobal = NULL;
-		}
-
-		flameChunks[i].inuse = qfalse;
-	}
-	flameChunks[MAX_FLAME_CHUNKS - 1].nextGlobal = NULL;
-
 	initFlameChunks = qtrue;
 	numFlameChunksInuse = 0;
+}
+
+/*
+===============
+CG_GrowFlameChunks
+
+Another chunk onto the free list, qfalse if there are all there may be
+===============
+*/
+static qboolean CG_GrowFlameChunks( void ) {
+	flameChunk_t *f = CG_PoolGrow( &cg_flameChunkPool );
+	int i, n = cg_flameChunkPool.chunkItems;
+
+	if ( !f ) {
+		return qfalse;
+	}
+	for ( i = 0 ; i < n ; i++ ) {
+		f[i].nextGlobal = i < n - 1 ? &f[i + 1] : freeFlameChunks;
+		f[i].prevGlobal = i > 0 ? &f[i - 1] : NULL;
+	}
+	if ( freeFlameChunks ) {
+		freeFlameChunks->prevGlobal = &f[n - 1];
+	}
+	freeFlameChunks = f;
+	return qtrue;
 }
 
 /*
@@ -471,7 +480,7 @@ CG_SpawnFlameChunk
 flameChunk_t *CG_SpawnFlameChunk( flameChunk_t *headFlameChunk ) {
 	flameChunk_t    *f;
 
-	if ( !freeFlameChunks ) {
+	if ( !freeFlameChunks && !CG_GrowFlameChunks() ) {
 		return NULL;
 	}
 
@@ -1527,3 +1536,11 @@ void CG_UpdateFlamethrowerSounds( void ) {
 		}
 	}
 }
+
+#ifndef _arch_dreamcast
+// for cg_poolstats.c
+int CG_PoolFlameChunks( int *size ) {
+	*size = sizeof( flameChunk_t );
+	return numFlameChunksInuse;
+}
+#endif

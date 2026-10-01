@@ -81,14 +81,19 @@ itemDef_t *Menu_SetPrevCursorItem( menuDef_t *menu );
 itemDef_t *Menu_SetNextCursorItem( menuDef_t *menu );
 static qboolean Menu_OverActiveItem( menuDef_t *menu, float x, float y );
 
-#ifdef CGAME
-#define MEM_POOL_SIZE  128 * 1024
-#else
-#define MEM_POOL_SIZE  1280 * 1024
-#endif
+// UI_Alloc and String_Alloc take from blocks malloc'd as the menus need them,
+// freed when they are reset (UI_InitMemory, String_Init)
+#define UI_BLOCK    ( 32 * 1024 )
 
-static char memoryPool[MEM_POOL_SIZE];
-static int allocPoint, outOfMemory;
+typedef struct uiBlock_s {
+	struct uiBlock_s *next;
+	int size, used;
+} uiBlock_t;
+
+#define UI_BLOCK_HEADER ( ( sizeof( uiBlock_t ) + 15 ) & ~15 )
+
+static uiBlock_t *memBlocks, *strBlocks;
+static int memUsed, strUsed, outOfMemory;
 
 // these are expected to be translated by the strings.txt file
 translateString_t translateStrings[] = {
@@ -242,25 +247,70 @@ void UI_RoQDone( void ) {
 
 /*
 ===============
+UI_BlockAlloc
+
+From the block being filled, or a new one; a big size gets a block of its
+own behind it
+===============
+*/
+static void *UI_BlockAlloc( uiBlock_t **blocks, int size ) {
+	uiBlock_t *b;
+	char *p;
+
+	if ( size > UI_BLOCK / 2 || !*blocks || ( *blocks )->used + size > ( *blocks )->size ) {
+		int blockSize = size > UI_BLOCK / 2 ? size : UI_BLOCK;
+
+		b = malloc( UI_BLOCK_HEADER + blockSize );
+		if ( !b ) {
+			return NULL;
+		}
+		b->size = blockSize;
+		b->used = 0;
+		if ( size > UI_BLOCK / 2 && *blocks ) {
+			b->next = ( *blocks )->next;
+			( *blocks )->next = b;
+		} else {
+			b->next = *blocks;
+			*blocks = b;
+		}
+	} else {
+		b = *blocks;
+	}
+
+	p = (char *)b + UI_BLOCK_HEADER + b->used;
+	b->used += size;
+	memset( p, 0, size );
+	return p;
+}
+
+static void UI_FreeBlocks( uiBlock_t **blocks ) {
+	uiBlock_t *b, *next;
+
+	for ( b = *blocks ; b ; b = next ) {
+		next = b->next;
+		free( b );
+	}
+	*blocks = NULL;
+}
+
+/*
+===============
 UI_Alloc
 ===============
 */
 void *UI_Alloc( int size ) {
 	char    *p;
 
-	if ( allocPoint + size > MEM_POOL_SIZE ) {
+	size = ( size + 15 ) & ~15;
+	p = UI_BlockAlloc( &memBlocks, size );
+	if ( !p ) {
 		outOfMemory = qtrue;
 		if ( DC->Print ) {
 			DC->Print( "UI_Alloc: Failure. Out of memory!\n" );
 		}
-		//DC->trap_Print(S_COLOR_YELLOW"WARNING: UI Out of Memory!\n");
 		return NULL;
 	}
-
-	p = &memoryPool[allocPoint];
-
-	allocPoint += ( size + 15 ) & ~15;
-
+	memUsed += size;
 	return p;
 }
 
@@ -270,7 +320,8 @@ UI_InitMemory
 ===============
 */
 void UI_InitMemory( void ) {
-	allocPoint = 0;
+	UI_FreeBlocks( &memBlocks );
+	memUsed = 0;
 	outOfMemory = qfalse;
 }
 
@@ -309,9 +360,6 @@ typedef struct stringDef_s {
 	const char *str;
 } stringDef_t;
 
-static int strPoolIndex = 0;
-static char strPool[STRING_POOL_SIZE];
-
 static int strHandleCount = 0;
 static stringDef_t *strHandle[HASH_TABLE_SIZE];
 
@@ -341,10 +389,13 @@ const char *String_Alloc( const char *p ) {
 	}
 
 	len = strlen( p );
-	if ( len + strPoolIndex + 1 < STRING_POOL_SIZE ) {
-		int ph = strPoolIndex;
-		strcpy( &strPool[strPoolIndex], p );
-		strPoolIndex += len + 1;
+	{
+		char *ph = UI_BlockAlloc( &strBlocks, len + 1 );
+		if ( !ph ) {
+			return NULL;
+		}
+		strcpy( ph, p );
+		strUsed += len + 1;
 
 		str = strHandle[hash];
 		last = str;
@@ -358,29 +409,21 @@ const char *String_Alloc( const char *p ) {
 			return NULL;
 		}
 		str->next = NULL;
-		str->str = &strPool[ph];
+		str->str = ph;
 		if ( last ) {
 			last->next = str;
 		} else {
 			strHandle[hash] = str;
 		}
-		return &strPool[ph];
+		return ph;
 	}
-	return NULL;
 }
 
 void String_Report( void ) {
-	float f;
 	Com_Printf( "Memory/String Pool Info\n" );
 	Com_Printf( "----------------\n" );
-	f = strPoolIndex;
-	f /= STRING_POOL_SIZE;
-	f *= 100;
-	Com_Printf( "String Pool is %.1f%% full, %i bytes out of %i used.\n", f, strPoolIndex, STRING_POOL_SIZE );
-	f = allocPoint;
-	f /= MEM_POOL_SIZE;
-	f *= 100;
-	Com_Printf( "Memory Pool is %.1f%% full, %i bytes out of %i used.\n", f, allocPoint, MEM_POOL_SIZE );
+	Com_Printf( "Strings: %i bytes\n", strUsed );
+	Com_Printf( "Memory: %i bytes\n", memUsed );
 }
 
 
@@ -395,7 +438,8 @@ void String_Init( void ) {
 		strHandle[i] = NULL;
 	}
 	strHandleCount = 0;
-	strPoolIndex = 0;
+	UI_FreeBlocks( &strBlocks );
+	strUsed = 0;
 	menuCount = 0;
 	openMenuCount = 0;
 	UI_InitMemory();
@@ -6615,3 +6659,11 @@ static qboolean Menu_OverActiveItem( menuDef_t *menu, float x, float y ) {
 	return qfalse;
 }
 
+
+#ifndef _arch_dreamcast
+// the most of the pools in use, for the pool stats
+int UI_PoolMemoryUsed( int *strings ) {
+	*strings = strUsed;
+	return memUsed;
+}
+#endif

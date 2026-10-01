@@ -629,18 +629,18 @@ void CG_PainEvent( centity_t *cent, int health, qboolean crouching ) {
 	// Rafael
 	if ( cent->currentState.aiChar && cgs.gametype == GT_SINGLE_PLAYER ) {
 
-		if ( cent->pe.painTime > cg.time - 1000 ) {
-			oldPainAnim = cent->pe.painAnimTorso;
+		if ( cent->pe->painTime > cg.time - 1000 ) {
+			oldPainAnim = cent->pe->painAnimTorso;
 		} else {
 			oldPainAnim = -1;
 		}
 
 		// Ridah, health is actually time to spend playing the animation
-		cent->pe.painTime = cg.time;
-		cent->pe.painDuration = health << 4;
-		cent->pe.painDirection ^= 1;
-		cent->pe.painAnimLegs = -1;
-		cent->pe.painAnimTorso = -1;
+		cent->pe->painTime = cg.time;
+		cent->pe->painDuration = health << 4;
+		cent->pe->painDirection ^= 1;
+		cent->pe->painAnimLegs = -1;
+		cent->pe->painAnimTorso = -1;
 
 		if ( VectorLength( cent->currentState.origin2 ) > 1 ) {
 			// find a correct animation to play, based on the body orientation at previous frame
@@ -649,7 +649,7 @@ void CG_PainEvent( centity_t *cent, int health, qboolean crouching ) {
 					continue;
 				}
 				// grab the tag with this name
-				if ( CG_GetOriginForTag( cent, ( refEntity_t * )( ( (byte *)&cent->pe ) + tagAnims[tagIndex].refEntOfs ), tagAnims[tagIndex].tag, 0, tagOrg, NULL ) >= 0 ) {
+				if ( CG_GetOriginForTag( cent, ( refEntity_t * )( ( (byte *)cent->pe ) + tagAnims[tagIndex].refEntOfs ), tagAnims[tagIndex].tag, 0, tagOrg, NULL ) >= 0 ) {
 					dist = VectorDistance( tagOrg, cent->currentState.origin2 );
 					if ( !bestDist || dist < bestDist ) {
 						bestTag = tagIndex;
@@ -660,27 +660,27 @@ void CG_PainEvent( centity_t *cent, int health, qboolean crouching ) {
 
 			if ( bestTag >= 0 ) {
 				if ( !crouching ) {
-					cent->pe.painAnimLegs = tagAnims[bestTag].anim;
+					cent->pe->painAnimLegs = tagAnims[bestTag].anim;
 				}
-				cent->pe.painAnimTorso = tagAnims[bestTag].anim;
+				cent->pe->painAnimTorso = tagAnims[bestTag].anim;
 			}
 		}
 
-		if ( cent->pe.painAnimTorso < 0 && cent->pe.painDuration > 1000 ) {   // stunned
+		if ( cent->pe->painAnimTorso < 0 && cent->pe->painDuration > 1000 ) {   // stunned
 			if ( !crouching ) {
-				cent->pe.painAnimLegs = STUNNED_ANIM;
+				cent->pe->painAnimLegs = STUNNED_ANIM;
 			}
-			cent->pe.painAnimTorso = STUNNED_ANIM;
+			cent->pe->painAnimTorso = STUNNED_ANIM;
 		}
 
-		if ( cent->pe.painAnimTorso < 0 ) {
+		if ( cent->pe->painAnimTorso < 0 ) {
 			// pick a random anim
 			for ( tagIndex = 0; tagAnims[tagIndex].tag; tagIndex++ ) {};
 			bestTag = rand() % tagIndex;
 			if ( !crouching ) {
-				cent->pe.painAnimLegs = tagAnims[bestTag].anim;
+				cent->pe->painAnimLegs = tagAnims[bestTag].anim;
 			}
-			cent->pe.painAnimTorso = tagAnims[bestTag].anim;
+			cent->pe->painAnimTorso = tagAnims[bestTag].anim;
 		}
 
 		// adjust the animation speed
@@ -689,16 +689,16 @@ void CG_PainEvent( centity_t *cent, int health, qboolean crouching ) {
 			clientInfo_t *ci;
 
 			ci = &cgs.clientinfo[ cent->currentState.number ];
-			anim = &ci->modelInfo->animations[ cent->pe.painAnimTorso ];
+			anim = &ci->modelInfo->animations[ cent->pe->painAnimTorso ];
 
-			cent->pe.animSpeed = ( anim->frameLerp * anim->numFrames ) / (float)cent->pe.painDuration;
+			cent->pe->animSpeed = ( anim->frameLerp * anim->numFrames ) / (float)cent->pe->painDuration;
 		}
 
 		return;
 	}
 
 	// don't do more than two pain sounds a second
-	if ( cg.time - cent->pe.painTime < 500 ) {
+	if ( cg.time - cent->pe->painTime < 500 ) {
 		return;
 	}
 
@@ -724,8 +724,8 @@ void CG_PainEvent( centity_t *cent, int health, qboolean crouching ) {
 	}
 
 	// save pain time for programitic twitch animation
-	cent->pe.painTime = cg.time;
-	cent->pe.painDirection ^= 1;
+	cent->pe->painTime = cg.time;
+	cent->pe->painDirection ^= 1;
 }
 
 
@@ -1738,7 +1738,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	case EV_FALL_DMG_25:
 		DEBUGNAME( "EV_FALL_DMG_25" );
 		trap_S_StartSound( NULL, es->number, CHAN_AUTO, CG_CustomSound( es->number, "*fall2.wav" ) );
-		cent->pe.painTime = cg.time;    // don't play a pain sound right after this
+		cent->pe->painTime = cg.time;    // don't play a pain sound right after this
 		if ( clientNum == cg.predictedPlayerState.clientNum ) {
 			// smooth landing z changes
 			cg.landChange = -24;
@@ -1749,7 +1749,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	case EV_FALL_DMG_50:
 		DEBUGNAME( "EV_FALL_DMG_50" );
 		trap_S_StartSound( NULL, es->number, CHAN_AUTO, CG_CustomSound( es->number, "*fall2.wav" ) );
-		cent->pe.painTime = cg.time;    // don't play a pain sound right after this
+		cent->pe->painTime = cg.time;    // don't play a pain sound right after this
 		if ( clientNum == cg.predictedPlayerState.clientNum ) {
 			// smooth landing z changes
 			cg.landChange = -24;

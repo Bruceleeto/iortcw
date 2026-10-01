@@ -993,6 +993,11 @@ qboolean OnSameTeam( gentity_t *ent1, gentity_t *ent2 );
 //
 void *G_Alloc( int size );
 void G_InitMemory( void );
+void G_FreeMemory( void );
+#ifndef _arch_dreamcast
+void G_PoolStatsFrame( void );
+void G_PoolStatsReport( void );
+#endif
 void Svcmd_GameMem_f( void );
 
 //

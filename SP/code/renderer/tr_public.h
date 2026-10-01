@@ -161,6 +161,17 @@ typedef struct {
 
 	byte	*(*CM_ClusterPVS)(int cluster);
 
+	// the .bsp a lump at a time, and what the collision map has loaded of
+	// it, so a level is in memory once
+	fileHandle_t ( *CM_OpenBsp )( const char *name, dheader_t *header );
+	void ( *CM_ReadLump )( fileHandle_t f, const lump_t *l, bspLump_t *out );
+	void ( *CM_ReadLumpInto )( fileHandle_t f, const lump_t *l, void *dest );
+	void ( *CM_FreeLump )( bspLump_t *l );
+	cplane_t *( *CM_WorldPlanes )( int *numPlanes );
+	byte *( *CM_WorldVis )( int *numClusters, int *clusterBytes );
+	char *( *CM_EntityString )( void );
+	void ( *FS_FCloseFile )( fileHandle_t f );
+
 	// visualization for debugging collision detection
 	void ( *CM_DrawDebugSurface )( void( *drawPoly ) ( int color, int numPoints, float *points ) );
 

@@ -291,7 +291,7 @@ typedef struct centity_s {
 	int trailTime;                  // so missile trails can handle dropped initial packets
 	int miscTime;
 
-	playerEntity_t pe;
+	playerEntity_t *pe;             // a client's own; the rest share one (CG_ResetPlayerEntities)
 
 	int errorTime;                  // decay the error from this time
 	vec3_t errorOrigin;
@@ -767,6 +767,7 @@ typedef struct {
 	qboolean hyperspace;                // true if prediction has hit a trigger_teleport
 	playerState_t predictedPlayerState;
 	centity_t predictedPlayerEntity;
+	playerEntity_t predictedPlayerPe;
 	qboolean validPPS;                  // clear until the first call to CG_PredictPlayerState
 	int predictedErrorTime;
 	vec3_t predictedError;
@@ -1465,9 +1466,7 @@ typedef struct soundScriptSound_s
 } soundScriptSound_t;
 
 
-#define MAX_SOUND_SCRIPT_SOUNDS 8192
-extern soundScriptSound_t soundScriptSounds[MAX_SOUND_SCRIPT_SOUNDS];
-//DAJ defined in cg_sound.c int	numSoundScriptSounds;
+extern soundScriptSound_t *soundScriptSounds;
 
 
 typedef struct soundScript_s
@@ -1488,16 +1487,10 @@ typedef struct soundScript_s
 	struct soundScript_s    *nextHash;      // next soundScript in our hashTable list position
 } soundScript_t;
 
-// we have to define these static lists, since we can't alloc memory within the cgame
-
 #define FILE_HASH_SIZE          1024
 extern soundScript_t*      hashTable[FILE_HASH_SIZE];
 
-#define MAX_SOUND_SCRIPTS       4096
-extern soundScript_t soundScripts[MAX_SOUND_SCRIPTS];
-//DAJ defined in cg_sound.c int	numSoundScripts;
-
-extern soundScript_t soundScripts[MAX_SOUND_SCRIPTS];
+extern soundScript_t *soundScripts;
 
 
 
@@ -1603,9 +1596,9 @@ typedef struct {
 extern cgs_t cgs;
 extern cg_t cg;
 extern centity_t cg_entities[MAX_GENTITIES];
+extern playerEntity_t *cg_playerEntities;
 extern weaponInfo_t cg_weapons[MAX_WEAPONS];
 extern itemInfo_t cg_items[MAX_ITEMS];
-extern markPoly_t cg_markPolys[MAX_MARK_POLYS];
 
 extern vmCvar_t cg_centertime;
 extern vmCvar_t cg_runpitch;
@@ -1924,6 +1917,27 @@ void CG_ApplyShakeCamera( void );
 //
 qboolean CG_EntOnFire( centity_t *cent );    // Ridah
 void CG_Player( centity_t *cent );
+void CG_ResetPlayerEntities( void );
+
+//
+// cg_pool.c
+//
+#define CG_POOL_MAX_CHUNKS  32
+
+typedef struct {
+	int itemSize;
+	int chunkItems;
+	int maxItems;                       // the most it grows to, then old ones get reused
+	int numChunks;
+	void *chunks[CG_POOL_MAX_CHUNKS];
+} cgPool_t;
+
+void *CG_PoolGrow( cgPool_t *pool );
+void *CG_PoolItem( cgPool_t *pool, int index );
+int CG_PoolIndex( cgPool_t *pool, const void *item );
+void CG_PoolFree( cgPool_t *pool );
+int CG_PoolItems( const cgPool_t *pool );
+void CG_FreeEffectPools( void );
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, entityState_t *es, const vec3_t fireRiseDir );
 void CG_NewClientInfo( int clientNum );
@@ -2174,6 +2188,10 @@ void CG_RumbleEfx( float pitch, float yaw );
 // cg_snapshot.c
 //
 void CG_ProcessSnapshots( void );
+#ifndef _arch_dreamcast
+void CG_PoolStatsFrame( void );
+void CG_PoolStatsReport( void );
+#endif
 
 //
 // cg_info.c

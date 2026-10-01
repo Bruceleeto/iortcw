@@ -1795,8 +1795,8 @@ void CG_SetLerpFrameAnimationRate( centity_t *cent, clientInfo_t *ci, lerpFrame_
 	lf->animation = anim;
 	lf->animationTime = lf->frameTime + anim->initialLerp;
 
-	if ( !( anim->flags & ANIMFL_FIRINGANIM ) || ( lf != &cent->pe.torso ) ) {
-		if ( ( lf == &cent->pe.legs ) && ( CG_IsCrouchingAnim( ci, newAnimation ) != CG_IsCrouchingAnim( ci, oldAnimNum ) ) ) {
+	if ( !( anim->flags & ANIMFL_FIRINGANIM ) || ( lf != &cent->pe->torso ) ) {
+		if ( ( lf == &cent->pe->legs ) && ( CG_IsCrouchingAnim( ci, newAnimation ) != CG_IsCrouchingAnim( ci, oldAnimNum ) ) ) {
 			if ( anim->moveSpeed || ( anim->movetype & ( ( 1 << ANIM_MT_TURNLEFT ) | ( 1 << ANIM_MT_TURNRIGHT ) ) ) ) { // if unknown movetype, go there faster
 				transitionMin = lf->frameTime + 200;    // slowly raise/drop
 			} else {
@@ -1879,7 +1879,7 @@ void CG_RunLerpFrameRate( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation, c
 #if 0
 #ifdef _DEBUG   // RF, debugging anims
 //if ( cent->currentState.number == 3 )
-		CG_Printf( "(%i) %s anim change on %s: %s -> %s\n", cg.time, ci->modelInfo->modelname, ( lf == &cent->pe.legs ? "LEGS" : "TORSO" ), lf->animation->name, ci->modelInfo->animations[newAnimation & ~( 1 << 9 )].name );
+		CG_Printf( "(%i) %s anim change on %s: %s -> %s\n", cg.time, ci->modelInfo->modelname, ( lf == &cent->pe->legs ? "LEGS" : "TORSO" ), lf->animation->name, ci->modelInfo->animations[newAnimation & ~( 1 << 9 )].name );
 #endif
 #endif
 		CG_SetLerpFrameAnimationRate( cent, ci, lf, newAnimation );
@@ -1932,7 +1932,7 @@ void CG_RunLerpFrameRate( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation, c
 		lf->oldFrameSnapshotTime = cg.latestSnapshotTime;
 	}
 	// adjust with manual setting (pain anims)
-	lf->animSpeedScale *= cent->pe.animSpeed;
+	lf->animSpeedScale *= cent->pe->animSpeed;
 
 	// if we have passed the current frame, move it to
 	// oldFrame and calculate a new frame
@@ -1968,10 +1968,10 @@ void CG_RunLerpFrameRate( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation, c
 
 		}
 
-		if ( lf == &cent->pe.legs ) {
-			otherAnim = cent->pe.torso.animation;
-		} else if ( lf == &cent->pe.torso ) {
-			otherAnim = cent->pe.legs.animation;
+		if ( lf == &cent->pe->legs ) {
+			otherAnim = cent->pe->torso.animation;
+		} else if ( lf == &cent->pe->torso ) {
+			otherAnim = cent->pe->legs.animation;
 		}
 
 		// get the next frame based on the animation
@@ -1990,20 +1990,20 @@ void CG_RunLerpFrameRate( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation, c
 			} else {
 				f = 0;
 			}
-		} else if ( ( lf == &cent->pe.legs ) && otherAnim && !( anim->flags & ANIMFL_FIRINGANIM ) && ( ( lf->animationNumber & ~ANIM_TOGGLEBIT ) == ( cent->pe.torso.animationNumber & ~ANIM_TOGGLEBIT ) ) && ( !anim->moveSpeed ) ) {
+		} else if ( ( lf == &cent->pe->legs ) && otherAnim && !( anim->flags & ANIMFL_FIRINGANIM ) && ( ( lf->animationNumber & ~ANIM_TOGGLEBIT ) == ( cent->pe->torso.animationNumber & ~ANIM_TOGGLEBIT ) ) && ( !anim->moveSpeed ) ) {
 			// legs should synch with torso
-			f = cent->pe.torso.frame - otherAnim->firstFrame;
+			f = cent->pe->torso.frame - otherAnim->firstFrame;
 			if ( f >= anim->numFrames || f < 0 ) {
 				f = 0;  // wait at the start for the legs to catch up (assuming they are still in an old anim)
 			}
-			lf->frameTime = cent->pe.torso.frameTime;
-		} else if ( ( lf == &cent->pe.torso ) && otherAnim && !( anim->flags & ANIMFL_FIRINGANIM ) && ( ( lf->animationNumber & ~ANIM_TOGGLEBIT ) == ( cent->pe.legs.animationNumber & ~ANIM_TOGGLEBIT ) ) && ( otherAnim->moveSpeed ) ) {
+			lf->frameTime = cent->pe->torso.frameTime;
+		} else if ( ( lf == &cent->pe->torso ) && otherAnim && !( anim->flags & ANIMFL_FIRINGANIM ) && ( ( lf->animationNumber & ~ANIM_TOGGLEBIT ) == ( cent->pe->legs.animationNumber & ~ANIM_TOGGLEBIT ) ) && ( otherAnim->moveSpeed ) ) {
 			// torso needs to sync with legs
-			f = cent->pe.legs.frame - otherAnim->firstFrame;
+			f = cent->pe->legs.frame - otherAnim->firstFrame;
 			if ( f >= anim->numFrames || f < 0 ) {
 				f = 0;  // wait at the start for the legs to catch up (assuming they are still in an old anim)
 			}
-			lf->frameTime = cent->pe.legs.frameTime;
+			lf->frameTime = cent->pe->legs.frameTime;
 		} else {
 #if 0
 			lf->frameTime = lf->oldFrameTime + (int)( (float)anim->frameLerp * ( 1.0 / lf->animSpeedScale ) );
@@ -2135,25 +2135,25 @@ static void CG_PlayerAnimation( centity_t *cent, int *legsOld, int *legs, float 
 	animIndex = cent->currentState.legsAnim;
 
 	// do the shuffle turn frames locally
-	if ( !( cent->currentState.eFlags & ( EF_DEAD | EF_NO_TURN_ANIM ) ) && cent->pe.legs.yawing ) {
+	if ( !( cent->currentState.eFlags & ( EF_DEAD | EF_NO_TURN_ANIM ) ) && cent->pe->legs.yawing ) {
 		//CG_Printf("turn: %i\n", cg.time );
-		tempIndex = BG_GetAnimScriptAnimation( clientNum, cent->currentState.aiState, ( cent->pe.legs.yawing == SWING_RIGHT ? ANIM_MT_TURNRIGHT : ANIM_MT_TURNLEFT ) );
+		tempIndex = BG_GetAnimScriptAnimation( clientNum, cent->currentState.aiState, ( cent->pe->legs.yawing == SWING_RIGHT ? ANIM_MT_TURNRIGHT : ANIM_MT_TURNLEFT ) );
 		if ( tempIndex > -1 ) {
 			animIndex = tempIndex;
 		}
 	}
 	// run the animation
-	CG_RunLerpFrameRate( ci, &cent->pe.legs, animIndex, cent, 0 );
+	CG_RunLerpFrameRate( ci, &cent->pe->legs, animIndex, cent, 0 );
 
-	*legsOld = cent->pe.legs.oldFrame;
-	*legs = cent->pe.legs.frame;
-	*legsBackLerp = cent->pe.legs.backlerp;
+	*legsOld = cent->pe->legs.oldFrame;
+	*legs = cent->pe->legs.frame;
+	*legsBackLerp = cent->pe->legs.backlerp;
 
-	CG_RunLerpFrameRate( ci, &cent->pe.torso, cent->currentState.torsoAnim, cent, 0 );
+	CG_RunLerpFrameRate( ci, &cent->pe->torso, cent->currentState.torsoAnim, cent, 0 );
 
-	*torsoOld = cent->pe.torso.oldFrame;
-	*torso = cent->pe.torso.frame;
-	*torsoBackLerp = cent->pe.torso.backlerp;
+	*torsoOld = cent->pe->torso.oldFrame;
+	*torso = cent->pe->torso.frame;
+	*torsoBackLerp = cent->pe->torso.backlerp;
 }
 
 /*
@@ -2237,47 +2237,47 @@ static void CG_AddPainTwitch( centity_t *cent, vec3_t torsoAngles ) {
 	int duration;
 	float direction;
 
-	if ( !cent->pe.animSpeed ) {
+	if ( !cent->pe->animSpeed ) {
 		// we need to inititialize this stuff
-		cent->pe.painAnimLegs = -1;
-		cent->pe.painAnimTorso = -1;
-		cent->pe.animSpeed = 1.0;
+		cent->pe->painAnimLegs = -1;
+		cent->pe->painAnimTorso = -1;
+		cent->pe->animSpeed = 1.0;
 	}
 
 	if ( cent->currentState.eFlags & EF_DEAD ) {
-		cent->pe.painAnimLegs = -1;
-		cent->pe.painAnimTorso = -1;
-		cent->pe.animSpeed = 1.0;
+		cent->pe->painAnimLegs = -1;
+		cent->pe->painAnimTorso = -1;
+		cent->pe->animSpeed = 1.0;
 		return;
 	}
 
 	// special pain anims for AI
 	if ( cent->currentState.aiChar ) {
-		if ( cent->pe.painAnimTorso >= 0 ) {
+		if ( cent->pe->painAnimTorso >= 0 ) {
 			animation_t *anim;
 			clientInfo_t *ci;
 
 			ci = &cgs.clientinfo[ cent->currentState.number ];
-			anim = &ci->modelInfo->animations[ cent->pe.painAnimTorso ];
+			anim = &ci->modelInfo->animations[ cent->pe->painAnimTorso ];
 
 			// play the current animation
-			if ( cent->pe.torso.frame != cent->pe.torso.oldFrame || cent->pe.torso.frame != anim->firstFrame + anim->numFrames - 1 ) {
-				if ( cent->pe.painAnimLegs >= 0 ) {
-					cent->currentState.legsAnim = cent->pe.painAnimLegs;
+			if ( cent->pe->torso.frame != cent->pe->torso.oldFrame || cent->pe->torso.frame != anim->firstFrame + anim->numFrames - 1 ) {
+				if ( cent->pe->painAnimLegs >= 0 ) {
+					cent->currentState.legsAnim = cent->pe->painAnimLegs;
 				}
-				cent->currentState.torsoAnim = cent->pe.painAnimTorso;
+				cent->currentState.torsoAnim = cent->pe->painAnimTorso;
 			} else {    // end it
-				cent->pe.painAnimLegs = -1;
-				cent->pe.painAnimTorso = -1;
-				cent->pe.animSpeed = 1.0;
+				cent->pe->painAnimLegs = -1;
+				cent->pe->painAnimTorso = -1;
+				cent->pe->animSpeed = 1.0;
 			}
 		}
 
 		return;
 	}
 
-	if ( cent->pe.painDuration ) {
-		duration = cent->pe.painDuration;
+	if ( cent->pe->painDuration ) {
+		duration = cent->pe->painDuration;
 	} else {
 		duration = PAIN_TWITCH_TIME;
 	}
@@ -2288,9 +2288,9 @@ static void CG_AddPainTwitch( centity_t *cent, vec3_t torsoAngles ) {
 	if ( direction < 10 ) {
 		direction = 10;
 	}
-	direction *= (float)( cent->pe.painDirection * 2 ) - 1;
+	direction *= (float)( cent->pe->painDirection * 2 ) - 1;
 
-	t = cg.time - cent->pe.painTime;
+	t = cg.time - cent->pe->painTime;
 	if ( t >= duration ) {
 		return;
 	}
@@ -2310,7 +2310,7 @@ static void CG_AddPainTwitch( centity_t *cent, vec3_t torsoAngles ) {
 		}
 	} else {    // fast, Q3 style
 		f = 1.0 - (float)t / duration;
-		if ( cent->pe.painDirection ) {
+		if ( cent->pe->painDirection ) {
 			torsoAngles[ROLL] += 20 * f;
 		} else {
 			torsoAngles[ROLL] -= 20 * f;
@@ -2334,76 +2334,76 @@ static void CG_IdleHeadMovement( centity_t *cent, const vec3_t torsoAngles, vec3
 
 	if ( ( cent->currentState.eFlags & EF_DEAD ) || !( cent->currentState.eFlags & EF_HEADLOOK ) ) {
 		// center
-		VectorClear( cent->pe.headLookIdeal );
-		cent->pe.headLookStopTime = 0;
-		cent->pe.headLookSpeed = 100;       // hurry back to normal
-	} else if ( !cent->pe.headLookSpeedMax && cent->pe.headLookStopTime < cg.time ) {
+		VectorClear( cent->pe->headLookIdeal );
+		cent->pe->headLookStopTime = 0;
+		cent->pe->headLookSpeed = 100;       // hurry back to normal
+	} else if ( !cent->pe->headLookSpeedMax && cent->pe->headLookStopTime < cg.time ) {
 		// need new ideal angles
-		VectorSet( cent->pe.headLookIdeal,
+		VectorSet( cent->pe->headLookIdeal,
 				   diffRandMax * ( -0.25 + crandom() ) * 0.25,  // pitch
 				   diffRandMax * crandom(),     // yaw
 				   0 );                         // roll
-		cent->pe.headLookSpeedMax = angleSpeedMax; // * (0.5 + 0.5*random());
-		cent->pe.headLookStopTime = cg.time - 1;
+		cent->pe->headLookSpeedMax = angleSpeedMax; // * (0.5 + 0.5*random());
+		cent->pe->headLookStopTime = cg.time - 1;
 	}
 
 	// move towards ideal position
-	if ( cent->pe.headLookStopTime < cg.time && !VectorCompare( cent->pe.headLookIdeal, cent->pe.headLookOffset ) ) {
+	if ( cent->pe->headLookStopTime < cg.time && !VectorCompare( cent->pe->headLookIdeal, cent->pe->headLookOffset ) ) {
 		// slow down as we get closer
-		if ( fabs( cent->pe.headLookOffset[YAW] - cent->pe.headLookIdeal[YAW] ) < angleSpeedMax * 1.2 ) {
-			cent->pe.headLookSpeedMax = angleSpeedMax * ( 0.1 + 0.9 * ( fabs( cent->pe.headLookOffset[YAW] - cent->pe.headLookIdeal[YAW] ) / ( angleSpeedMax * 1.2 ) ) );
+		if ( fabs( cent->pe->headLookOffset[YAW] - cent->pe->headLookIdeal[YAW] ) < angleSpeedMax * 1.2 ) {
+			cent->pe->headLookSpeedMax = angleSpeedMax * ( 0.1 + 0.9 * ( fabs( cent->pe->headLookOffset[YAW] - cent->pe->headLookIdeal[YAW] ) / ( angleSpeedMax * 1.2 ) ) );
 		}
 		// accelerate angle speed
-		if ( cent->pe.headLookSpeed < cent->pe.headLookSpeedMax ) {
-			cent->pe.headLookSpeed += angleSpeedAccel * ( 0.001 * cg.frametime );
-			if ( cent->pe.headLookSpeed > cent->pe.headLookSpeedMax ) {
-				cent->pe.headLookSpeed = cent->pe.headLookSpeedMax;
+		if ( cent->pe->headLookSpeed < cent->pe->headLookSpeedMax ) {
+			cent->pe->headLookSpeed += angleSpeedAccel * ( 0.001 * cg.frametime );
+			if ( cent->pe->headLookSpeed > cent->pe->headLookSpeedMax ) {
+				cent->pe->headLookSpeed = cent->pe->headLookSpeedMax;
 			}
-		} else if ( cent->pe.headLookSpeed > cent->pe.headLookSpeedMax ) {
-			cent->pe.headLookSpeed -= angleSpeedAccel * ( 0.001 * cg.frametime );
-			if ( cent->pe.headLookSpeed < cent->pe.headLookSpeedMax ) {
-				cent->pe.headLookSpeed = cent->pe.headLookSpeedMax;
+		} else if ( cent->pe->headLookSpeed > cent->pe->headLookSpeedMax ) {
+			cent->pe->headLookSpeed -= angleSpeedAccel * ( 0.001 * cg.frametime );
+			if ( cent->pe->headLookSpeed < cent->pe->headLookSpeedMax ) {
+				cent->pe->headLookSpeed = cent->pe->headLookSpeedMax;
 			}
 		}
 		// move towards the ideal angles
 		for ( i = 0; i < 3; i++ ) {
-			if ( cent->pe.headLookOffset[i] < cent->pe.headLookIdeal[i] ) {
-				cent->pe.headLookOffset[i] += cent->pe.headLookSpeed * 0.001 * cg.frametime;
-				if ( cent->pe.headLookOffset[i] > cent->pe.headLookIdeal[i] ) {
-					cent->pe.headLookOffset[i] = cent->pe.headLookIdeal[i];
+			if ( cent->pe->headLookOffset[i] < cent->pe->headLookIdeal[i] ) {
+				cent->pe->headLookOffset[i] += cent->pe->headLookSpeed * 0.001 * cg.frametime;
+				if ( cent->pe->headLookOffset[i] > cent->pe->headLookIdeal[i] ) {
+					cent->pe->headLookOffset[i] = cent->pe->headLookIdeal[i];
 				}
-			} else if ( cent->pe.headLookOffset[i] > cent->pe.headLookIdeal[i] ) {
-				cent->pe.headLookOffset[i] -= cent->pe.headLookSpeed * 0.001 * cg.frametime;
-				if ( cent->pe.headLookOffset[i] < cent->pe.headLookIdeal[i] ) {
-					cent->pe.headLookOffset[i] = cent->pe.headLookIdeal[i];
+			} else if ( cent->pe->headLookOffset[i] > cent->pe->headLookIdeal[i] ) {
+				cent->pe->headLookOffset[i] -= cent->pe->headLookSpeed * 0.001 * cg.frametime;
+				if ( cent->pe->headLookOffset[i] < cent->pe->headLookIdeal[i] ) {
+					cent->pe->headLookOffset[i] = cent->pe->headLookIdeal[i];
 				}
 			}
 		}
 		// if we made it, stop here for a bit
-		if ( VectorCompare( cent->pe.headLookIdeal, cent->pe.headLookOffset ) ) {
-			cent->pe.headLookStopTime = cg.time + (int)( stopTime * ( 0.5 + 0.5 * random() ) );
+		if ( VectorCompare( cent->pe->headLookIdeal, cent->pe->headLookOffset ) ) {
+			cent->pe->headLookStopTime = cg.time + (int)( stopTime * ( 0.5 + 0.5 * random() ) );
 		}
 		// randomly choose a new destination before reaching ideal angles
-		if ( cent->pe.headLookStopTime % 2 && rand() % ( cg.time - cent->pe.headLookStopTime ) > 700 ) {
-			cent->pe.headLookSpeedMax = 0;
+		if ( cent->pe->headLookStopTime % 2 && rand() % ( cg.time - cent->pe->headLookStopTime ) > 700 ) {
+			cent->pe->headLookSpeedMax = 0;
 		}
 	} else {
-		cent->pe.headLookSpeedMax = 0;
-		cent->pe.headLookSpeed = 0;         // accelerate when resuming idle movement
+		cent->pe->headLookSpeedMax = 0;
+		cent->pe->headLookSpeed = 0;         // accelerate when resuming idle movement
 	}
 /*
 	// make sure these angles don't place us too far from the torso angles
 	for (i=0; i<3; i++) {
-		if (fabs(cent->pe.headLookOffset[i] + headAngles[i] - torsoAngles[i]) > diffThreshold) {
-			if (cent->pe.headLookOffset[i] + headAngles[i] - torsoAngles[i] > 0)
-				cent->pe.headLookOffset[i] = diffThreshold - (headAngles[i] - torsoAngles[i]);
+		if (fabs(cent->pe->headLookOffset[i] + headAngles[i] - torsoAngles[i]) > diffThreshold) {
+			if (cent->pe->headLookOffset[i] + headAngles[i] - torsoAngles[i] > 0)
+				cent->pe->headLookOffset[i] = diffThreshold - (headAngles[i] - torsoAngles[i]);
 			else
-				cent->pe.headLookOffset[i] = -diffThreshold - (headAngles[i] - torsoAngles[i]);
+				cent->pe->headLookOffset[i] = -diffThreshold - (headAngles[i] - torsoAngles[i]);
 		}
 	}
 */
 	// finally, add the headLookOffset to the head angles
-	VectorAdd( headAngles, cent->pe.headLookOffset, headAngles );
+	VectorAdd( headAngles, cent->pe->headLookOffset, headAngles );
 }
 
 /*
@@ -2455,15 +2455,15 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 		||	 (BG_GetConditionValue( cent->currentState.number, ANIM_COND_MOVETYPE, qfalse ) & ((1<<ANIM_MT_STRAFELEFT) | (1<<ANIM_MT_STRAFERIGHT)) )*/) {
 
 		// always point all in the same direction
-		cent->pe.torso.yawing = qtrue;  // always center
-		cent->pe.torso.pitching = qtrue;    // always center
-		cent->pe.legs.yawing = qtrue;   // always center
+		cent->pe->torso.yawing = qtrue;  // always center
+		cent->pe->torso.pitching = qtrue;    // always center
+		cent->pe->legs.yawing = qtrue;   // always center
 
 		// if firing, make sure torso and head are always aligned
 	} else if ( BG_GetConditionValue( cent->currentState.number, ANIM_COND_FIRING, qtrue ) ) {
 
-		cent->pe.torso.yawing = qtrue;  // always center
-		cent->pe.torso.pitching = qtrue;    // always center
+		cent->pe->torso.yawing = qtrue;  // always center
+		cent->pe->torso.pitching = qtrue;    // always center
 
 	}
 
@@ -2487,13 +2487,13 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 		}
 
 		// torso
-		if ( !cent->pe.torso.yawing ) {
-			CG_SwingAngles( torsoAngles[YAW], 30, clampTolerance, 0.5 * cg_swingSpeed.value, &cent->pe.torso.yawAngle, &cent->pe.torso.yawing );
+		if ( !cent->pe->torso.yawing ) {
+			CG_SwingAngles( torsoAngles[YAW], 30, clampTolerance, 0.5 * cg_swingSpeed.value, &cent->pe->torso.yawAngle, &cent->pe->torso.yawing );
 		} else if ( !( cent->currentState.eFlags & EF_FIRING ) && !( cent->currentState.eFlags & EF_RECENTLY_FIRING ) ) {
 			// not firing
-			CG_SwingAngles( torsoAngles[YAW], 0, clampTolerance, 0.5 * cg_swingSpeed.value, &cent->pe.torso.yawAngle, &cent->pe.torso.yawing );
+			CG_SwingAngles( torsoAngles[YAW], 0, clampTolerance, 0.5 * cg_swingSpeed.value, &cent->pe->torso.yawAngle, &cent->pe->torso.yawing );
 		} else { // firing
-			CG_SwingAngles( torsoAngles[YAW], 0, clampTolerance, 4.0 * cg_swingSpeed.value, &cent->pe.torso.yawAngle, &cent->pe.torso.yawing );
+			CG_SwingAngles( torsoAngles[YAW], 0, clampTolerance, 4.0 * cg_swingSpeed.value, &cent->pe->torso.yawAngle, &cent->pe->torso.yawing );
 		}
 
 		// if the legs are yawing (facing heading direction), allow them to rotate a bit, so we don't keep calling
@@ -2502,28 +2502,28 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 		clampTolerance = 90;
 
 		if  ( BG_GetConditionValue( ci->clientNum, ANIM_COND_MOVETYPE, qfalse ) & ( 1 << ANIM_MT_IDLE ) ) {
-			if ( cent->pe.legs.yawing ) {
-				CG_SwingAngles( legsAngles[YAW], 0, clampTolerance, 0.75 * cg_swingSpeed.value, &cent->pe.legs.yawAngle, &cent->pe.legs.yawing );
+			if ( cent->pe->legs.yawing ) {
+				CG_SwingAngles( legsAngles[YAW], 0, clampTolerance, 0.75 * cg_swingSpeed.value, &cent->pe->legs.yawAngle, &cent->pe->legs.yawing );
 			} else {
-				cent->pe.legs.yawing = qfalse; // set it if they really need to swing
-				CG_SwingAngles( legsAngles[YAW], 50, clampTolerance, 0.75 * cg_swingSpeed.value, &cent->pe.legs.yawAngle, &cent->pe.legs.yawing );
+				cent->pe->legs.yawing = qfalse; // set it if they really need to swing
+				CG_SwingAngles( legsAngles[YAW], 50, clampTolerance, 0.75 * cg_swingSpeed.value, &cent->pe->legs.yawAngle, &cent->pe->legs.yawing );
 			}
 		} else
 		//if	( BG_GetConditionValue( ci->clientNum, ANIM_COND_MOVETYPE, qfalse ) & ((1<<ANIM_MT_STRAFERIGHT)|(1<<ANIM_MT_STRAFELEFT)) )
 		if  ( strstr( BG_GetAnimString( ci->clientNum, legsSet ), "strafe" ) ) {
-			cent->pe.legs.yawing = qfalse; // set it if they really need to swing
+			cent->pe->legs.yawing = qfalse; // set it if they really need to swing
 			legsAngles[YAW] = headAngles[YAW];
-			CG_SwingAngles( legsAngles[YAW], 0, clampTolerance, cg_swingSpeed.value, &cent->pe.legs.yawAngle, &cent->pe.legs.yawing );
+			CG_SwingAngles( legsAngles[YAW], 0, clampTolerance, cg_swingSpeed.value, &cent->pe->legs.yawAngle, &cent->pe->legs.yawing );
 		} else
-		if ( cent->pe.legs.yawing ) {
-			CG_SwingAngles( legsAngles[YAW], 0, clampTolerance, cg_swingSpeed.value, &cent->pe.legs.yawAngle, &cent->pe.legs.yawing );
+		if ( cent->pe->legs.yawing ) {
+			CG_SwingAngles( legsAngles[YAW], 0, clampTolerance, cg_swingSpeed.value, &cent->pe->legs.yawAngle, &cent->pe->legs.yawing );
 		} else
 		{
-			CG_SwingAngles( legsAngles[YAW], 50, clampTolerance, cg_swingSpeed.value, &cent->pe.legs.yawAngle, &cent->pe.legs.yawing );
+			CG_SwingAngles( legsAngles[YAW], 50, clampTolerance, cg_swingSpeed.value, &cent->pe->legs.yawAngle, &cent->pe->legs.yawing );
 		}
 
-		torsoAngles[YAW] = cent->pe.torso.yawAngle;
-		legsAngles[YAW] = cent->pe.legs.yawAngle;
+		torsoAngles[YAW] = cent->pe->torso.yawAngle;
+		legsAngles[YAW] = cent->pe->legs.yawAngle;
 	}
 
 	// --------- pitch -------------
@@ -2534,8 +2534,8 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 	} else {
 		dest = headAngles[PITCH] * 0.75;
 	}
-	CG_SwingAngles( dest, 15, 30, 0.1, &cent->pe.torso.pitchAngle, &cent->pe.torso.pitching );
-	torsoAngles[PITCH] = cent->pe.torso.pitchAngle;
+	CG_SwingAngles( dest, 15, 30, 0.1, &cent->pe->torso.pitchAngle, &cent->pe->torso.pitching );
+	torsoAngles[PITCH] = cent->pe->torso.pitchAngle;
 
 	// --------- roll -------------
 
@@ -2705,7 +2705,7 @@ CG_PlayerPowerups
 static void CG_PlayerPowerups( centity_t *cent ) {
 	int powerups;
 
-	if ( cent->pe.teslaDamagedTime > cg.time - 400 ) {
+	if ( cent->pe->teslaDamagedTime > cg.time - 400 ) {
 		trap_R_AddLightToScene( cent->lerpOrigin, 128 + 128 * sin( cg.time * cg.time ), 0.2, 0.6, 1, 0 );
 	}
 
@@ -2960,7 +2960,7 @@ static qboolean CG_PlayerShadow( centity_t *cent, float *shadowPlane ) {
 	}
 
 	// if the torso is below the ground, dont draw shadows
-	if ( CG_GetOriginForTag( cent, &cent->pe.legsRefEnt, "tag_torso", 0, origin, axis ) ) {
+	if ( CG_GetOriginForTag( cent, &cent->pe->legsRefEnt, "tag_torso", 0, origin, axis ) ) {
 		if ( origin[2] - cent->lerpOrigin[2] < -26 ) {
 			return qfalse;
 		}
@@ -2990,7 +2990,7 @@ static qboolean CG_PlayerShadow( centity_t *cent, float *shadowPlane ) {
 		// now add shadows for the various body parts
 		for ( tagIndex = 0; shadowParts[tagIndex].tagname; tagIndex++ ) {
 			// grab each tag with this name
-			for ( subIndex = 0; ( subIndex = CG_GetOriginForTag( cent, &cent->pe.legsRefEnt, shadowParts[tagIndex].tagname, subIndex, origin, axis ) ) >= 0; subIndex++ ) {
+			for ( subIndex = 0; ( subIndex = CG_GetOriginForTag( cent, &cent->pe->legsRefEnt, shadowParts[tagIndex].tagname, subIndex, origin, axis ) ) >= 0; subIndex++ ) {
 				// move the shadow center forward
 				VectorMA( origin, 4, axis[0], origin );
 				// project it onto the shadow plane
@@ -3011,7 +3011,7 @@ static qboolean CG_PlayerShadow( centity_t *cent, float *shadowPlane ) {
 				AxisToAngles( axis, angles );
 
 				CG_ImpactMark( shadowParts[tagIndex].shader, origin, trace.plane.normal,
-							   angles[YAW] /*cent->pe.legs.yawAngle*/, alpha,alpha,alpha,1, qfalse, shadowParts[tagIndex].size * scale, qtrue, -1 );
+							   angles[YAW] /*cent->pe->legs.yawAngle*/, alpha,alpha,alpha,1, qfalse, shadowParts[tagIndex].size * scale, qtrue, -1 );
 			}
 		}
 	}
@@ -3196,20 +3196,20 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 
 	if ( cent->currentState.eFlags & EF_MONSTER_EFFECT ) {
 
-		if ( !cent->pe.cueZombieSpirit ) {
+		if ( !cent->pe->cueZombieSpirit ) {
 			// starting a new effect
-			cent->pe.cueZombieSpirit = qtrue;
-			cent->pe.zombieSpiritStartTime = cent->currentState.effect1Time;
-			cent->pe.lastZombieSpirit = cg.time;
-			cent->pe.nextZombieSpiritSound = cg.time + sndDelay;
+			cent->pe->cueZombieSpirit = qtrue;
+			cent->pe->zombieSpiritStartTime = cent->currentState.effect1Time;
+			cent->pe->lastZombieSpirit = cg.time;
+			cent->pe->nextZombieSpiritSound = cg.time + sndDelay;
 			for ( i = 0; i < MAX_ZOMBIE_SPIRITS; i++ ) {
-				cent->pe.zombieSpiritTrailHead[i] = -1;
-				cent->pe.zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
-				cent->pe.zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
-				cent->pe.zombieSpiritStartTimes[i] = cent->currentState.effect1Time;
+				cent->pe->zombieSpiritTrailHead[i] = -1;
+				cent->pe->zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
+				cent->pe->zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
+				cent->pe->zombieSpiritStartTimes[i] = cent->currentState.effect1Time;
 			}
 		}
-		cent->pe.zombieSpiritEndTime = cg.time;
+		cent->pe->zombieSpiritEndTime = cg.time;
 
 	} else {
 
@@ -3218,27 +3218,27 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 			return;
 		}
 
-		if ( !cent->pe.zombieSpiritEndTime ) {
+		if ( !cent->pe->zombieSpiritEndTime ) {
 			return;
 		}
 		// clear the flag, and let the effect fade itself out
-		cent->pe.cueZombieSpirit = qfalse;
+		cent->pe->cueZombieSpirit = qfalse;
 	}
 
-	for ( t = cent->pe.lastZombieSpirit + step; t <= cg.time; t += step ) {
+	for ( t = cent->pe->lastZombieSpirit + step; t <= cg.time; t += step ) {
 
 		// add the spirits
 		for ( i = 0; i < MAX_ZOMBIE_SPIRITS; i++ ) {
 
-			if ( cent->pe.zombieSpiritTrailHead[i] < -1 ) {
+			if ( cent->pe->zombieSpiritTrailHead[i] < -1 ) {
 				// spirit has gone, create a new one
-				cent->pe.zombieSpiritTrailHead[i] = -1;
-				cent->pe.zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
-				cent->pe.zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
-				cent->pe.zombieSpiritStartTimes[i] = cg.time - step;
+				cent->pe->zombieSpiritTrailHead[i] = -1;
+				cent->pe->zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
+				cent->pe->zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
+				cent->pe->zombieSpiritStartTimes[i] = cg.time - step;
 			}
 
-			fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTimes[i] ) / (float)fadeInTime;
+			fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTimes[i] ) / (float)fadeInTime;
 			if ( fadeRatio < 0.0 ) {
 				fadeRatio = 0.0;
 			}
@@ -3246,13 +3246,13 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 				fadeRatio = 1.0;
 			}
 
-			if ( cent->pe.cueZombieSpirit ) {
+			if ( cent->pe->cueZombieSpirit ) {
 				alpha = fadeRatio;
 			} else {
-				alpha = 1.0 - ( (float)( cg.time - cent->pe.zombieSpiritEndTime ) / (float)fadeOutTime );
+				alpha = 1.0 - ( (float)( cg.time - cent->pe->zombieSpiritEndTime ) / (float)fadeOutTime );
 				fadeRatio = alpha;
 				if ( alpha < 0.0 ) {
-					cent->pe.zombieSpiritTrailHead[i] = -2; // kill it
+					cent->pe->zombieSpiritTrailHead[i] = -2; // kill it
 					continue;
 				}
 			}
@@ -3261,9 +3261,9 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 
 			alpha *= 0.3;
 
-			if ( cent->pe.cueZombieSpirit ) {
-				rotationTime = cent->pe.zombieSpiritRotationTimes[i];
-				radiusCycleTime = cent->pe.zombieSpiritRadiusCycleTimes[i];
+			if ( cent->pe->cueZombieSpirit ) {
+				rotationTime = cent->pe->zombieSpiritRotationTimes[i];
+				radiusCycleTime = cent->pe->zombieSpiritRadiusCycleTimes[i];
 
 				radius = ( minDist + sin( M_PI * 2 * (float)( (float)( (int)( t + ( (float)( radiusCycleTime * i ) / MAX_ZOMBIE_SPIRITS ) ) % radiusCycleTime ) / (float)radiusCycleTime ) ) * ( maxDist - minDist ) );
 
@@ -3276,8 +3276,8 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 				VectorAdd( cent->lerpOrigin, v, p[i] );
 			} else {
 				// expand the radius, if it enters world geometry, kill it
-				rotationTime = cent->pe.zombieSpiritRotationTimes[i];
-				radiusCycleTime = cent->pe.zombieSpiritRadiusCycleTimes[i];
+				rotationTime = cent->pe->zombieSpiritRotationTimes[i];
+				radiusCycleTime = cent->pe->zombieSpiritRadiusCycleTimes[i];
 
 				radius = pow( 1.0 - fadeRatio, 2 ) * fadeDist + ( 1.0 - pow( 1.0 - fadeRatio, 2 ) ) * ( minDist + sin( M_PI * 2 * (float)( (float)( (int)( t + ( (float)( radiusCycleTime * i ) / MAX_ZOMBIE_SPIRITS ) ) % radiusCycleTime ) / (float)radiusCycleTime ) ) * ( maxDist - minDist ) );
 
@@ -3293,16 +3293,16 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 				trap_CM_BoxTrace( &trace, p[i], p[i], NULL, NULL, 0, MASK_SOLID );
 				// if we hit something, clip the velocity, but maintain speed
 				if ( trace.startsolid ) {
-					cent->pe.zombieSpiritTrailHead[i] = -2; // kill it
+					cent->pe->zombieSpiritTrailHead[i] = -2; // kill it
 					continue;
 				}
 			}
 
-			VectorSubtract( p[i], cent->pe.zombieSpiritPos[i], cent->pe.zombieSpiritDir[i] );
-			cent->pe.zombieSpiritSpeed[i] = 1000.0 / step * VectorNormalize( cent->pe.zombieSpiritDir[i] );
-			VectorCopy( p[i], cent->pe.zombieSpiritPos[i] );
+			VectorSubtract( p[i], cent->pe->zombieSpiritPos[i], cent->pe->zombieSpiritDir[i] );
+			cent->pe->zombieSpiritSpeed[i] = 1000.0 / step * VectorNormalize( cent->pe->zombieSpiritDir[i] );
+			VectorCopy( p[i], cent->pe->zombieSpiritPos[i] );
 
-			cent->pe.zombieSpiritTrailHead[i] = CG_AddTrailJunc( cent->pe.zombieSpiritTrailHead[i],
+			cent->pe->zombieSpiritTrailHead[i] = CG_AddTrailJunc( cent->pe->zombieSpiritTrailHead[i],
 																 cgs.media.zombieSpiritTrailShader,
 																 t,
 																 STYPE_STRETCH,
@@ -3319,10 +3319,10 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 
 		}
 
-		cent->pe.lastZombieSpirit = t;
+		cent->pe->lastZombieSpirit = t;
 
 		if ( !active ) {  // effect has gone
-			cent->pe.zombieSpiritEndTime = 0;
+			cent->pe->zombieSpiritEndTime = 0;
 		}
 	}
 
@@ -3334,10 +3334,10 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 	refent.customShader = cgs.media.zombieSpiritSkullShader;
 	refent.reType = RT_MODEL;
 	for ( i = 0; i < MAX_ZOMBIE_SPIRITS; i++ ) {
-		if ( cent->pe.zombieSpiritTrailHead[i] < -1 ) {
+		if ( cent->pe->zombieSpiritTrailHead[i] < -1 ) {
 			continue;   // spirit has gone
 		}
-		fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTimes[i] ) / (float)fadeInTime;
+		fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTimes[i] ) / (float)fadeInTime;
 		if ( fadeRatio < 0.0 ) {
 			fadeRatio = 0.0;
 		}
@@ -3345,24 +3345,24 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 			fadeRatio = 1.0;
 		}
 
-		if ( cent->pe.cueZombieSpirit ) {
+		if ( cent->pe->cueZombieSpirit ) {
 			alpha = fadeRatio;
 		} else {
-			alpha = 1.0 - ( (float)( cg.time - cent->pe.zombieSpiritEndTime ) / (float)fadeOutTime );
+			alpha = 1.0 - ( (float)( cg.time - cent->pe->zombieSpiritEndTime ) / (float)fadeOutTime );
 			fadeRatio = alpha;
 			if ( alpha < 0.0 ) {
-				cent->pe.zombieSpiritTrailHead[i] = -2; // kill it
+				cent->pe->zombieSpiritTrailHead[i] = -2; // kill it
 				continue;
 			}
 		}
 
 		refent.shaderRGBA[3] = (byte)( 0.5 * alpha * 255.0 );
-		VectorCopy( cent->pe.zombieSpiritPos[i], refent.origin );
+		VectorCopy( cent->pe->zombieSpiritPos[i], refent.origin );
 
 		// HACK!!! skull model is back-to-front, need to fix
-		VectorInverse( cent->pe.zombieSpiritDir[i] );
-		vectoangles( cent->pe.zombieSpiritDir[i], ang );
-		VectorInverse( cent->pe.zombieSpiritDir[i] );
+		VectorInverse( cent->pe->zombieSpiritDir[i] );
+		vectoangles( cent->pe->zombieSpiritDir[i], ang );
+		VectorInverse( cent->pe->zombieSpiritDir[i] );
 		AnglesToAxis( ang, refent.axis );
 		// create the non-normalized axis so we can size it
 		refent.nonNormalizedAxes = qtrue;
@@ -3378,18 +3378,18 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 		if ( fadeRatio == 1.0 && ( lastSpiritRelease > cg.time || ( lastSpiritRelease < cg.time - 2000 ) ) ) {
 			VectorSubtract( cent->currentState.origin2, refent.origin, v );
 			VectorNormalize( v );
-			if ( DotProduct( cent->pe.zombieSpiritDir[i], v ) > 0.6 || ( cent->currentState.eFlags & EF_DEAD ) ) {
+			if ( DotProduct( cent->pe->zombieSpiritDir[i], v ) > 0.6 || ( cent->currentState.eFlags & EF_DEAD ) ) {
 				// check for sinking into geometry
 				trap_CM_BoxTrace( &trace, refent.origin, refent.origin, NULL, NULL, 0, MASK_SOLID );
 				// if we hit something, don't release it yet
 				if ( !trace.startsolid ) {
-					if ( cent->pe.zombieSpiritSpeed[i] < 300 ) {
-						cent->pe.zombieSpiritSpeed[i] = 300;
+					if ( cent->pe->zombieSpiritSpeed[i] < 300 ) {
+						cent->pe->zombieSpiritSpeed[i] = 300;
 					}
-					VectorScale( cent->pe.zombieSpiritDir[i], cent->pe.zombieSpiritSpeed[i], v );
-					CG_SpawnZombieSpirit( refent.origin, v, cent->pe.zombieSpiritTrailHead[i], cent->currentState.number, &refent, trailLife, idealWidth );
+					VectorScale( cent->pe->zombieSpiritDir[i], cent->pe->zombieSpiritSpeed[i], v );
+					CG_SpawnZombieSpirit( refent.origin, v, cent->pe->zombieSpiritTrailHead[i], cent->currentState.number, &refent, trailLife, idealWidth );
 					lastSpiritRelease = cg.time;
-					cent->pe.zombieSpiritTrailHead[i] = -2; // kill this version of it
+					cent->pe->zombieSpiritTrailHead[i] = -2; // kill this version of it
 					continue;
 				}
 			}
@@ -3399,14 +3399,14 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 		trap_R_AddRefEntityToScene( &refent );
 	}
 
-	if ( cg.time > cent->pe.nextZombieSpiritSound && cent->pe.cueZombieSpirit ) { //&& (cg.time < cent->pe.zombieSpiritStartTime + sndDuration)) {
+	if ( cg.time > cent->pe->nextZombieSpiritSound && cent->pe->cueZombieSpirit ) { //&& (cg.time < cent->pe->zombieSpiritStartTime + sndDuration)) {
 		// spawn a new sound
 		trap_S_StartSound( cent->lerpOrigin, -1, CHAN_AUTO, cgs.media.zombieSpiritSound );
-		cent->pe.nextZombieSpiritSound = cg.time + sndIntervalMin + (int)( (float)( sndIntervalMax - sndIntervalMin ) * random() );
+		cent->pe->nextZombieSpiritSound = cg.time + sndIntervalMin + (int)( (float)( sndIntervalMax - sndIntervalMin ) * random() );
 	}
 
 	// add a negative light around us
-	fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTime ) / (float)fadeInTime;
+	fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTime ) / (float)fadeInTime;
 	if ( fadeRatio < 0.0 ) {
 		fadeRatio = 0.0;
 	}
@@ -3414,11 +3414,11 @@ void CG_AddZombieSpiritEffect( centity_t *cent ) {
 		fadeRatio = 1.0;
 	}
 
-	if ( !cent->pe.cueZombieSpirit ) {
-		alpha = 1.0 - ( (float)( cg.time - cent->pe.zombieSpiritEndTime ) / (float)fadeOutTime );
+	if ( !cent->pe->cueZombieSpirit ) {
+		alpha = 1.0 - ( (float)( cg.time - cent->pe->zombieSpiritEndTime ) / (float)fadeOutTime );
 		fadeRatio = alpha;
 		if ( alpha < 0.0 ) {
-			cent->pe.zombieSpiritEndTime = 0;   // stop the effect
+			cent->pe->zombieSpiritEndTime = 0;   // stop the effect
 			return;
 		}
 	}
@@ -3446,7 +3446,7 @@ void CG_SpawnZombieBat( centity_t *cent, refEntity_t *oldrefent ) {
 
 	le->pos.trType = TR_LINEAR;
 	le->pos.trTime = cg.time;
-	CG_PositionEntityOnTag( re, &cent->pe.headRefEnt, "tag_mouth", 0, NULL );
+	CG_PositionEntityOnTag( re, &cent->pe->headRefEnt, "tag_mouth", 0, NULL );
 	VectorCopy( re->origin, le->pos.trBase );
 	VectorScale( re->axis[0], 150 + 50 * random(), le->pos.trDelta );
 
@@ -3510,14 +3510,14 @@ void CG_AddZombieFlameEffect( centity_t *cent ) {
 
 	if ( ( cent->currentState.eFlags & EF_MONSTER_EFFECT3 ) && ( cg.time > cent->currentState.effect3Time ) ) {
 
-		if ( !cent->pe.cueZombieSpirit ) {
+		if ( !cent->pe->cueZombieSpirit ) {
 			// starting a new effect
-			cent->pe.cueZombieSpirit = qtrue;
-			cent->pe.zombieSpiritStartTime = cent->currentState.effect3Time;
-			cent->pe.lastZombieSpirit = cg.time;
-			cent->pe.nextZombieSpiritSound = cg.time + sndDelay;
+			cent->pe->cueZombieSpirit = qtrue;
+			cent->pe->zombieSpiritStartTime = cent->currentState.effect3Time;
+			cent->pe->lastZombieSpirit = cg.time;
+			cent->pe->nextZombieSpiritSound = cg.time + sndDelay;
 		}
-		cent->pe.zombieSpiritEndTime = cg.time + fadeOutTime;
+		cent->pe->zombieSpiritEndTime = cg.time + fadeOutTime;
 	} else {
 
 		// if running another effect, dont mess with its variables
@@ -3526,17 +3526,17 @@ void CG_AddZombieFlameEffect( centity_t *cent ) {
 			return;
 		}
 
-		if ( cent->pe.zombieSpiritEndTime < cg.time ) {
+		if ( cent->pe->zombieSpiritEndTime < cg.time ) {
 			CG_FireFlameChunks( cent, morg, mang, 0.05, qfalse, 0 );
 			return;
 		}
 
 		// clear the flag, and let the effect fade itself out
-		cent->pe.cueZombieSpirit = qfalse;
+		cent->pe->cueZombieSpirit = qfalse;
 	}
 
 	// expand the flame dlight
-	fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTime ) / (float)fadeInTime;
+	fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTime ) / (float)fadeInTime;
 	if ( fadeRatio < 0.0 ) {
 		fadeRatio = 0.0;
 	}
@@ -3544,18 +3544,18 @@ void CG_AddZombieFlameEffect( centity_t *cent ) {
 		fadeRatio = 1.0;
 	}
 
-	if ( !cent->pe.cueZombieSpirit ) {
-		alpha = ( (float)( cent->pe.zombieSpiritEndTime - cg.time ) / (float)fadeOutTime );
+	if ( !cent->pe->cueZombieSpirit ) {
+		alpha = ( (float)( cent->pe->zombieSpiritEndTime - cg.time ) / (float)fadeOutTime );
 		fadeRatio = alpha;
 		if ( alpha < 0.0 ) {
-			cent->pe.zombieSpiritEndTime = 0;   // stop the effect
+			cent->pe->zombieSpiritEndTime = 0;   // stop the effect
 			CG_FireFlameChunks( cent, morg, mang, 0.1, qfalse, 0 );
 			return;
 		}
 	}
 
 	if ( fadeRatio >= 1.0 ) {
-		CG_GetOriginForTag( cent, &cent->pe.headRefEnt, "tag_mouth", 0, morg, maxis );
+		CG_GetOriginForTag( cent, &cent->pe->headRefEnt, "tag_mouth", 0, morg, maxis );
 		AxisToAngles( maxis, mang );
 		CG_FireFlameChunks( cent, morg, mang, ZOMBIE_FLAME_SCALE, qtrue, 0 );
 		CG_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, cgs.media.flameSound, 50 );
@@ -3587,7 +3587,7 @@ void CG_AddZombieFlameShort( centity_t *cent ) {
 		return;
 	}
 
-	CG_GetOriginForTag( cent, &cent->pe.headRefEnt, "tag_mouth", 0, morg, maxis );
+	CG_GetOriginForTag( cent, &cent->pe->headRefEnt, "tag_mouth", 0, morg, maxis );
 	AxisToAngles( maxis, mang );
 
 	// shoot this only in bursts
@@ -3635,7 +3635,7 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 		return;
 	}
 
-	if ( !cent->pe.legsRefEnt.hModel ) {
+	if ( !cent->pe->legsRefEnt.hModel ) {
 		return;
 	}
 
@@ -3647,7 +3647,7 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 		numPoints = MAX_LOPER_LIGHTNING_POINTS / 3;
 	}
 
-	CG_GetOriginForTag( cent, &cent->pe.legsRefEnt, "tag_spinner", 0, tagPos, NULL );
+	CG_GetOriginForTag( cent, &cent->pe->legsRefEnt, "tag_spinner", 0, tagPos, NULL );
 
 	// show a dlight
 	// color
@@ -3665,26 +3665,26 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 	for ( i = 0; i < numPoints; i++ ) {
 		// if this point has timed out, find a new spot
 		if (    ( cent->currentState.eFlags & EF_MONSTER_EFFECT ) &&
-				(   ( !cent->pe.lightningTimes[i] ) ||
-					( cent->pe.lightningTimes[i] > cg.time ) ||
-					( cent->pe.lightningTimes[i] < cg.time - 50 ) ||
-					( VectorDistance( cent->lerpOrigin, cent->pe.lightningPoints[i] ) > maxDist ) ) ) {
+				(   ( !cent->pe->lightningTimes[i] ) ||
+					( cent->pe->lightningTimes[i] > cg.time ) ||
+					( cent->pe->lightningTimes[i] < cg.time - 50 ) ||
+					( VectorDistance( cent->lerpOrigin, cent->pe->lightningPoints[i] ) > maxDist ) ) ) {
 			// attacking the player
 			VectorSet( testPos, 12 * crandom(),
 					   12 * crandom(),
 					   32 * crandom() );
 			VectorAdd( testPos, cg.snap->ps.origin, testPos );
-			cent->pe.lightningTimes[i] = cg.time - rand() % ( LOPER_LIGHTNING_POINT_TIMEOUT / 2 );
-			VectorCopy( testPos, cent->pe.lightningPoints[i] );
+			cent->pe->lightningTimes[i] = cg.time - rand() % ( LOPER_LIGHTNING_POINT_TIMEOUT / 2 );
+			VectorCopy( testPos, cent->pe->lightningPoints[i] );
 			// play a zap sound
-			if ( cent->pe.lightningSoundTime < cg.time - 100 ) {
+			if ( cent->pe->lightningSoundTime < cg.time - 100 ) {
 				trap_S_StartSound( testPos, ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.lightningZap /*cgs.media.lightningSounds[rand()%3]*/ );
-				cent->pe.lightningSoundTime = cg.time;
+				cent->pe->lightningSoundTime = cg.time;
 			}
-		} else if ( ( !cent->pe.lightningTimes[i] ) ||
-					( cent->pe.lightningTimes[i] > cg.time ) ||
-					( cent->pe.lightningTimes[i] < cg.time - LOPER_LIGHTNING_POINT_TIMEOUT ) ||
-					( VectorDistance( cent->lerpOrigin, cent->pe.lightningPoints[i] ) > maxDist ) ) {
+		} else if ( ( !cent->pe->lightningTimes[i] ) ||
+					( cent->pe->lightningTimes[i] > cg.time ) ||
+					( cent->pe->lightningTimes[i] < cg.time - LOPER_LIGHTNING_POINT_TIMEOUT ) ||
+					( VectorDistance( cent->lerpOrigin, cent->pe->lightningPoints[i] ) > maxDist ) ) {
 
 			if ( cent->currentState.groundEntityNum == ENTITYNUM_NONE ) {
 				continue;   // must be on the ground
@@ -3700,15 +3700,15 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 				CG_Trace( &tr, cent->lerpOrigin, NULL, NULL, testPos, cent->currentState.number, MASK_SOLID );
 				if ( tr.fraction < 1 && tr.entityNum == ENTITYNUM_WORLD ) {
 					// found a valid spot!
-					cent->pe.lightningTimes[i] = cg.time - rand() % ( LOPER_LIGHTNING_POINT_TIMEOUT / 2 );
-					VectorCopy( tr.endpos, cent->pe.lightningPoints[i] );
+					cent->pe->lightningTimes[i] = cg.time - rand() % ( LOPER_LIGHTNING_POINT_TIMEOUT / 2 );
+					VectorCopy( tr.endpos, cent->pe->lightningPoints[i] );
 					// play a zap sound
-					if ( cent->pe.lightningSoundTime < cg.time - 100 ) {
+					if ( cent->pe->lightningSoundTime < cg.time - 100 ) {
 						// HACK, move ths sound away from the viewpos, to simulate lower volume
 						VectorSubtract( testPos, cg.refdef.vieworg, v );
 						VectorMA( cg.refdef.vieworg, 3.0, v, v );
 						trap_S_StartSound( v, ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.lightningSounds[rand() % 3] );
-						cent->pe.lightningSoundTime = cg.time;
+						cent->pe->lightningSoundTime = cg.time;
 					}
 					break;
 				}
@@ -3724,8 +3724,8 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 		//
 		// we have a valid lightning point, so draw it
 		// sanity check though to make sure it's valid
-		if ( VectorDistance( cent->lerpOrigin, cent->pe.lightningPoints[i] ) <= maxDist ) {
-			CG_DynamicLightningBolt( cgs.media.lightningBoltShader, tagPos, cent->pe.lightningPoints[i], 1, 25 + 12.0 * random(), ( cent->currentState.eFlags & EF_MONSTER_EFFECT ) == 0, 1.0, 0, i * i * 2 );
+		if ( VectorDistance( cent->lerpOrigin, cent->pe->lightningPoints[i] ) <= maxDist ) {
+			CG_DynamicLightningBolt( cgs.media.lightningBoltShader, tagPos, cent->pe->lightningPoints[i], 1, 25 + 12.0 * random(), ( cent->currentState.eFlags & EF_MONSTER_EFFECT ) == 0, 1.0, 0, i * i * 2 );
 		}
 	}
 }
@@ -3760,18 +3760,18 @@ void CG_AddLoperGroundEffect( centity_t *cent ) {
 		return;
 	}
 
-	if ( !cent->pe.legsRefEnt.hModel ) {
+	if ( !cent->pe->legsRefEnt.hModel ) {
 		return;
 	}
 
 	if ( !( cent->currentState.eFlags & EF_MONSTER_EFFECT3 ) ) {
-		if ( !cent->pe.loperGroundValidTime ) {
+		if ( !cent->pe->loperGroundValidTime ) {
 			alpha = 0.0;
 		} else {
 			// alpha for lightning mark
-			duration = LOPER_GROUNDCHARGE_FADEOUT - ( cg.time - cent->pe.loperGroundValidTime );
+			duration = LOPER_GROUNDCHARGE_FADEOUT - ( cg.time - cent->pe->loperGroundValidTime );
 			if ( duration <= 0 ) {
-				cent->pe.loperGroundValidTime = 0;
+				cent->pe->loperGroundValidTime = 0;
 			}
 			alpha = (float)duration / (float)LOPER_GROUNDCHARGE_FADEOUT;
 			if ( alpha < 0 ) {
@@ -3784,13 +3784,13 @@ void CG_AddLoperGroundEffect( centity_t *cent ) {
 			}
 		}
 	} else {
-		cent->pe.loperGroundValidTime = cg.time;
+		cent->pe->loperGroundValidTime = cg.time;
 		alpha = 1.0;
 		lightAlpha = 1.0;
 	}
 
 	if ( !lightAlpha ) {
-		cent->pe.loperGroundValidTime = 0;
+		cent->pe->loperGroundValidTime = 0;
 		return;
 	}
 
@@ -3813,12 +3813,12 @@ void CG_AddLoperGroundEffect( centity_t *cent ) {
 	}
 
 	// create a fading mark at intervals
-	if ( cent->pe.loperLastGroundChargeTime < cg.time - LOPER_GROUNDCHARGE_INTERVAL ) {
+	if ( cent->pe->loperLastGroundChargeTime < cg.time - LOPER_GROUNDCHARGE_INTERVAL ) {
 		// org
 		VectorCopy( cent->lerpOrigin, org );
 		org[2] -= 20;
 		// color
-		if ( cent->pe.loperGroundChargeToggle ^= 1 ) {
+		if ( cent->pe->loperGroundChargeToggle ^= 1 ) {
 			// random blue
 			colTake = 0.5 + random() * 0.5;
 			c[0] = 1.0 - colTake;
@@ -3832,7 +3832,7 @@ void CG_AddLoperGroundEffect( centity_t *cent ) {
 		}
 		// draw the mark
 		//CG_ImpactMark( cgs.media.loperGroundChargeShader, org, up, random()*360, c[0], c[1], c[2], alpha, qtrue, (0.5+0.5*random())*LOPER_GROUNDCHARGE_RADIUS, qfalse, LOPER_GROUNDCHARGE_DURATION );
-		cent->pe.loperLastGroundChargeTime = cg.time;
+		cent->pe->loperLastGroundChargeTime = cg.time;
 		// make a new sound
 		VectorSet( org, org[0] + crandom() * 256, org[1] + crandom() * 256, org[2] + crandom() * 256 );
 		trap_S_StartSound( org, ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.lightningZap );
@@ -3928,20 +3928,20 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 
 	if ( cent->currentState.eFlags & EF_MONSTER_EFFECT ) {
 
-		if ( !cent->pe.cueZombieSpirit ) {
+		if ( !cent->pe->cueZombieSpirit ) {
 			// starting a new effect
-			cent->pe.cueZombieSpirit = qtrue;
-			cent->pe.zombieSpiritStartTime = cent->currentState.effect1Time;
-			cent->pe.lastZombieSpirit = cg.time;
-			cent->pe.nextZombieSpiritSound = cg.time + sndDelay;
+			cent->pe->cueZombieSpirit = qtrue;
+			cent->pe->zombieSpiritStartTime = cent->currentState.effect1Time;
+			cent->pe->lastZombieSpirit = cg.time;
+			cent->pe->nextZombieSpiritSound = cg.time + sndDelay;
 			for ( i = 0; i < MAX_ZOMBIE_SPIRITS; i++ ) {
-				cent->pe.zombieSpiritTrailHead[i] = -1;
-				cent->pe.zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
-				cent->pe.zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
-				cent->pe.zombieSpiritStartTimes[i] = cent->currentState.effect1Time;
+				cent->pe->zombieSpiritTrailHead[i] = -1;
+				cent->pe->zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
+				cent->pe->zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
+				cent->pe->zombieSpiritStartTimes[i] = cent->currentState.effect1Time;
 			}
 		}
-		cent->pe.zombieSpiritEndTime = cg.time;
+		cent->pe->zombieSpiritEndTime = cg.time;
 
 	} else {
 
@@ -3950,27 +3950,27 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 			return;
 		}
 
-		if ( !cent->pe.zombieSpiritEndTime ) {
+		if ( !cent->pe->zombieSpiritEndTime ) {
 			return;
 		}
 		// clear the flag, and let the effect fade itself out
-		cent->pe.cueZombieSpirit = qfalse;
+		cent->pe->cueZombieSpirit = qfalse;
 	}
 
-	for ( t = cent->pe.lastZombieSpirit + step; t <= cg.time; t += step ) {
+	for ( t = cent->pe->lastZombieSpirit + step; t <= cg.time; t += step ) {
 
 		// add the spirits
 		for ( i = 0; i < MAX_ZOMBIE_SPIRITS; i++ ) {
 
-			if ( cent->pe.zombieSpiritTrailHead[i] < -1 ) {
+			if ( cent->pe->zombieSpiritTrailHead[i] < -1 ) {
 				// spirit has gone, create a new one
-				cent->pe.zombieSpiritTrailHead[i] = -1;
-				cent->pe.zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
-				cent->pe.zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
-				cent->pe.zombieSpiritStartTimes[i] = cg.time - step;
+				cent->pe->zombieSpiritTrailHead[i] = -1;
+				cent->pe->zombieSpiritRotationTimes[i] = minRotationTime + ( random() * ( maxRotationTime - minRotationTime ) );
+				cent->pe->zombieSpiritRadiusCycleTimes[i] = minRadiusCycleTime + ( random() * ( maxRadiusCycleTime - minRadiusCycleTime ) );
+				cent->pe->zombieSpiritStartTimes[i] = cg.time - step;
 			}
 
-			fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTimes[i] ) / (float)fadeInTime;
+			fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTimes[i] ) / (float)fadeInTime;
 			if ( fadeRatio < 0.0 ) {
 				fadeRatio = 0.0;
 			}
@@ -3978,13 +3978,13 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 				fadeRatio = 1.0;
 			}
 
-			if ( cent->pe.cueZombieSpirit ) {
+			if ( cent->pe->cueZombieSpirit ) {
 				alpha = fadeRatio;
 			} else {
-				alpha = 1.0 - ( (float)( cg.time - cent->pe.zombieSpiritEndTime ) / (float)fadeOutTime );
+				alpha = 1.0 - ( (float)( cg.time - cent->pe->zombieSpiritEndTime ) / (float)fadeOutTime );
 				fadeRatio = alpha;
 				if ( alpha < 0.0 ) {
-					cent->pe.zombieSpiritTrailHead[i] = -2; // kill it
+					cent->pe->zombieSpiritTrailHead[i] = -2; // kill it
 					continue;
 				}
 			}
@@ -3993,9 +3993,9 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 
 			alpha *= 0.3;
 
-			if ( cent->pe.cueZombieSpirit ) {
-				rotationTime = cent->pe.zombieSpiritRotationTimes[i];
-				radiusCycleTime = cent->pe.zombieSpiritRadiusCycleTimes[i];
+			if ( cent->pe->cueZombieSpirit ) {
+				rotationTime = cent->pe->zombieSpiritRotationTimes[i];
+				radiusCycleTime = cent->pe->zombieSpiritRadiusCycleTimes[i];
 
 				radius = ( minDist + sin( M_PI * 2 * (float)( (float)( (int)( t + ( (float)( radiusCycleTime * i ) / MAX_ZOMBIE_SPIRITS ) ) % radiusCycleTime ) / (float)radiusCycleTime ) ) * ( maxDist - minDist ) );
 
@@ -4008,8 +4008,8 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 				VectorAdd( cent->lerpOrigin, v, p[i] );
 			} else {
 				// expand the radius, if it enters world geometry, kill it
-				rotationTime = cent->pe.zombieSpiritRotationTimes[i];
-				radiusCycleTime = cent->pe.zombieSpiritRadiusCycleTimes[i];
+				rotationTime = cent->pe->zombieSpiritRotationTimes[i];
+				radiusCycleTime = cent->pe->zombieSpiritRadiusCycleTimes[i];
 
 				radius = pow( 1.0 - fadeRatio, 2 ) * fadeDist + ( 1.0 - pow( 1.0 - fadeRatio, 2 ) ) * ( minDist + sin( M_PI * 2 * (float)( (float)( (int)( t + ( (float)( radiusCycleTime * i ) / MAX_ZOMBIE_SPIRITS ) ) % radiusCycleTime ) / (float)radiusCycleTime ) ) * ( maxDist - minDist ) );
 
@@ -4025,16 +4025,16 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 				trap_CM_BoxTrace( &trace, p[i], p[i], NULL, NULL, 0, MASK_SOLID );
 				// if we hit something, clip the velocity, but maintain speed
 				if ( trace.startsolid ) {
-					cent->pe.zombieSpiritTrailHead[i] = -2; // kill it
+					cent->pe->zombieSpiritTrailHead[i] = -2; // kill it
 					continue;
 				}
 			}
 
-			VectorSubtract( p[i], cent->pe.zombieSpiritPos[i], cent->pe.zombieSpiritDir[i] );
-			cent->pe.zombieSpiritSpeed[i] = 1000.0 / step * VectorNormalize( cent->pe.zombieSpiritDir[i] );
-			VectorCopy( p[i], cent->pe.zombieSpiritPos[i] );
+			VectorSubtract( p[i], cent->pe->zombieSpiritPos[i], cent->pe->zombieSpiritDir[i] );
+			cent->pe->zombieSpiritSpeed[i] = 1000.0 / step * VectorNormalize( cent->pe->zombieSpiritDir[i] );
+			VectorCopy( p[i], cent->pe->zombieSpiritPos[i] );
 
-			cent->pe.zombieSpiritTrailHead[i] = CG_AddTrailJunc( cent->pe.zombieSpiritTrailHead[i],
+			cent->pe->zombieSpiritTrailHead[i] = CG_AddTrailJunc( cent->pe->zombieSpiritTrailHead[i],
 																 cgs.media.zombieSpiritTrailShader,
 																 t,
 																 STYPE_STRETCH,
@@ -4051,10 +4051,10 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 
 		}
 
-		cent->pe.lastZombieSpirit = t;
+		cent->pe->lastZombieSpirit = t;
 
 		if ( !active ) {  // effect has gone
-			cent->pe.zombieSpiritEndTime = 0;
+			cent->pe->zombieSpiritEndTime = 0;
 		}
 	}
 
@@ -4066,10 +4066,10 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 	refent.customShader = cgs.media.helgaSpiritSkullShader;
 	refent.reType = RT_MODEL;
 	for ( i = 0; i < MAX_ZOMBIE_SPIRITS; i++ ) {
-		if ( cent->pe.zombieSpiritTrailHead[i] < -1 ) {
+		if ( cent->pe->zombieSpiritTrailHead[i] < -1 ) {
 			continue;   // spirit has gone
 		}
-		fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTimes[i] ) / (float)fadeInTime;
+		fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTimes[i] ) / (float)fadeInTime;
 		if ( fadeRatio < 0.0 ) {
 			fadeRatio = 0.0;
 		}
@@ -4077,24 +4077,24 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 			fadeRatio = 1.0;
 		}
 
-		if ( cent->pe.cueZombieSpirit ) {
+		if ( cent->pe->cueZombieSpirit ) {
 			alpha = fadeRatio;
 		} else {
-			alpha = 1.0 - ( (float)( cg.time - cent->pe.zombieSpiritEndTime ) / (float)fadeOutTime );
+			alpha = 1.0 - ( (float)( cg.time - cent->pe->zombieSpiritEndTime ) / (float)fadeOutTime );
 			fadeRatio = alpha;
 			if ( alpha < 0.0 ) {
-				cent->pe.zombieSpiritTrailHead[i] = -2; // kill it
+				cent->pe->zombieSpiritTrailHead[i] = -2; // kill it
 				continue;
 			}
 		}
 
 		refent.shaderRGBA[3] = (byte)( 0.5 * alpha * 255.0 );
-		VectorCopy( cent->pe.zombieSpiritPos[i], refent.origin );
+		VectorCopy( cent->pe->zombieSpiritPos[i], refent.origin );
 
 		// HACK!!! skull model is back-to-front, need to fix
-		//VectorInverse(cent->pe.zombieSpiritDir[i]);
-		vectoangles( cent->pe.zombieSpiritDir[i], ang );
-		//VectorInverse(cent->pe.zombieSpiritDir[i]);
+		//VectorInverse(cent->pe->zombieSpiritDir[i]);
+		vectoangles( cent->pe->zombieSpiritDir[i], ang );
+		//VectorInverse(cent->pe->zombieSpiritDir[i]);
 		AnglesToAxis( ang, refent.axis );
 /*		// create the non-normalized axis so we can size it
 		refent.nonNormalizedAxes = qtrue;
@@ -4110,18 +4110,18 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 		if ( fadeRatio == 1.0 && ( lastSpiritRelease > cg.time || ( lastSpiritRelease < cg.time - 1000 ) ) ) {
 			VectorSubtract( cent->currentState.origin2, refent.origin, v );
 			VectorNormalize( v );
-			if ( DotProduct( cent->pe.zombieSpiritDir[i], v ) > 0.4 || ( cent->currentState.eFlags & EF_DEAD ) ) {
+			if ( DotProduct( cent->pe->zombieSpiritDir[i], v ) > 0.4 || ( cent->currentState.eFlags & EF_DEAD ) ) {
 				// check for sinking into geometry
 				trap_CM_BoxTrace( &trace, refent.origin, refent.origin, NULL, NULL, 0, MASK_SOLID );
 				// if we hit something, don't release it yet
 				if ( !trace.startsolid ) {
-					if ( cent->pe.zombieSpiritSpeed[i] < 300 ) {
-						cent->pe.zombieSpiritSpeed[i] = 300;
+					if ( cent->pe->zombieSpiritSpeed[i] < 300 ) {
+						cent->pe->zombieSpiritSpeed[i] = 300;
 					}
-					VectorScale( cent->pe.zombieSpiritDir[i], cent->pe.zombieSpiritSpeed[i], v );
-					CG_SpawnHelgaSpirit( refent.origin, v, cent->pe.zombieSpiritTrailHead[i], cent->currentState.number, &refent, trailLife, idealWidth );
+					VectorScale( cent->pe->zombieSpiritDir[i], cent->pe->zombieSpiritSpeed[i], v );
+					CG_SpawnHelgaSpirit( refent.origin, v, cent->pe->zombieSpiritTrailHead[i], cent->currentState.number, &refent, trailLife, idealWidth );
 					lastSpiritRelease = cg.time;
-					cent->pe.zombieSpiritTrailHead[i] = -2; // kill this version of it
+					cent->pe->zombieSpiritTrailHead[i] = -2; // kill this version of it
 					continue;
 				}
 			}
@@ -4131,15 +4131,15 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 		trap_R_AddRefEntityToScene( &refent );
 	}
 
-	if ( cg.time > cent->pe.nextZombieSpiritSound && cent->pe.cueZombieSpirit ) { //&& (cg.time < cent->pe.zombieSpiritStartTime + sndDuration)) {
+	if ( cg.time > cent->pe->nextZombieSpiritSound && cent->pe->cueZombieSpirit ) { //&& (cg.time < cent->pe->zombieSpiritStartTime + sndDuration)) {
 		// spawn a new sound
 		//trap_S_StartSound( cent->lerpOrigin, -1, CHAN_AUTO, cgs.media.helgaSpiritSound );
 		CG_SoundPlayIndexedScript( cgs.media.helgaSpiritSound, NULL, cent->currentState.number );
-		cent->pe.nextZombieSpiritSound = cg.time + sndIntervalMin + (int)( (float)( sndIntervalMax - sndIntervalMin ) * random() );
+		cent->pe->nextZombieSpiritSound = cg.time + sndIntervalMin + (int)( (float)( sndIntervalMax - sndIntervalMin ) * random() );
 	}
 
 	// add a negative light around us
-	fadeRatio = (float)( cg.time - cent->pe.zombieSpiritStartTime ) / (float)fadeInTime;
+	fadeRatio = (float)( cg.time - cent->pe->zombieSpiritStartTime ) / (float)fadeInTime;
 	if ( fadeRatio < 0.0 ) {
 		fadeRatio = 0.0;
 	}
@@ -4147,11 +4147,11 @@ void CG_AddHelgaSpiritEffect( centity_t *cent ) {
 		fadeRatio = 1.0;
 	}
 
-	if ( !cent->pe.cueZombieSpirit ) {
-		alpha = 1.0 - ( (float)( cg.time - cent->pe.zombieSpiritEndTime ) / (float)fadeOutTime );
+	if ( !cent->pe->cueZombieSpirit ) {
+		alpha = 1.0 - ( (float)( cg.time - cent->pe->zombieSpiritEndTime ) / (float)fadeOutTime );
 		fadeRatio = alpha;
 		if ( alpha < 0.0 ) {
-			cent->pe.zombieSpiritEndTime = 0;   // stop the effect
+			cent->pe->zombieSpiritEndTime = 0;   // stop the effect
 			return;
 		}
 	}
@@ -4179,7 +4179,7 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 
 	ent->entityNum = es->number;
 
-	if ( cent->pe.forceLOD ) {
+	if ( cent->pe->forceLOD ) {
 		ent->reFlags |= REFLAG_FORCE_LOD;
 	}
 
@@ -4208,10 +4208,10 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 
 		// Zombie needs special processing, to remove the bits of flesh that have been torn away
 
-		if ( ent->hModel == cent->pe.torsoRefEnt.hModel ) {
+		if ( ent->hModel == cent->pe->torsoRefEnt.hModel ) {
 			//ent->reFlags = REFLAG_ZOMBIEFX;
 			ent->shaderTime = 0;
-		} else if ( ent->hModel == cent->pe.legsRefEnt.hModel )     {
+		} else if ( ent->hModel == cent->pe->legsRefEnt.hModel )     {
 			//ent->reFlags = REFLAG_ZOMBIEFX2;	// ref needs to know this is the legs
 			ent->shaderTime = 0;
 		}
@@ -4233,7 +4233,7 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 			//
 			ent->shaderTime = 0.001 * ( 1.0 - alpha ) * ZOMBIEFX_FADEOUT_TIME;
 
-			if ( ent->hModel == cent->pe.headRefEnt.hModel ) {
+			if ( ent->hModel == cent->pe->headRefEnt.hModel ) {
 				//ent->reFlags = REFLAG_ZOMBIEFX;
 				ent->customShader = cgs.media.zombieHeadFadeShader;
 			}
@@ -4253,7 +4253,7 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 			if ( es->eFlags & EF_MONSTER_EFFECT2 &&
 				 cent->currentState.effect2Time < cg.time ) { // Ridah, Zombie death effect
 
-				if ( ent->hModel == cent->pe.headRefEnt.hModel ) {
+				if ( ent->hModel == cent->pe->headRefEnt.hModel ) {
 					//ent->reFlags = REFLAG_ZOMBIEFX;
 					ent->customShader = cgs.media.zombieHeadFadeShader;
 				}
@@ -4262,7 +4262,7 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 				trap_R_AddRefEntityToScene( ent );
 /*
 				// skeleton: add legs and head parts
-				if (ent->hModel == cent->pe.legsRefEnt.hModel) {
+				if (ent->hModel == cent->pe->legsRefEnt.hModel) {
 					ent->skinNum = 0;
 					ent->reFlags = 0;
 					ent->customShader = cgs.media.skeletonSkinShader;
@@ -4296,7 +4296,7 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 				cent->currentState.effect2Time < cg.time) {	// Ridah, Zombie death effect
 		const int fadeRiseTime = 4000;
 
-		if (cent->pe.zombieDeathFadeStart < cg.time && ent->hModel == cent->pe.legsRefEnt.hModel) {
+		if (cent->pe->zombieDeathFadeStart < cg.time && ent->hModel == cent->pe->legsRefEnt.hModel) {
 			// add the skeleton models starting with the legs
 			ent->fadeEndTime = 0;
 			ent->fadeStartTime = 0;
@@ -4325,28 +4325,28 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 			*ent = backupRefEnt;
 		}
 
-		if (cent->pe.zombieDeathFadeEnd + fadeRiseTime > cg.time) {
+		if (cent->pe->zombieDeathFadeEnd + fadeRiseTime > cg.time) {
 			// slowly fade the zombie "skin" out, revealing the skeleton underneath
 
 			//VectorSubtract( ent->origin, cg.snap->ps.origin, ent->fireRiseDir );
 			//VectorNegate( ent->axis[0], ent->fireRiseDir );
 			VectorNormalize2( ent->axis[0], ent->fireRiseDir );
 
-			if (cent->pe.zombieDeathFadeEnd > cg.time) {
+			if (cent->pe->zombieDeathFadeEnd > cg.time) {
 
 				// the zombie has hard-edged alpha blending on it's body texture by default
 				// so we need to override that for smooth fading
-				if (ent->hModel == cent->pe.legsRefEnt.hModel ||
-					ent->hModel == cent->pe.torsoRefEnt.hModel) {
+				if (ent->hModel == cent->pe->legsRefEnt.hModel ||
+					ent->hModel == cent->pe->torsoRefEnt.hModel) {
 					ent->customShader = cgs.media.zombieBodyFadeShader;
-				} else if (ent->hModel == cent->pe.headRefEnt.hModel) {
+				} else if (ent->hModel == cent->pe->headRefEnt.hModel) {
 					ent->customShader = cgs.media.zombieHeadFadeShader;
 				}
 				// fade the alpha from 0 -> 255 as the time goes, which will fade from front to back
-				if (cent->pe.zombieDeathFadeStart > cg.time) {
+				if (cent->pe->zombieDeathFadeStart > cg.time) {
 					ent->shaderRGBA[3] = 128;
 				} else {
-					ent->shaderRGBA[3] = 128 - (unsigned char)(128.0*pow(((float)(cg.time - cent->pe.zombieDeathFadeStart) / (float)(cent->pe.zombieDeathFadeEnd - cent->pe.zombieDeathFadeStart)), 2));
+					ent->shaderRGBA[3] = 128 - (unsigned char)(128.0*pow(((float)(cg.time - cent->pe->zombieDeathFadeStart) / (float)(cent->pe->zombieDeathFadeEnd - cent->pe->zombieDeathFadeStart)), 2));
 				}
 				ent->shaderTime = 1.0;
 
@@ -4428,16 +4428,16 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 		ent->customShader = cgs.media.onFireShader2;
 		trap_R_AddRefEntityToScene( ent );
 
-		if ( ent->hModel == cent->pe.legsRefEnt.hModel ) {
+		if ( ent->hModel == cent->pe->legsRefEnt.hModel ) {
 			CG_S_AddLoopingSound( es->number, ent->origin, vec3_origin, cgs.media.flameCrackSound, (int)( 40.0 * alpha ) );
 		}
 	}
 
 	// tesla effect
-	if ( cg_entities[es->number].pe.teslaDamagedTime > cg.time - 400 ) {
+	if ( cg_entities[es->number].pe->teslaDamagedTime > cg.time - 400 ) {
 		float alpha;
 
-		alpha = ( 400.0 - (float)( cg.time - cg_entities[es->number].pe.teslaDamagedTime ) ) / 400.0;
+		alpha = ( 400.0 - (float)( cg.time - cg_entities[es->number].pe->teslaDamagedTime ) ) / 400.0;
 
 		ent->shaderRGBA[0] = ( unsigned char )( 50.0 * alpha );
 		ent->shaderRGBA[1] = ( unsigned char )( 130.0 * alpha );
@@ -4479,12 +4479,12 @@ static float CG_SpinnerSpinAngle( centity_t *cent ) {
 	int delta;
 
 	if ( cent->currentState.eFlags & EF_DEAD ) {  // don't spin for dead loper (TODO: spindown, or blow off parts rather than just stopping)
-		return cent->pe.spinnerAngle;
+		return cent->pe->spinnerAngle;
 	}
 
-	delta = cg.time - cent->pe.spinnerTime;
+	delta = cg.time - cent->pe->spinnerTime;
 
-	return -( cent->pe.spinnerAngle + delta * SPINNER_SPEED );
+	return -( cent->pe->spinnerAngle + delta * SPINNER_SPEED );
 }
 
 /*
@@ -4641,10 +4641,10 @@ void CG_Player( centity_t *cent ) {
 	}
 
 	// check time
-	if ( cent->pe.lastTime > cg.time ) {
+	if ( cent->pe->lastTime > cg.time ) {
 		CG_ResetPlayerEntity( cent );
 	}
-	cent->pe.lastTime = cg.time;
+	cent->pe->lastTime = cg.time;
 
 	memset( &legs, 0, sizeof( legs ) );
 	memset( &torso, 0, sizeof( torso ) );
@@ -4748,7 +4748,7 @@ void CG_Player( centity_t *cent ) {
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 	}
 
-	cent->pe.legsRefEnt = legs;
+	cent->pe->legsRefEnt = legs;
 
 	// if the model failed, allow the default nullmodel to be displayed
 	if ( !legs.hModel ) {
@@ -4806,11 +4806,11 @@ void CG_Player( centity_t *cent ) {
 
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 
-		cent->pe.legsRefEnt = legs;
+		cent->pe->legsRefEnt = legs;
 		torso = legs;       // so tag calls use the correct values
 	}
 
-	cent->pe.torsoRefEnt = torso;
+	cent->pe->torsoRefEnt = torso;
 
 
 //	if ( cent->currentState.eFlags & EF_DEAD) {
@@ -4850,21 +4850,21 @@ void CG_Player( centity_t *cent ) {
 
 		// add the current frame to the total, so when it comes to pick a new frame, we choose the average
 		// of those we missed over the last frame
-		cent->pe.head.animationTime += talk_frame;
-		cent->pe.head.animationNumber++;
+		cent->pe->head.animationTime += talk_frame;
+		cent->pe->head.animationNumber++;
 
 		// if we are starting a talk after idling, hurry up the animation
-		if ( ( cent->pe.head.frameTime > cg.time + 30 ) && cent->pe.head.animationTime && !( ( cent->pe.head.frame - ci->modelInfo->headAnims[0].firstFrame ) % HEAD_EMOTION_SUBTYPES ) && !( ( cent->pe.head.oldFrame - ci->modelInfo->headAnims[0].firstFrame ) % HEAD_EMOTION_SUBTYPES ) ) {
-			cent->pe.head.frameTime = cg.time + 30;
+		if ( ( cent->pe->head.frameTime > cg.time + 30 ) && cent->pe->head.animationTime && !( ( cent->pe->head.frame - ci->modelInfo->headAnims[0].firstFrame ) % HEAD_EMOTION_SUBTYPES ) && !( ( cent->pe->head.oldFrame - ci->modelInfo->headAnims[0].firstFrame ) % HEAD_EMOTION_SUBTYPES ) ) {
+			cent->pe->head.frameTime = cg.time + 30;
 		}
 
-		if ( cent->pe.head.frameTime < cg.time ) { // set the new frame
-			cent->pe.head.oldFrame = cent->pe.head.frame;
-			cent->pe.head.oldFrameTime = cent->pe.head.frameTime;
+		if ( cent->pe->head.frameTime < cg.time ) { // set the new frame
+			cent->pe->head.oldFrame = cent->pe->head.frame;
+			cent->pe->head.oldFrameTime = cent->pe->head.frameTime;
 
-			if ( cent->pe.head.animationTime ) {
+			if ( cent->pe->head.animationTime ) {
 
-				talk_frame = (int)( (float)cent->pe.head.animationTime / (float)cent->pe.head.animationNumber );
+				talk_frame = (int)( (float)cent->pe->head.animationTime / (float)cent->pe->head.animationNumber );
 				//subtype = rand()%HEAD_EMOTION_SUBTYPES;
 				emotion = rand() % NUM_EMOTIONS;      // this helps animate the mouth more realistically while talking
 
@@ -4890,43 +4890,43 @@ void CG_Player( centity_t *cent ) {
 					talk_frame = HEAD_EMOTION_SUBTYPES - 1;
 				}
 
-				cent->pe.head.frame = emotion * HEAD_EMOTION_SUBTYPES + talk_frame; //ci->modelInfo->headAnims[emotion*HEAD_EMOTION_SUBTYPES].firstFrame + talk_frame;
-				cent->pe.head.frameTime = cg.time + 80 + rand() % 40; // interpolate for smoother animation vs latency
+				cent->pe->head.frame = emotion * HEAD_EMOTION_SUBTYPES + talk_frame; //ci->modelInfo->headAnims[emotion*HEAD_EMOTION_SUBTYPES].firstFrame + talk_frame;
+				cent->pe->head.frameTime = cg.time + 80 + rand() % 40; // interpolate for smoother animation vs latency
 
-				//CG_Printf("%i head: frame %i, oldframe %i, nextframetime %i\n", cg.time, cent->pe.head.frame, cent->pe.head.oldFrame, cent->pe.head.frameTime );
+				//CG_Printf("%i head: frame %i, oldframe %i, nextframetime %i\n", cg.time, cent->pe->head.frame, cent->pe->head.oldFrame, cent->pe->head.frameTime );
 
 				//if (closed)
-				//	cent->pe.head.frameTime += 30;		// slow it down a bit
+				//	cent->pe->head.frameTime += 30;		// slow it down a bit
 			} else {
 #if 0
 				// debugging, play all the frames and display the frame numbers
-				if ( ++cent->pe.head.frame > ( ci->headAnims[( NUM_EMOTIONS - 1 ) * HEAD_EMOTION_SUBTYPES + HEAD_EMOTION_SUBTYPES - 1].firstFrame ) ) {
-					cent->pe.head.frame = ci->headAnims[0].firstFrame;
+				if ( ++cent->pe->head.frame > ( ci->headAnims[( NUM_EMOTIONS - 1 ) * HEAD_EMOTION_SUBTYPES + HEAD_EMOTION_SUBTYPES - 1].firstFrame ) ) {
+					cent->pe->head.frame = ci->headAnims[0].firstFrame;
 				}
-				cent->pe.head.frameTime = cg.time + 2000;
-				CG_Printf( "%d - %d\n", cent->currentState.number, cent->pe.head.oldFrame );
+				cent->pe->head.frameTime = cg.time + 2000;
+				CG_Printf( "%d - %d\n", cent->currentState.number, cent->pe->head.oldFrame );
 #else
 				while ( ( emotion = rand() % NUM_EMOTIONS ) == 1 ) ; // don't use happy emotion
-				if ( ( cent->pe.head.frame - ci->modelInfo->headAnims[0].firstFrame ) % HEAD_EMOTION_SUBTYPES ) {
-					cent->pe.head.frame = ci->modelInfo->headAnims[emotion * HEAD_EMOTION_SUBTYPES].firstFrame;
-					cent->pe.head.frameTime = cg.time + 150;
+				if ( ( cent->pe->head.frame - ci->modelInfo->headAnims[0].firstFrame ) % HEAD_EMOTION_SUBTYPES ) {
+					cent->pe->head.frame = ci->modelInfo->headAnims[emotion * HEAD_EMOTION_SUBTYPES].firstFrame;
+					cent->pe->head.frameTime = cg.time + 150;
 				} else {    // mouth is currently closed
-					cent->pe.head.frame = ci->modelInfo->headAnims[emotion * HEAD_EMOTION_SUBTYPES].firstFrame;
-					cent->pe.head.frameTime = cent->pe.head.frameTime + 1000 + rand() % 2000;
-					if ( cent->pe.head.frameTime < cg.time ) {
-						cent->pe.head.frameTime = cg.time + 1000;
+					cent->pe->head.frame = ci->modelInfo->headAnims[emotion * HEAD_EMOTION_SUBTYPES].firstFrame;
+					cent->pe->head.frameTime = cent->pe->head.frameTime + 1000 + rand() % 2000;
+					if ( cent->pe->head.frameTime < cg.time ) {
+						cent->pe->head.frameTime = cg.time + 1000;
 					}
 				}
 #endif
 			}
 
-			cent->pe.head.animationTime = 0;
-			cent->pe.head.animationNumber = 0;
+			cent->pe->head.animationTime = 0;
+			cent->pe->head.animationNumber = 0;
 		}
 
-		head.frame = cent->pe.head.frame;
-		head.oldframe = cent->pe.head.oldFrame;
-		head.backlerp = 1.0 - (float)( cg.time - cent->pe.head.oldFrameTime ) / ( cent->pe.head.frameTime - cent->pe.head.oldFrameTime );
+		head.frame = cent->pe->head.frame;
+		head.oldframe = cent->pe->head.oldFrame;
+		head.backlerp = 1.0 - (float)( cg.time - cent->pe->head.oldFrameTime ) / ( cent->pe->head.frameTime - cent->pe->head.oldFrameTime );
 
 	} else {    // dead
 		head.frame = 0;
@@ -4959,7 +4959,7 @@ void CG_Player( centity_t *cent ) {
 
 	CG_AddRefEntityWithPowerups( &head, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 
-	cent->pe.headRefEnt = head;
+	cent->pe->headRefEnt = head;
 
 	// add the shadow
 	CG_PlayerShadow( cent, &shadowPlane );
@@ -5339,20 +5339,20 @@ void CG_ResetPlayerEntity( centity_t *cent ) {
 	cent->extrapolated = qfalse;
 
 	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
-		CG_ClearLerpFrameRate( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe.legs, cent->currentState.legsAnim, cent );
-		CG_ClearLerpFrame( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe.torso, cent->currentState.torsoAnim );
+		CG_ClearLerpFrameRate( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe->legs, cent->currentState.legsAnim, cent );
+		CG_ClearLerpFrame( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe->torso, cent->currentState.torsoAnim );
 
-		memset( &cent->pe.legs, 0, sizeof( cent->pe.legs ) );
-		cent->pe.legs.yawAngle = cent->nextState.apos.trBase[YAW]; //cent->rawAngles[YAW];
-		cent->pe.legs.yawing = qfalse;
-		cent->pe.legs.pitchAngle = cent->nextState.apos.trBase[PITCH];
-		cent->pe.legs.pitching = qfalse;
+		memset( &cent->pe->legs, 0, sizeof( cent->pe->legs ) );
+		cent->pe->legs.yawAngle = cent->nextState.apos.trBase[YAW]; //cent->rawAngles[YAW];
+		cent->pe->legs.yawing = qfalse;
+		cent->pe->legs.pitchAngle = cent->nextState.apos.trBase[PITCH];
+		cent->pe->legs.pitching = qfalse;
 
-		memset( &cent->pe.torso, 0, sizeof( cent->pe.torso ) );
-		cent->pe.torso.yawAngle = cent->nextState.apos.trBase[YAW]; //cent->rawAngles[YAW];
-		cent->pe.torso.yawing = qfalse;
-		cent->pe.torso.pitchAngle = cent->nextState.apos.trBase[PITCH]; //cent->rawAngles[PITCH];
-		cent->pe.torso.pitching = qfalse;
+		memset( &cent->pe->torso, 0, sizeof( cent->pe->torso ) );
+		cent->pe->torso.yawAngle = cent->nextState.apos.trBase[YAW]; //cent->rawAngles[YAW];
+		cent->pe->torso.yawing = qfalse;
+		cent->pe->torso.pitchAngle = cent->nextState.apos.trBase[PITCH]; //cent->rawAngles[PITCH];
+		cent->pe->torso.pitching = qfalse;
 	}
 
 	BG_EvaluateTrajectory( &cent->currentState.pos, cg.time, cent->lerpOrigin );
@@ -5362,12 +5362,12 @@ void CG_ResetPlayerEntity( centity_t *cent ) {
 	VectorCopy( cent->lerpAngles, cent->rawAngles );
 
 	if ( cg_debugPosition.integer ) {
-		CG_Printf( "%i ResetPlayerEntity yaw=%f\n", cent->currentState.number, cent->pe.torso.yawAngle );
+		CG_Printf( "%i ResetPlayerEntity yaw=%f\n", cent->currentState.number, cent->pe->torso.yawAngle );
 	}
 
-	cent->pe.painAnimLegs = -1;
-	cent->pe.painAnimTorso = -1;
-	cent->pe.animSpeed = 1.0;
+	cent->pe->painAnimLegs = -1;
+	cent->pe->painAnimTorso = -1;
+	cent->pe->animSpeed = 1.0;
 
 }
 
@@ -5377,11 +5377,13 @@ void CG_GetBleedOrigin( vec3_t head_origin, vec3_t torso_origin, vec3_t legs_ori
 	refEntity_t torso;
 	refEntity_t head;
 	centity_t       *cent, backupCent;
+	playerEntity_t backupPe;
 
 	ci = &cgs.clientinfo[ fleshEntityNum ];
 
 	cent = &cg_entities [ fleshEntityNum ];
 	backupCent = *cent;
+	backupPe = *cent->pe;
 
 	if ( !ci->infoValid ) {
 		return;
@@ -5401,6 +5403,7 @@ void CG_GetBleedOrigin( vec3_t head_origin, vec3_t torso_origin, vec3_t legs_ori
 
 	// Ridah, restore the cent so we don't interfere with animation timings
 	*cent = backupCent;
+	*cent->pe = backupPe;
 
 	if ( !legs.hModel ) {
 		return;
@@ -5452,7 +5455,7 @@ qboolean CG_GetTag( int clientNum, char *tagname, orientation_t *or ) {
 		}
 	}
 
-	refent = &cent->pe.legsRefEnt;
+	refent = &cent->pe->legsRefEnt;
 
 	if ( trap_R_LerpTag( or, refent, tagname, 0 ) < 0 ) {
 		return qfalse;
@@ -5501,11 +5504,11 @@ qboolean CG_GetWeaponTag( int clientNum, char *tagname, orientation_t *or ) {
 		}
 	}
 
-	if ( cent->pe.gunRefEntFrame < cg.clientFrame - 1 ) {
+	if ( cent->pe->gunRefEntFrame < cg.clientFrame - 1 ) {
 		return qfalse;
 	}
 
-	refent = &cent->pe.gunRefEnt;
+	refent = &cent->pe->gunRefEnt;
 
 	if ( trap_R_LerpTag( or, refent, tagname, 0 ) < 0 ) {
 		return qfalse;

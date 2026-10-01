@@ -33,37 +33,132 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "g_local.h"
 
-// Ridah, increased this (fixes Dan's crash)
-//#define POOLSIZE	(256 * 1024)
-//#define POOLSIZE	(2048 * 1024)
-#define POOLSIZE    ( 4096 * 1024 )   //----(SA)	upped to try to get assault_34 going
+// What G_Alloc hands out comes from blocks malloc'd as the level needs them,
+// all freed when it ends (G_FreeMemory): nothing is held for the worst level.
+// Not the hunk, as some of it is allocated in play, after the hunk's mark.
+#define MEM_BLOCK       ( 128 * 1024 )
+#define MEM_ALIGN( x )  ( ( ( x ) + 7 ) & ~7 )
 
-static char memoryPool[POOLSIZE];
-static int allocPoint;
+typedef struct memBlock_s {
+	struct memBlock_s *next;
+	int size, used;
+} memBlock_t;
+
+#define MEM_HEADER      MEM_ALIGN( sizeof( memBlock_t ) )
+
+static memBlock_t *memBlocks;  // the one being filled first
+static int memUsed, memHeld;
+
+static memBlock_t *G_NewMemBlock( int size ) {
+	memBlock_t *b;
+
+	b = malloc( MEM_HEADER + size );
+	if ( !b ) {
+		G_Error( "G_Alloc: out of memory for %i bytes", size );
+	}
+	b->size = size;
+	b->used = 0;
+	memHeld += MEM_HEADER + size;
+	return b;
+}
 
 void *G_Alloc( int size ) {
+	memBlock_t *b;
 	char    *p;
 
+	size = MEM_ALIGN( size );
+
+	if ( size > MEM_BLOCK / 2 ) {
+		// a block of its own, behind the one being filled
+		b = G_NewMemBlock( size );
+		if ( memBlocks ) {
+			b->next = memBlocks->next;
+			memBlocks->next = b;
+		} else {
+			b->next = NULL;
+			memBlocks = b;
+		}
+	} else {
+		b = memBlocks;
+		if ( !b || b->used + size > b->size ) {
+			b = G_NewMemBlock( MEM_BLOCK );
+			b->next = memBlocks;
+			memBlocks = b;
+		}
+	}
+
+	p = (char *)b + MEM_HEADER + b->used;
+	b->used += size;
+	memUsed += size;
+	memset( p, 0, size );
+
 	if ( g_debugAlloc.integer ) {
-		G_Printf( "G_Alloc of %i bytes (%i left)\n", size, POOLSIZE - allocPoint - ( ( size + 31 ) & ~31 ) );
+		G_Printf( "G_Alloc of %i bytes (%i in use, %i held)\n", size, memUsed, memHeld );
 	}
-
-	if ( allocPoint + size > POOLSIZE ) {
-		G_Error( "G_Alloc: failed on allocation of %i bytes", size );
-		return NULL;
-	}
-
-	p = &memoryPool[allocPoint];
-
-	allocPoint += ( size + 31 ) & ~31;
-
 	return p;
 }
 
+void G_FreeMemory( void ) {
+	memBlock_t *b, *next;
+
+	for ( b = memBlocks ; b ; b = next ) {
+		next = b->next;
+		free( b );
+	}
+	memBlocks = NULL;
+	memUsed = memHeld = 0;
+}
+
 void G_InitMemory( void ) {
-	allocPoint = 0;
+	G_FreeMemory();
 }
 
 void Svcmd_GameMem_f( void ) {
-	G_Printf( "Game memory status: %i out of %i bytes allocated\n", allocPoint, POOLSIZE );
+	G_Printf( "Game memory status: %i bytes allocated, %i held\n", memUsed, memHeld );
 }
+
+#ifndef _arch_dreamcast
+/*
+=================
+G_PoolStatsFrame / G_PoolStatsReport
+
+The most of each game pool a level uses at once, printed when the level
+ends. PC only.
+=================
+*/
+static int peakEnts, peakInuse, peakClients;
+
+void G_PoolStatsFrame( void ) {
+	int i, n;
+
+	if ( level.num_entities > peakEnts ) {
+		peakEnts = level.num_entities;
+	}
+	for ( i = n = 0 ; i < level.num_entities ; i++ ) {
+		if ( g_entities[i].inuse ) {
+			n++;
+		}
+	}
+	if ( n > peakInuse ) {
+		peakInuse = n;
+	}
+	for ( i = n = 0 ; i < level.maxclients ; i++ ) {
+		if ( g_entities[i].inuse ) {
+			n++;
+		}
+	}
+	if ( n > peakClients ) {
+		peakClients = n;
+	}
+}
+
+void G_PoolStatsReport( void ) {
+	char mapname[MAX_QPATH];
+
+	trap_Cvar_VariableStringBuffer( "mapname", mapname, sizeof( mapname ) );
+	G_Printf( "POOL game %s: gentities %d in use (highest num %d) x %d; clients %d of %d x %d; g_mem %d (held %d)\n",
+			  mapname, peakInuse, peakEnts, (int)sizeof( gentity_t ), peakClients, level.maxclients,
+			  (int)sizeof( gclient_t ), memUsed, memHeld );
+	peakEnts = peakInuse = peakClients = 0;
+}
+#endif

@@ -3036,8 +3036,8 @@ void    R_ShaderList_f( void ) {
 
 // Ridah, optimized shader loading
 
-#define MAX_SHADER_STRING_POINTERS  100000
-shaderStringPointer_t shaderStringPointerList[MAX_SHADER_STRING_POINTERS];
+// the names that share a checksum, on the hunk with the text they point into
+#define SHADER_STRING_POINTER_CHUNK 1024
 
 /*
 ====================
@@ -3048,7 +3048,8 @@ static void BuildShaderChecksumLookup( void ) {
 	char *p = s_shaderText, *pOld;
 	char *token;
 	unsigned short int checksum;
-	int numShaderStringPointers = 0;
+	shaderStringPointer_t *chunk = NULL;
+	int chunkUsed = SHADER_STRING_POINTER_CHUNK;
 
 	// initialize the checksums
 	memset( shaderChecksumLookup, 0, sizeof( shaderChecksumLookup ) );
@@ -3083,11 +3084,12 @@ static void BuildShaderChecksumLookup( void ) {
 			// create a new list item
 			shaderStringPointer_t *newStrPtr;
 
-			if ( numShaderStringPointers >= MAX_SHADER_STRING_POINTERS ) {
-				ri.Error( ERR_DROP, "MAX_SHADER_STRING_POINTERS exceeded, too many shaders" );
+			if ( chunkUsed == SHADER_STRING_POINTER_CHUNK ) {
+				chunk = ri.Hunk_Alloc( SHADER_STRING_POINTER_CHUNK * sizeof( *chunk ), h_low );
+				chunkUsed = 0;
 			}
 
-			newStrPtr = &shaderStringPointerList[numShaderStringPointers++]; //ri.Hunk_Alloc( sizeof( shaderStringPointer_t ), h_low );
+			newStrPtr = &chunk[chunkUsed++];
 			newStrPtr->pStr = pOld;
 			newStrPtr->next = shaderChecksumLookup[checksum].next;
 			shaderChecksumLookup[checksum].next = newStrPtr;

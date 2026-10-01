@@ -41,7 +41,7 @@ MARK POLYS
 
 markPoly_t cg_activeMarkPolys;          // double linked list
 markPoly_t  *cg_freeMarkPolys;          // single linked list
-markPoly_t cg_markPolys[MAX_MARK_POLYS];
+cgPool_t cg_markPolyPool = { sizeof( markPoly_t ), 64, MAX_MARK_POLYS };
 
 /*
 ===================
@@ -51,18 +51,32 @@ This is called at startup and for tournement restarts
 ===================
 */
 void    CG_InitMarkPolys( void ) {
-	int i;
-	markPoly_t *trav, *lasttrav;
-
-	memset( cg_markPolys, 0, sizeof( cg_markPolys ) );
-
+	CG_PoolFree( &cg_markPolyPool );
 	cg_activeMarkPolys.nextMark = &cg_activeMarkPolys;
 	cg_activeMarkPolys.prevMark = &cg_activeMarkPolys;
-	cg_freeMarkPolys = cg_markPolys;
-	for ( i = 0, trav = cg_markPolys + 1, lasttrav = cg_markPolys ; i < MAX_MARK_POLYS - 1 ; i++, trav++ ) {
-		lasttrav->nextMark = trav;
-		lasttrav = trav;
+	cg_freeMarkPolys = NULL;
+}
+
+/*
+===================
+CG_GrowMarkPolys
+
+Another chunk onto the free list, qfalse if there are all there may be
+===================
+*/
+static qboolean CG_GrowMarkPolys( void ) {
+	markPoly_t *mp = CG_PoolGrow( &cg_markPolyPool );
+	int i;
+
+	if ( !mp ) {
+		return qfalse;
 	}
+	for ( i = 0 ; i < cg_markPolyPool.chunkItems - 1 ; i++ ) {
+		mp[i].nextMark = &mp[i + 1];
+	}
+	mp[i].nextMark = cg_freeMarkPolys;
+	cg_freeMarkPolys = mp;
+	return qtrue;
 }
 
 
@@ -96,7 +110,7 @@ markPoly_t  *CG_AllocMark( int endTime ) {
 	markPoly_t  *le; //, *trav, *lastTrav;
 	int time;
 
-	if ( !cg_freeMarkPolys ) {
+	if ( !cg_freeMarkPolys && !CG_GrowMarkPolys() ) {
 		// no free entities, so free the one at the end of the chain
 		// remove the oldest active entity
 		time = cg_activeMarkPolys.prevMark->time;

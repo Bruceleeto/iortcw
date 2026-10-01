@@ -41,6 +41,17 @@ If you have questions concerning this license or the applicable additional terms
 
 */
 
+#ifdef USE_PVR
+// stencil shadows (r_shadows 2): the PVR has no stencil buffer
+
+void RB_ShadowTessEnd( void ) {
+}
+
+void RB_ShadowFinish( void ) {
+}
+
+#else
+
 typedef struct {
 	int i2;
 	int facing;
@@ -347,6 +358,8 @@ void RB_ShadowFinish( void ) {
 	qglColor4f( 1,1,1,1 );
 	qglDisable( GL_STENCIL_TEST );
 }
+
+#endif
 
 
 /*

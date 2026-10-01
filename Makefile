@@ -12,6 +12,9 @@
 #
 #   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
 #                         (source /opt/toolchains/dc/kos/environ.sh first)
+#   make disc          Dreamcast build plus the sp pk3s (with sp_dc.pk3 if
+#                      made) in a selfboot disc image -> build/iowolfsp.cdi
+#                      (needs mkdcdisc; sources KOS's environ.sh itself)
 #
 # Everything (engine, renderer, qagame, cgame, ui) is linked into one
 # executable; no renderer or game shared libraries are built or loaded.
@@ -124,7 +127,7 @@ endif
 
 MODULE_LD ?= $(CC) $(ARCH_FLAGS) -r -nostdlib
 
-.PHONY: all sp game clean pvrtest assets
+.PHONY: all sp game clean pvrtest assets disc
 
 all: sp
 
@@ -196,6 +199,28 @@ $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef
 $(eval $(call assets_pk3,sp,$(SP_PAKS)))
+
+#############################################################################
+# make disc: the Dreamcast build and the sp pk3s on a selfboot .cdi; the
+# data goes in main/ at the root of the disc (/cd/main on the Dreamcast)
+#############################################################################
+
+MKDCDISC  ?= mkdcdisc
+DISC_DIR   = $(BUILD_DIR)/disc
+DISC_CDI   = $(BUILD_DIR)/iowolfsp.cdi
+DISC_PAKS  = $(SP_PAKS) $(wildcard $(ASSETS_DIR)/sp_dc.pk3)
+DISC_FILES = $(wildcard $(ASSETS_DIR)/scripts/translation.cfg)
+
+disc:
+	@. $(KOS_BASE)/environ.sh && $(MAKE) --no-print-directory PLATFORM=dc sp
+	@test -n "$(DISC_PAKS)" || { echo "no pk3s in $(ASSETS_DIR)" >&2; exit 1; }
+	@test -f $(ASSETS_DIR)/sp_dc.pk3 || echo "warning: no sp_dc.pk3 (make assets): the disc has the PC data only" >&2
+	$(echo_cmd) "DISC $(DISC_CDI)"
+	$(Q)rm -rf $(DISC_DIR) && mkdir -p $(DISC_DIR)/main/scripts
+	$(Q)for f in $(DISC_PAKS); do ln -f "$$f" $(DISC_DIR)/main/ 2>/dev/null || cp "$$f" $(DISC_DIR)/main/; done
+	$(Q)for f in $(DISC_FILES); do cp "$$f" $(DISC_DIR)/main/scripts/; done
+	$(Q)$(MKDCDISC) -e $(BUILD_DIR)/sp-sh4/iowolfsp.elf -D $(DISC_DIR) -o $(DISC_CDI) \
+	  -n "Return to Castle Wolfenstein" -N
 
 ifdef GAME
 

@@ -58,7 +58,7 @@ typedef struct trailJunc_s
 
 #define MAX_TRAILJUNCS  4096
 
-trailJunc_t trailJuncs[MAX_TRAILJUNCS];
+cgPool_t cg_trailPool = { sizeof( trailJunc_t ), 256, MAX_TRAILJUNCS };
 trailJunc_t *freeTrails, *activeTrails;
 trailJunc_t *headTrails;
 
@@ -72,30 +72,58 @@ CG_ClearTrails
 ===============
 */
 void CG_ClearTrails( void ) {
-	int i;
-
-	memset( trailJuncs, 0, sizeof( trailJunc_t ) * MAX_TRAILJUNCS );
-
-	freeTrails = trailJuncs;
+	CG_PoolFree( &cg_trailPool );
+	freeTrails = NULL;
 	activeTrails = NULL;
 	headTrails = NULL;
 
-	for ( i = 0 ; i < MAX_TRAILJUNCS ; i++ )
-	{
-		trailJuncs[i].nextGlobal = &trailJuncs[i + 1];
-
-		if ( i > 0 ) {
-			trailJuncs[i].prevGlobal = &trailJuncs[i - 1];
-		} else {
-			trailJuncs[i].prevGlobal = NULL;
-		}
-
-		trailJuncs[i].inuse = qfalse;
-	}
-	trailJuncs[MAX_TRAILJUNCS - 1].nextGlobal = NULL;
-
 	initTrails = qtrue;
 	numTrailsInuse = 0;
+}
+
+/*
+===============
+CG_GrowTrails
+
+Another chunk onto the free list, qfalse if there are all there may be
+===============
+*/
+static qboolean CG_GrowTrails( void ) {
+	trailJunc_t *t = CG_PoolGrow( &cg_trailPool );
+	int i, n = cg_trailPool.chunkItems;
+
+	if ( !t ) {
+		return qfalse;
+	}
+	for ( i = 0 ; i < n ; i++ ) {
+		t[i].nextGlobal = i < n - 1 ? &t[i + 1] : freeTrails;
+		t[i].prevGlobal = i > 0 ? &t[i - 1] : NULL;
+	}
+	if ( freeTrails ) {
+		freeTrails->prevGlobal = &t[n - 1];
+	}
+	freeTrails = t;
+	return qtrue;
+}
+
+/*
+===============
+CG_TrailJunc
+
+The junction a CG_Add*Junc index names, NULL if none
+===============
+*/
+static trailJunc_t *CG_TrailJunc( int index ) {
+	trailJunc_t *j;
+
+	if ( index <= 0 ) {
+		return NULL;
+	}
+	j = CG_PoolItem( &cg_trailPool, index - 1 );
+	if ( !j || !j->inuse ) {
+		return NULL;
+	}
+	return j;
 }
 
 /*
@@ -106,7 +134,7 @@ CG_SpawnTrailJunc
 trailJunc_t *CG_SpawnTrailJunc( trailJunc_t *headJunc ) {
 	trailJunc_t *j;
 
-	if ( !freeTrails ) {
+	if ( !freeTrails && !CG_GrowTrails() ) {
 		return NULL;
 	}
 
@@ -180,15 +208,7 @@ CG_AddTrailJunc
 int CG_AddTrailJunc( int headJuncIndex, qhandle_t shader, int spawnTime, int sType, vec3_t pos, int trailLife, float alphaStart, float alphaEnd, float startWidth, float endWidth, int flags, vec3_t colorStart, vec3_t colorEnd, float sRatio, float animSpeed ) {
 	trailJunc_t *j, *headJunc;
 
-	if ( headJuncIndex > 0 ) {
-		headJunc = &trailJuncs[headJuncIndex - 1];
-
-		if ( !headJunc->inuse ) {
-			headJunc = NULL;
-		}
-	} else {
-		headJunc = NULL;
-	}
+	headJunc = CG_TrailJunc( headJuncIndex );
 
 	j = CG_SpawnTrailJunc( headJunc );
 	if ( !j ) {
@@ -237,7 +257,7 @@ int CG_AddTrailJunc( int headJuncIndex, qhandle_t shader, int spawnTime, int sTy
 		}
 	}
 
-	return ( (int)( j - trailJuncs ) + 1 );
+	return CG_PoolIndex( &cg_trailPool, j ) + 1;
 }
 
 /*
@@ -250,15 +270,7 @@ CG_AddSparkJunc
 int CG_AddSparkJunc( int headJuncIndex, qhandle_t shader, vec3_t pos, int trailLife, float alphaStart, float alphaEnd, float startWidth, float endWidth ) {
 	trailJunc_t *j, *headJunc;
 
-	if ( headJuncIndex > 0 ) {
-		headJunc = &trailJuncs[headJuncIndex - 1];
-
-		if ( !headJunc->inuse ) {
-			headJunc = NULL;
-		}
-	} else {
-		headJunc = NULL;
-	}
+	headJunc = CG_TrailJunc( headJuncIndex );
 
 	j = CG_SpawnTrailJunc( headJunc );
 	if ( !j ) {
@@ -287,7 +299,7 @@ int CG_AddSparkJunc( int headJuncIndex, qhandle_t shader, vec3_t pos, int trailL
 	j->widthStart = startWidth;
 	j->widthEnd = endWidth;
 
-	return ( (int)( j - trailJuncs ) + 1 );
+	return CG_PoolIndex( &cg_trailPool, j ) + 1;
 }
 
 /*
@@ -301,15 +313,7 @@ int CG_AddSmokeJunc( int headJuncIndex, qhandle_t shader, vec3_t pos, int trailL
 #define ST_RATIO    4.0     // sprite image: width / height
 	trailJunc_t *j, *headJunc;
 
-	if ( headJuncIndex > 0 ) {
-		headJunc = &trailJuncs[headJuncIndex - 1];
-
-		if ( !headJunc->inuse ) {
-			headJunc = NULL;
-		}
-	} else {
-		headJunc = NULL;
-	}
+	headJunc = CG_TrailJunc( headJuncIndex );
 
 	j = CG_SpawnTrailJunc( headJunc );
 	if ( !j ) {
@@ -345,7 +349,7 @@ int CG_AddSmokeJunc( int headJuncIndex, qhandle_t shader, vec3_t pos, int trailL
 		j->alphaEnd = 0.0;
 	}
 
-	return ( (int)( j - trailJuncs ) + 1 );
+	return CG_PoolIndex( &cg_trailPool, j ) + 1;
 }
 
 void CG_KillTrail( trailJunc_t *t );
@@ -784,3 +788,11 @@ void CG_AddTrails( void ) {
 		j = jNext;
 	}
 }
+
+#ifndef _arch_dreamcast
+// for cg_poolstats.c
+int CG_PoolTrailJuncs( int *size ) {
+	*size = sizeof( trailJunc_t );
+	return numTrailsInuse;
+}
+#endif

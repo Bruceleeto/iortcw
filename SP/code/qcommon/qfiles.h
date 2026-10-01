@@ -601,6 +601,12 @@ typedef struct {
 	int fileofs, filelen;
 } lump_t;
 
+// a lump read into memory on its own (CM_ReadLump)
+typedef struct {
+	void *data;
+	int len;
+} bspLump_t;
+
 #define LUMP_ENTITIES       0
 #define LUMP_SHADERS        1
 #define LUMP_PLANES         2

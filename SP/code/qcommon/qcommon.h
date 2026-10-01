@@ -458,6 +458,7 @@ void    FS_ForceFlush( fileHandle_t f );
 // forces flush on files we're writing to.
 
 void    FS_FreeFile( void *buffer );
+void    *FS_AllocFileMemory( int size );
 // frees the memory returned by FS_ReadFile
 
 void    FS_WriteFile( const char *qpath, const void *buffer, int size );
@@ -950,8 +951,6 @@ typedef enum
 
 dialogResult_t Sys_Dialog( dialogType_t type, const char *message, const char *title );
 
-void Sys_RemovePIDFile( const char *gamedir );
-void Sys_InitPIDFile( const char *gamedir );
 
 void Sys_StartProcess( char *cmdline, qboolean doexit );            // NERVE - SMF
 // TTimo

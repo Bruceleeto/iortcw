@@ -32,6 +32,13 @@ If you have questions concerning this license or the applicable additional terms
 #include "../renderer/tr_types.h"
 
 void        CM_LoadMap( const char *name, qboolean clientload, int *checksum );
+
+fileHandle_t CM_OpenBsp( const char *name, dheader_t *header );
+void        CM_ReadLump( fileHandle_t f, const lump_t *l, bspLump_t *out );
+void        CM_ReadLumpInto( fileHandle_t f, const lump_t *l, void *dest );
+void        CM_FreeLump( bspLump_t *l );
+cplane_t    *CM_WorldPlanes( int *numPlanes );
+byte        *CM_WorldVis( int *numClusters, int *clusterBytes );
 void        CM_ClearMap( void );
 
 clipHandle_t CM_InlineModel( int index );       // 0 = world, 1 + are bmodels

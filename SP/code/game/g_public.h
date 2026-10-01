@@ -67,9 +67,6 @@ If you have questions concerning this license or the applicable additional terms
 
 
 typedef struct {
-	entityState_t	unused;			// apparently this field was put here accidentally
-						//  (and is kept only for compatibility, as a struct pad)
-
 	qboolean linked;                // qfalse if not in any good cluster
 	int linkcount;
 

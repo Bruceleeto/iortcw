@@ -400,6 +400,7 @@ static snapshot_t *CG_ReadNextSnapshot( void ) {
 				cg.predictedPlayerEntity.nextState = backupCent.nextState;
 				cg.predictedPlayerEntity.currentValid = backupCent.currentValid;
 				cg.predictedPlayerEntity.interpolate = backupCent.interpolate;
+				CG_ResetPlayerEntities();
 
 				CG_SetInitialSnapshot( dest );
 				cg.nextFrameTeleport = qtrue;

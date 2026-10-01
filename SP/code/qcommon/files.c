@@ -1920,12 +1920,18 @@ int FS_Seek( fileHandle_t f, long offset, int origin ) {
 				if ( remainder == currentPosition ) {
 					return offset;
 				}
+				// forward: skip from here, only going back starts over
+				if ( remainder > currentPosition ) {
+					remainder -= currentPosition;
+					goto skip;
+				}
 				unzSetOffset(fsh[f].handleFiles.file.z, fsh[f].zipFilePos);
 				unzOpenCurrentFile(fsh[f].handleFiles.file.z);
 				//fallthrough
 
 			case FS_SEEK_END:
 			case FS_SEEK_CUR:
+			skip:
 				while( remainder > PK3_SEEK_BUFFER_SIZE ) {
 					FS_Read( buffer, PK3_SEEK_BUFFER_SIZE, f );
 					remainder -= PK3_SEEK_BUFFER_SIZE;
@@ -2172,6 +2178,19 @@ a null buffer will just return the file length without loading
 long FS_ReadFile(const char *qpath, void **buffer)
 {
 	return FS_ReadFileDir(qpath, NULL, qfalse, buffer);
+}
+
+/*
+=============
+FS_AllocFileMemory
+
+Temp memory given back with FS_FreeFile, like a file FS_ReadFile read: until
+then FS_FreeFile won't clear the temp memory under it
+=============
+*/
+void *FS_AllocFileMemory( int size ) {
+	fs_loadStack++;
+	return Hunk_AllocateTempMemory( size );
 }
 
 /*
@@ -4326,9 +4345,6 @@ void FS_Restart( int checksumFeed ) {
 	lastGameDir = ( lastValidGame[0] ) ? lastValidGame : lastValidComBaseGame;
 
 	if ( Q_stricmp( FS_GetCurrentGameDir(), lastGameDir ) ) {
-		Sys_RemovePIDFile( lastGameDir );
-		Sys_InitPIDFile( FS_GetCurrentGameDir() );
-
 		// skip the wolfconfig.cfg if "safe" is on the command line
 		if ( !Com_SafeMode() ) {
 			Cbuf_AddText ("exec " Q3CONFIG_CFG "\n");

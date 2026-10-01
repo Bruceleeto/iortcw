@@ -1643,6 +1643,10 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 		CG_Printf( "cg.clientFrame:%i\n", cg.clientFrame );
 	}
 
+#ifndef _arch_dreamcast
+	CG_PoolStatsFrame();
+#endif
+
 	DEBUGTIME
 }
 

@@ -1351,6 +1351,9 @@ G_ShutdownGame
 =================
 */
 void G_ShutdownGame( int restart ) {
+#ifndef _arch_dreamcast
+	G_PoolStatsReport();
+#endif
 	if ( g_gametype.integer != GT_SINGLE_PLAYER ) {
 		G_Printf( "==== ShutdownGame ====\n" );
 	}
@@ -1388,6 +1391,8 @@ void G_ShutdownGame( int restart ) {
 	if ( trap_Cvar_VariableIntegerValue( "bot_enable" ) ) {
 		BotAIShutdown( restart );
 	}
+
+	G_FreeMemory();
 }
 
 
@@ -2477,6 +2482,10 @@ void G_RunFrame( int levelTime ) {
 
 	// get any cvar changes
 	G_UpdateCvars();
+
+#ifndef _arch_dreamcast
+	G_PoolStatsFrame();
+#endif
 
 	//
 	// go through all allocated objects

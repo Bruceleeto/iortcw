@@ -224,7 +224,7 @@ void CG_LoseArmor( centity_t *cent, int index ) {
 		return;
 	}
 
-	CG_GetOriginForTag( cent, &cent->pe.torsoRefEnt, tags[index], 0, origin, NULL );
+	CG_GetOriginForTag( cent, &cent->pe->torsoRefEnt, tags[index], 0, origin, NULL );
 
 	// calculate direction vector based on player center->tag position
 	VectorSubtract( origin, cent->currentState.origin, dir );
@@ -1636,7 +1636,7 @@ static void CG_Efx( centity_t *cent ) {
 					// take damage
 					if ( trace.entityNum != ENTITYNUM_WORLD ) {
 //						CG_ClientDamage(trace.entityNum, cent->currentState.number, CLDMG_TESLA);
-//						cg_entities[trace.entityNum].pe.teslaDamagedTime = cg.time;
+//						cg_entities[trace.entityNum].pe->teslaDamagedTime = cg.time;
 					}
 
 					VectorCopy( trace.endpos, cent->boltLocs[i] );
@@ -2651,7 +2651,7 @@ void CG_AddPacketEntities( void ) {
 	// RF, count the number of players in the scene, so we can force low LOD's for dead bodies
 	for ( num = 0, clcount = 0 ; num < cg.snap->numEntities ; num++ ) {
 		cent = &cg_entities[ cg.snap->entities[ num ].number ];
-		cent->pe.forceLOD = qfalse;
+		cent->pe->forceLOD = qfalse;
 		if ( cent->currentState.number < MAX_CLIENTS ) {
 			clcount++;
 		}

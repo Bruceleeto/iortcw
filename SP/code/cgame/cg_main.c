@@ -94,6 +94,29 @@ Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr
 cg_t cg;
 cgs_t cgs;
 centity_t cg_entities[MAX_GENTITIES];
+playerEntity_t *cg_playerEntities;  // a level's cgs.maxclients
+static playerEntity_t cg_otherPlayerEntity;
+
+/*
+=================
+CG_ResetPlayerEntities
+
+Only clients animate as players: each of their centities gets a
+playerEntity_t of its own, the rest share one (what they write to it is
+never used) and the predicted player has its own too
+=================
+*/
+void CG_ResetPlayerEntities( void ) {
+	int i;
+
+	memset( cg_playerEntities, 0, cgs.maxclients * sizeof( *cg_playerEntities ) );
+	memset( &cg_otherPlayerEntity, 0, sizeof( cg_otherPlayerEntity ) );
+	memset( &cg.predictedPlayerPe, 0, sizeof( cg.predictedPlayerPe ) );
+	for ( i = 0 ; i < MAX_GENTITIES ; i++ ) {
+		cg_entities[i].pe = i < cgs.maxclients ? &cg_playerEntities[i] : &cg_otherPlayerEntity;
+	}
+	cg.predictedPlayerEntity.pe = &cg.predictedPlayerPe;
+}
 weaponInfo_t cg_weapons[MAX_WEAPONS];
 itemInfo_t cg_items[MAX_ITEMS];
 
@@ -2350,6 +2373,11 @@ void CG_Init( int serverMessageNum, int serverCommandSequence ) {
 	cgs.levelStartTime = atoi( s );
 
 	CG_ParseServerinfo();
+	if ( cgs.maxclients < 1 || cgs.maxclients > MAX_CLIENTS ) {
+		CG_Error( "CG_Init: sv_maxclients %d", cgs.maxclients );
+	}
+	cg_playerEntities = trap_Alloc( cgs.maxclients * sizeof( *cg_playerEntities ) );
+	CG_ResetPlayerEntities();
 
 	// load the new map
 	CG_LoadingString( "collision map" );
@@ -2428,8 +2456,10 @@ Called before every level change or subsystem restart
 =================
 */
 void CG_Shutdown( void ) {
-	// some mods may need to do cleanup work here,
-	// like closing files or archiving session data
+#ifndef _arch_dreamcast
+	CG_PoolStatsReport();
+#endif
+	CG_FreeEffectPools();
 }
 
 void CG_S_AddLoopingSound( int entityNum, const vec3_t origin, const vec3_t velocity, sfxHandle_t sfx, int volume ) {

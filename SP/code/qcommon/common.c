@@ -93,7 +93,6 @@ cvar_t	*com_unfocused;
 cvar_t	*com_maxfpsUnfocused;
 cvar_t	*com_minimized;
 cvar_t	*com_maxfpsMinimized;
-cvar_t	*com_abnormalExit;
 cvar_t	*com_standalone;
 cvar_t	*com_gamename;
 cvar_t	*com_protocol;
@@ -806,7 +805,63 @@ int Com_RealTime( qtime_t *qtime ) {
 Z_Free
 ========================
 */
+#ifndef _arch_dreamcast
+#include <malloc.h>
+#include <execinfo.h>
+static size_t zoneUsed, zonePeak;
+
+// who allocated the hunk, by the two calling functions; printed by
+// Hunk_Clear and turned into names with addr2line. PC only.
+#define MAX_HUNKBY 1024
+static struct {
+	void *caller, *caller2;
+	int perm, temp, count;
+} hunkBy[MAX_HUNKBY];
+static int numHunkBy;
+
+static __attribute__((noinline)) void HunkBy_Record( int size, qboolean temp ) {
+	void *bt[4];
+	int i, n;
+
+	n = backtrace( bt, 4 );
+	for ( i = 0 ; i < numHunkBy ; i++ ) {
+		if ( hunkBy[i].caller == ( n > 2 ? bt[2] : NULL ) && hunkBy[i].caller2 == ( n > 3 ? bt[3] : NULL ) ) {
+			break;
+		}
+	}
+	if ( i == numHunkBy ) {
+		if ( numHunkBy == MAX_HUNKBY ) {
+			return;
+		}
+		numHunkBy++;
+		hunkBy[i].caller = n > 2 ? bt[2] : NULL;
+		hunkBy[i].caller2 = n > 3 ? bt[3] : NULL;
+	}
+	if ( temp ) {
+		hunkBy[i].temp += size;
+	} else {
+		hunkBy[i].perm += size;
+	}
+	hunkBy[i].count++;
+}
+
+static void HunkBy_Report( void ) {
+	int i;
+
+	for ( i = 0 ; i < numHunkBy ; i++ ) {
+		Com_Printf( "HUNKBY %p %p perm %d temp %d count %d\n", hunkBy[i].caller, hunkBy[i].caller2,
+					hunkBy[i].perm, hunkBy[i].temp, hunkBy[i].count );
+	}
+	numHunkBy = 0;
+}
+#endif
+
 void Z_Free( void *ptr ) {
+#ifndef _arch_dreamcast
+	if ( ptr ) {
+		zoneUsed -= malloc_usable_size( ptr );
+	}
+#endif
 	free( ptr );
 }
 
@@ -819,6 +874,12 @@ Z_Malloc
 void *Z_Malloc( int size ) {
 	void *buf = malloc( size );
 	Com_Memset( buf, 0, size );
+#ifndef _arch_dreamcast
+	zoneUsed += malloc_usable_size( buf );
+	if ( zoneUsed > zonePeak ) {
+		zonePeak = zoneUsed;
+	}
+#endif
 	return buf;
 }
 
@@ -1226,6 +1287,13 @@ The server calls this before shutting down or loading a new map
 =================
 */
 void Hunk_Clear( void ) {
+#ifndef _arch_dreamcast
+	HunkBy_Report();
+	Com_Printf( "POOL hunk: low %d (temp peak %d), high %d (temp peak %d), of %d; zone %d now, %d peak\n",
+				hunk_low.permanent, hunk_low.tempHighwater, hunk_high.permanent, hunk_high.tempHighwater,
+				s_hunkTotal, (int)zoneUsed, (int)zonePeak );
+	zonePeak = zoneUsed;
+#endif
 
 #ifndef DEDICATED
 	CL_ShutdownCGame();
@@ -1301,6 +1369,10 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 	// round to cacheline
 	size = ( size + 31 ) & ~31;
 
+#ifndef _arch_dreamcast
+	HunkBy_Record( size, qfalse );
+#endif
+
 	if ( hunk_low.temp + hunk_high.temp + size > s_hunkTotal ) {
 #ifdef HUNK_DEBUG
 		Hunk_Log();
@@ -1370,6 +1442,10 @@ void *Hunk_AllocateTempMemory( int size ) {
 	Hunk_SwapBanks();
 
 	size = PAD(size, sizeof(intptr_t)) + sizeof( hunkHeader_t );
+
+#ifndef _arch_dreamcast
+	HunkBy_Record( size, qtrue );
+#endif
 
 	if ( hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal ) {
 		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
@@ -2329,7 +2405,6 @@ void Com_Init( char *commandLine ) {
 	com_maxfpsUnfocused = Cvar_Get( "com_maxfpsUnfocused", "0", CVAR_ARCHIVE );
 	com_minimized = Cvar_Get( "com_minimized", "0", CVAR_ROM );
 	com_maxfpsMinimized = Cvar_Get( "com_maxfpsMinimized", "0", CVAR_ARCHIVE );
-	com_abnormalExit = Cvar_Get( "com_abnormalExit", "0", CVAR_ROM );
 	com_busyWait = Cvar_Get("com_busyWait", "0", CVAR_ARCHIVE);
 	Cvar_Get("com_errorMessage", "", CVAR_ROM | CVAR_NORESTART);
 
@@ -2353,8 +2428,6 @@ void Com_Init( char *commandLine ) {
 	com_hunkused = Cvar_Get( "com_hunkused", "0", 0 );
 
 	Sys_Init();
-
-	Sys_InitPIDFile( FS_GetCurrentGameDir() );
 
 	VM_Init();
 	SV_Init();

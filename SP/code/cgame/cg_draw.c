@@ -3434,7 +3434,7 @@ static void CG_DrawFlashLightning( void ) {
 
 	cent = &cg_entities[cg.snap->ps.clientNum];
 
-	if ( !cent->pe.teslaDamagedTime || ( cent->pe.teslaDamagedTime > cg.time ) ) {
+	if ( !cent->pe->teslaDamagedTime || ( cent->pe->teslaDamagedTime > cg.time ) ) {
 		return;
 	}
 

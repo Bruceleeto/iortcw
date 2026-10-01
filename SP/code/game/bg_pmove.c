@@ -2533,8 +2533,11 @@ void PM_CoolWeapons( void ) {
 	}
 
 	// a weapon is currently selected, convert current heat value to 0-255 range for client transmission
-	if ( pm->ps->weapon ) {
+	// (none for a weapon that doesn't heat up: 0 / 0 made a NaN, which drew an empty heat bar)
+	if ( pm->ps->weapon && ammoTable[pm->ps->weapon].maxHeat ) {
 		pm->ps->curWeapHeat = ( ( (float)pm->ps->weapHeat[pm->ps->weapon] / (float)ammoTable[pm->ps->weapon].maxHeat ) ) * 255.0f;
+	} else if ( pm->ps->weapon ) {
+		pm->ps->curWeapHeat = 0;
 
 //		if(pm->ps->weapHeat[pm->ps->weapon])
 //			Com_Printf("pm heat: %d, %d\n", pm->ps->weapHeat[pm->ps->weapon], pm->ps->curWeapHeat);

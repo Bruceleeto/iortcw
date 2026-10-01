@@ -38,7 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 									// overwriting game entities
 // done.
 
-localEntity_t cg_localEntities[MAX_LOCAL_ENTITIES];
+cgPool_t cg_localEntityPool = { sizeof( localEntity_t ), 64, MAX_LOCAL_ENTITIES };
 localEntity_t cg_activeLocalEntities;       // double linked list
 localEntity_t   *cg_freeLocalEntities;      // single linked list
 
@@ -53,15 +53,10 @@ This is called at startup and for tournement restarts
 ===================
 */
 void    CG_InitLocalEntities( void ) {
-	int i;
-
-	memset( cg_localEntities, 0, sizeof( cg_localEntities ) );
+	CG_PoolFree( &cg_localEntityPool );
 	cg_activeLocalEntities.next = &cg_activeLocalEntities;
 	cg_activeLocalEntities.prev = &cg_activeLocalEntities;
-	cg_freeLocalEntities = cg_localEntities;
-	for ( i = 0 ; i < MAX_LOCAL_ENTITIES - 1 ; i++ ) {
-		cg_localEntities[i].next = &cg_localEntities[i + 1];
-	}
+	cg_freeLocalEntities = NULL;
 
 	// Ridah, debugging
 	localEntCount = 0;
@@ -94,6 +89,28 @@ void CG_FreeLocalEntity( localEntity_t *le ) {
 
 /*
 ===================
+CG_GrowLocalEntities
+
+Another chunk onto the free list, qfalse if there are all there may be
+===================
+*/
+static qboolean CG_GrowLocalEntities( void ) {
+	localEntity_t *le = CG_PoolGrow( &cg_localEntityPool );
+	int i;
+
+	if ( !le ) {
+		return qfalse;
+	}
+	for ( i = 0 ; i < cg_localEntityPool.chunkItems - 1 ; i++ ) {
+		le[i].next = &le[i + 1];
+	}
+	le[i].next = cg_freeLocalEntities;
+	cg_freeLocalEntities = le;
+	return qtrue;
+}
+
+/*
+===================
 CG_AllocLocalEntity
 
 Will always succeed, even if it requires freeing an old active entity
@@ -102,7 +119,7 @@ Will always succeed, even if it requires freeing an old active entity
 localEntity_t   *CG_AllocLocalEntity( void ) {
 	localEntity_t   *le;
 
-	if ( !cg_freeLocalEntities ) {
+	if ( !cg_freeLocalEntities && !CG_GrowLocalEntities() ) {
 		// no free entities, so free the one at the end of the chain
 		// remove the oldest active entity
 		CG_FreeLocalEntity( cg_activeLocalEntities.prev );

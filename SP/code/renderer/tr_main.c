@@ -1413,7 +1413,7 @@ Radix sort with 4 byte size buckets
 */
 static void R_RadixSort( drawSurf_t *source, int size )
 {
-  static drawSurf_t scratch[ MAX_DRAWSURFS ];
+  drawSurf_t *scratch = ri.Hunk_AllocateTempMemory( size * sizeof( *scratch ) );
 #ifdef Q3_LITTLE_ENDIAN
   R_Radix( 0, size, source, scratch );
   R_Radix( 1, size, scratch, source );
@@ -1425,6 +1425,7 @@ static void R_RadixSort( drawSurf_t *source, int size )
   R_Radix( 1, size, source, scratch );
   R_Radix( 0, size, scratch, source );
 #endif //Q3_LITTLE_ENDIAN
+  ri.Hunk_FreeTempMemory( scratch );
 }
 
 //==========================================================================================

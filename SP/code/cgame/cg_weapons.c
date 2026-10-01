@@ -1512,7 +1512,7 @@ qboolean CG_GetPartFramesFromWeap( centity_t *cent, refEntity_t *part, refEntity
 	int frameoffset = 0;
 	animation_t *anim;
 
-	anim = cent->pe.weap.animation;
+	anim = cent->pe->weap.animation;
 
 	if ( partid == W_MAX_PARTS ) {
 		return qtrue;   // primary weap model drawn for all frames right now
@@ -1524,7 +1524,7 @@ qboolean CG_GetPartFramesFromWeap( centity_t *cent, refEntity_t *part, refEntity
 	}
 
 	// find part's start frame for this animation sequence
-	for ( i = 0; i < cent->pe.weap.animationNumber; i++ ) {
+	for ( i = 0; i < cent->pe->weap.animationNumber; i++ ) {
 		if ( wi->weapAnimations[i].moveSpeed & ( 1 << partid ) ) {     // this part has animation for this sequence
 			frameoffset += wi->weapAnimations[i].numFrames;
 		}
@@ -1686,14 +1686,14 @@ static void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *we
 		return;
 	}
 
-	CG_RunWeapLerpFrame( ci, weapon, &cent->pe.weap, ps->weapAnim, 1 );
+	CG_RunWeapLerpFrame( ci, weapon, &cent->pe->weap, ps->weapAnim, 1 );
 
-	*weapOld        = cent->pe.weap.oldFrame;
-	*weap           = cent->pe.weap.frame;
-	*weapBackLerp   = cent->pe.weap.backlerp;
+	*weapOld        = cent->pe->weap.oldFrame;
+	*weap           = cent->pe->weap.frame;
+	*weapBackLerp   = cent->pe->weap.backlerp;
 
 	if ( cg_debugAnim.integer == 3 ) {
-		CG_Printf( "oldframe: %d   frame: %d   backlerp: %f\n", cent->pe.weap.oldFrame, cent->pe.weap.frame, cent->pe.weap.backlerp );
+		CG_Printf( "oldframe: %d   frame: %d   backlerp: %f\n", cent->pe->weap.oldFrame, cent->pe->weap.frame, cent->pe->weap.backlerp );
 	}
 }
 
@@ -1850,22 +1850,22 @@ static float	CG_MachinegunSpinAngle( centity_t *cent ) {
 	float	angle;
 	float	speed;
 
-	delta = cg.time - cent->pe.barrelTime;
-	if ( cent->pe.barrelSpinning ) {
-		angle = cent->pe.barrelAngle + delta * SPIN_SPEED;
+	delta = cg.time - cent->pe->barrelTime;
+	if ( cent->pe->barrelSpinning ) {
+		angle = cent->pe->barrelAngle + delta * SPIN_SPEED;
 	} else {
 		if ( delta > COAST_TIME ) {
 			delta = COAST_TIME;
 		}
 
 		speed = 0.5 * ( SPIN_SPEED + (float)( COAST_TIME - delta ) / COAST_TIME );
-		angle = cent->pe.barrelAngle + delta * speed;
+		angle = cent->pe->barrelAngle + delta * speed;
 	}
 
-	if ( cent->pe.barrelSpinning == !(cent->currentState.eFlags & EF_FIRING) ) {
-		cent->pe.barrelTime = cg.time;
-		cent->pe.barrelAngle = AngleMod( angle );
-		cent->pe.barrelSpinning = !!(cent->currentState.eFlags & EF_FIRING);
+	if ( cent->pe->barrelSpinning == !(cent->currentState.eFlags & EF_FIRING) ) {
+		cent->pe->barrelTime = cg.time;
+		cent->pe->barrelAngle = AngleMod( angle );
+		cent->pe->barrelSpinning = !!(cent->currentState.eFlags & EF_FIRING);
 	}
 
 	return angle;
@@ -1888,9 +1888,9 @@ static float CG_TeslaSpinAngle( centity_t *cent ) {
 	float	angle;
 //	float	speed;
 
-	delta = cg.time - cent->pe.barrelTime;
+	delta = cg.time - cent->pe->barrelTime;
 
-	angle = cent->pe.barrelAngle;
+	angle = cent->pe->barrelAngle;
 
 	if ( cent->currentState.eFlags & EF_FIRING ) {
 		angle += delta * TESLA_SPINSPEED;
@@ -1898,42 +1898,42 @@ static float CG_TeslaSpinAngle( centity_t *cent ) {
 		angle += delta * TESLA_IDLESPEED;
 	}
 
-	cent->pe.barrelAngle = AngleMod( angle );
+	cent->pe->barrelAngle = AngleMod( angle );
 
-	cent->pe.barrelTime = cg.time;
+	cent->pe->barrelTime = cg.time;
 
 	return AngleMod( angle );
 
 //----(SA)	trying new tesla effect scheme for MK
-//	angle = -(cent->pe.barrelAngle + delta * TESLA_SPINSPEED);
-//	cent->pe.barrelAngle = AngleMod( angle );
+//	angle = -(cent->pe->barrelAngle + delta * TESLA_SPINSPEED);
+//	cent->pe->barrelAngle = AngleMod( angle );
 
 //	if(cent->currentState.eFlags & EF_FIRING)
-//		cent->pe.barrelAngle += delta * TESLA_SPINSPEED;
+//		cent->pe->barrelAngle += delta * TESLA_SPINSPEED;
 //	else
-//		cent->pe.barrelAngle += delta * TESLA_IDLESPEED;
+//		cent->pe->barrelAngle += delta * TESLA_IDLESPEED;
 
 #if 0
-	return AngleMod( cent->pe.barrelAngle );
+	return AngleMod( cent->pe->barrelAngle );
 
 	return angle;
 
 
-	if ( cent->pe.barrelSpinning ) {
-		angle = -( cent->pe.barrelAngle + delta * TESLA_SPINSPEED );
+	if ( cent->pe->barrelSpinning ) {
+		angle = -( cent->pe->barrelAngle + delta * TESLA_SPINSPEED );
 	} else {
 		if ( delta > TESLA_COASTTIME ) {
 			delta = TESLA_COASTTIME;
 		}
 
 		speed = 0.5 * ( TESLA_SPINSPEED + (float)( TESLA_COASTTIME - delta ) / TESLA_COASTTIME );
-		angle = -( cent->pe.barrelAngle + delta * speed );
+		angle = -( cent->pe->barrelAngle + delta * speed );
 	}
 
-	if ( cent->pe.barrelSpinning == !( cent->currentState.eFlags & EF_FIRING ) ) {
-		cent->pe.barrelTime = cg.time;
-		cent->pe.barrelAngle = AngleMod( angle );
-		cent->pe.barrelSpinning = !!( cent->currentState.eFlags & EF_FIRING );
+	if ( cent->pe->barrelSpinning == !( cent->currentState.eFlags & EF_FIRING ) ) {
+		cent->pe->barrelTime = cg.time;
+		cent->pe->barrelAngle = AngleMod( angle );
+		cent->pe->barrelSpinning = !!( cent->currentState.eFlags & EF_FIRING );
 	}
 
 	return angle;
@@ -1966,25 +1966,25 @@ static float CG_VenomSpinAngle( centity_t *cent ) {
 		firing = qfalse;
 	}
 
-	delta = cg.time - cent->pe.barrelTime;
-	if ( cent->pe.barrelSpinning ) {
-		angle = cent->pe.barrelAngle + delta * SPIN_SPEED;
+	delta = cg.time - cent->pe->barrelTime;
+	if ( cent->pe->barrelSpinning ) {
+		angle = cent->pe->barrelAngle + delta * SPIN_SPEED;
 	} else {
 		if ( delta > COAST_TIME ) {
 			delta = COAST_TIME;
 		}
 
 		speed = 0.5 * ( SPIN_SPEED + (float)( COAST_TIME - delta ) / COAST_TIME );
-		angle = cent->pe.barrelAngle + delta * speed;
+		angle = cent->pe->barrelAngle + delta * speed;
 	}
 
-	if ( cent->pe.barrelSpinning == !firing ) {
-		cent->pe.barrelTime = cg.time;
-		cent->pe.barrelAngle = AngleMod( angle );
-		cent->pe.barrelSpinning = !!firing;
+	if ( cent->pe->barrelSpinning == !firing ) {
+		cent->pe->barrelTime = cg.time;
+		cent->pe->barrelAngle = AngleMod( angle );
+		cent->pe->barrelSpinning = !!firing;
 
 		// just switching between not spinning and spinning, play the appropriate weapon sound
-		if ( cent->pe.barrelSpinning ) {
+		if ( cent->pe->barrelSpinning ) {
 			if ( cg_weapons[WP_VENOM].spinupSound ) {
 				trap_S_StartSound( NULL, cent->currentState.number, CHAN_WEAPON, cg_weapons[WP_VENOM].spinupSound );
 			}
@@ -2157,7 +2157,7 @@ void CG_PlayerTeslaCoilFire( centity_t *cent, vec3_t flashorigin ) {
 	VectorCopy( flashorigin, tagPos );
 
 	// first, build a list of visible enemies that can be hurt by this tesla, then filter by distance
-	if ( !cent->pe.teslaDamageApplyTime || cent->pe.teslaDamageApplyTime < cg.time - 200 ) {
+	if ( !cent->pe->teslaDamageApplyTime || cent->pe->teslaDamageApplyTime < cg.time - 200 ) {
 		numEnemies = 0;
 		// check the local playing client
 		VectorSubtract( cg.snap->ps.origin, traceOrg, vec );
@@ -2245,19 +2245,19 @@ void CG_PlayerTeslaCoilFire( centity_t *cent, vec3_t flashorigin ) {
 		for ( i = 0; i < MAX_TESLA_BOLTS; i++ ) {
 			if ( numSorted && i / numSorted < 1 /*( MAX_TESLA_BOLTS / 3 )*/ ) {  // bolts per enemy
 				j = i % numSorted;
-				cent->pe.teslaEnemy[i] = visEnemiesSorted[j];
+				cent->pe->teslaEnemy[i] = visEnemiesSorted[j];
 				// apply damage
 				CG_ClientDamage( visEnemiesSorted[j], cent->currentState.number, CLDMG_TESLA );
 				// show the effect
-				cg_entities[ visEnemiesSorted[j] ].pe.teslaDamagedTime = cg.time;
+				cg_entities[ visEnemiesSorted[j] ].pe->teslaDamagedTime = cg.time;
 			} else {
-				if ( cent->pe.teslaEnemy[i] >= 0 ) {
-					cent->pe.teslaEndPointTimes[i] = 0; // make sure we find a new spot
+				if ( cent->pe->teslaEnemy[i] >= 0 ) {
+					cent->pe->teslaEndPointTimes[i] = 0; // make sure we find a new spot
 				}
-				cent->pe.teslaEnemy[i] = -1;
+				cent->pe->teslaEnemy[i] = -1;
 			}
 		}
-		cent->pe.teslaDamageApplyTime = cg.time;
+		cent->pe->teslaDamageApplyTime = cg.time;
 	}
 
 	for ( i = 0; i < numPoints; i++ ) {
@@ -2265,27 +2265,27 @@ void CG_PlayerTeslaCoilFire( centity_t *cent, vec3_t flashorigin ) {
 		//if (!(rand()%3))
 		//	continue;
 
-		VectorSubtract( cent->pe.teslaEndPoints[i], tagPos, vec );
+		VectorSubtract( cent->pe->teslaEndPoints[i], tagPos, vec );
 		VectorNormalize( vec );
 
 		// if this point has timed out, find a new spot
-		if ( cent->pe.teslaEnemy[i] >= 0 ) {
+		if ( cent->pe->teslaEnemy[i] >= 0 ) {
 			// attacking the player
 			VectorSet( testPos, 6 * crandom(),
 					   6 * crandom(),
 					   20 * crandom() - 8 );
 			//VectorClear( testPos );
-			if ( cent->pe.teslaEnemy[i] != cg.snap->ps.clientNum ) {
-				VectorAdd( testPos, cg_entities[cent->pe.teslaEnemy[i]].lerpOrigin, testPos );
+			if ( cent->pe->teslaEnemy[i] != cg.snap->ps.clientNum ) {
+				VectorAdd( testPos, cg_entities[cent->pe->teslaEnemy[i]].lerpOrigin, testPos );
 			} else {
 				VectorAdd( testPos, cg.snap->ps.origin, testPos );
 			}
-			cent->pe.teslaEndPointTimes[i] = cg.time; // - rand()%(TESLA_LIGHTNING_POINT_TIMEOUT/2);
-			VectorCopy( testPos, cent->pe.teslaEndPoints[i] );
-		} else if ( ( !cent->pe.teslaEndPointTimes[i] ) ||
-					( cent->pe.teslaEndPointTimes[i] > cg.time ) ||
-					( cent->pe.teslaEndPointTimes[i] < cg.time - TESLA_LIGHTNING_POINT_TIMEOUT ) ||
-					( VectorDistance( tagPos, cent->pe.teslaEndPoints[i] ) > maxDist ) ||
+			cent->pe->teslaEndPointTimes[i] = cg.time; // - rand()%(TESLA_LIGHTNING_POINT_TIMEOUT/2);
+			VectorCopy( testPos, cent->pe->teslaEndPoints[i] );
+		} else if ( ( !cent->pe->teslaEndPointTimes[i] ) ||
+					( cent->pe->teslaEndPointTimes[i] > cg.time ) ||
+					( cent->pe->teslaEndPointTimes[i] < cg.time - TESLA_LIGHTNING_POINT_TIMEOUT ) ||
+					( VectorDistance( tagPos, cent->pe->teslaEndPoints[i] ) > maxDist ) ||
 					( DotProduct( viewDir, vec ) < 0.7 ) ) {
 
 			//if (cent->currentState.groundEntityNum == ENTITYNUM_NONE)
@@ -2303,8 +2303,8 @@ void CG_PlayerTeslaCoilFire( centity_t *cent, vec3_t flashorigin ) {
 				CG_Trace( &tr, tagPos, NULL, NULL, testPos, cent->currentState.number, MASK_SHOT & ~CONTENTS_BODY );
 				if ( tr.fraction < 1 && tr.entityNum == ENTITYNUM_WORLD && !( tr.surfaceFlags & ( SURF_NOIMPACT | SURF_SKY ) ) ) {
 					// found a valid spot!
-					cent->pe.teslaEndPointTimes[i] = cg.time - rand() % ( TESLA_LIGHTNING_POINT_TIMEOUT / 2 );
-					VectorCopy( tr.endpos, cent->pe.teslaEndPoints[i] );
+					cent->pe->teslaEndPointTimes[i] = cg.time - rand() % ( TESLA_LIGHTNING_POINT_TIMEOUT / 2 );
+					VectorCopy( tr.endpos, cent->pe->teslaEndPoints[i] );
 					break;
 				}
 				if ( pointTests++ > TESLA_MAX_POINT_TESTS_PERFRAME ) {
@@ -2317,23 +2317,23 @@ void CG_PlayerTeslaCoilFire( centity_t *cent, vec3_t flashorigin ) {
 			}
 
 			// add an impact mark on the wall
-			VectorSubtract( cent->pe.teslaEndPoints[i], tagPos, vec );
+			VectorSubtract( cent->pe->teslaEndPoints[i], tagPos, vec );
 			VectorNormalize( vec );
 			VectorInverse( vec );
-			CG_ImpactMark( cgs.media.lightningHitWallShader, cent->pe.teslaEndPoints[i], vec, random() * 360, 0.2, 0.2, 0.2, 1.0, qtrue, 4, qfalse, 300 );
+			CG_ImpactMark( cgs.media.lightningHitWallShader, cent->pe->teslaEndPoints[i], vec, random() * 360, 0.2, 0.2, 0.2, 1.0, qtrue, 4, qfalse, 300 );
 		}
 		//
 		// we have a valid lightning point, so draw it
 		// sanity check though to make sure it's valid
-		if ( VectorDistance( tagPos, cent->pe.teslaEndPoints[i] ) <= maxDist ) {
-			CG_DynamicLightningBolt( cgs.media.lightningBoltShader, tagPos, cent->pe.teslaEndPoints[i], 1 + ( ( cg.time % ( ( i + 2 ) * ( i + 3 ) ) ) + i ) % 2, 20 + (float)( i % 3 ) * 5 + 6.0 * random(), ( cent->pe.teslaEnemy[i] < 0 ), 1.0, 0, i * i * 3 );
+		if ( VectorDistance( tagPos, cent->pe->teslaEndPoints[i] ) <= maxDist ) {
+			CG_DynamicLightningBolt( cgs.media.lightningBoltShader, tagPos, cent->pe->teslaEndPoints[i], 1 + ( ( cg.time % ( ( i + 2 ) * ( i + 3 ) ) ) + i ) % 2, 20 + (float)( i % 3 ) * 5 + 6.0 * random(), ( cent->pe->teslaEnemy[i] < 0 ), 1.0, 0, i * i * 3 );
 
 			// play a zap sound
-			if ( cent->pe.lightningSoundTime < cg.time - 200 ) {
-				CG_SoundPlayIndexedScript( cgs.media.teslaZapScript, cent->pe.teslaEndPoints[i], ENTITYNUM_WORLD );
+			if ( cent->pe->lightningSoundTime < cg.time - 200 ) {
+				CG_SoundPlayIndexedScript( cgs.media.teslaZapScript, cent->pe->teslaEndPoints[i], ENTITYNUM_WORLD );
 				CG_SoundPlayIndexedScript( cgs.media.teslaZapScript, cent->lerpOrigin, ENTITYNUM_WORLD );
-				//trap_S_StartSound( cent->pe.teslaEndPoints[i], ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.lightningSounds[rand()%3] );
-				cent->pe.lightningSoundTime = cg.time + rand() % 200;
+				//trap_S_StartSound( cent->pe->teslaEndPoints[i], ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.lightningSounds[rand()%3] );
+				cent->pe->lightningSoundTime = cg.time + rand() % 200;
 			}
 		}
 	}
@@ -2545,11 +2545,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	if ( !ps ) {
 		// add weapon ready sound
-		cent->pe.lightningFiring = qfalse;
+		cent->pe->lightningFiring = qfalse;
 		if ( ( cent->currentState.eFlags & EF_FIRING ) && weapon->firingSound ) {
 			// lightning gun and guantlet make a different sound when fire is held down
 			CG_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, weapon->firingSound, 255 );
-			cent->pe.lightningFiring = qtrue;
+			cent->pe->lightningFiring = qtrue;
 		} else if ( weapon->readySound ) {
 			CG_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, weapon->readySound, 255 );
 		}
@@ -2650,7 +2650,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 				// 'blurry' barel when firing
 				// (SA) not right now.  at the moment, just spin the belt when firing, no swapout
 				else if ( i == W_PART_3 ) {
-					if ( ( cent->pe.weap.animationNumber & ~ANIM_TOGGLEBIT ) == WEAP_ATTACK1 ) {
+					if ( ( cent->pe->weap.animationNumber & ~ANIM_TOGGLEBIT ) == WEAP_ATTACK1 ) {
 						barrel.hModel = weapon->wpPartModels[W_FP_MODEL][i];
 						angles[ROLL] = -CG_VenomSpinAngle( cent );
 						angles[ROLL] = -( angles[ROLL] / 8.0f );
@@ -2749,8 +2749,8 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	CG_PositionRotatedEntityOnTag( &flash, &gun, "tag_flash" );
 
 	// store this position for other cgame elements to access
-	cent->pe.gunRefEnt = gun;
-	cent->pe.gunRefEntFrame = cg.clientFrame;
+	cent->pe->gunRefEnt = gun;
+	cent->pe->gunRefEntFrame = cg.clientFrame;
 
 	if ( ( weaponNum == WP_FLAMETHROWER || weaponNum == WP_TESLA ) && ( nonPredictedCent->currentState.eFlags & EF_FIRING ) ) {
 		// continuous flash
@@ -4732,7 +4732,7 @@ void CG_FireWeapon( centity_t *cent ) {
 
 	// lightning gun only does this this on initial press
 	if ( ent->weapon == WP_FLAMETHROWER ) {
-		if ( cent->pe.lightningFiring ) {
+		if ( cent->pe->lightningFiring ) {
 			return;
 		}
 	} else if (   ent->weapon == WP_GRENADE_LAUNCHER ||

@@ -131,8 +131,7 @@ static int numShaderAnims;
 #define     MAX_PARTICLES   1024 * 8
 
 cparticle_t *active_particles, *free_particles;
-cparticle_t particles[MAX_PARTICLES];
-int cl_numparticles = MAX_PARTICLES;
+cgPool_t cg_particlePool = { sizeof( cparticle_t ), 256, MAX_PARTICLES };
 
 qboolean initparticles = qfalse;
 vec3_t vforward, vright, vup;
@@ -161,23 +160,37 @@ qboolean CG_ParticleLODCheck( void ) {
 
 /*
 ===============
+CG_GrowParticles
+
+Another chunk onto the free list, qfalse if there are all there may be
+===============
+*/
+static qboolean CG_GrowParticles( void ) {
+	cparticle_t *p = CG_PoolGrow( &cg_particlePool );
+	int i;
+
+	if ( !p ) {
+		return qfalse;
+	}
+	for ( i = 0 ; i < cg_particlePool.chunkItems - 1 ; i++ ) {
+		p[i].next = &p[i + 1];
+	}
+	p[i].next = free_particles;
+	free_particles = p;
+	return qtrue;
+}
+
+/*
+===============
 CL_ClearParticles
 ===============
 */
 void CG_ClearParticles( void ) {
 	int i;
 
-	memset( particles, 0, sizeof( particles ) );
-
-	free_particles = &particles[0];
+	CG_PoolFree( &cg_particlePool );
+	free_particles = NULL;
 	active_particles = NULL;
-
-	for ( i = 0 ; i < cl_numparticles ; i++ )
-	{
-		particles[i].next = &particles[i + 1];
-		particles[i].type = 0;
-	}
-	particles[cl_numparticles - 1].next = NULL;
 
 	oldtime = cg.time;
 
@@ -595,7 +608,7 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 		verts[3].modulate[3] = 255  * invratio;
 
 	} else if ( p->type == P_BAT )     {
-		p->pshader = cgs.media.bats[( cg.time / 50 + (int)( p - particles ) ) % 10];
+		p->pshader = cgs.media.bats[( cg.time / 50 + (int)( (intptr_t)p / sizeof( *p ) ) ) % 10];
 
 		VectorMA( org, -p->height, vup, point );
 		VectorMA( point, -p->width, vright, point );
@@ -1050,7 +1063,7 @@ void CG_ParticleSnowFlurry( qhandle_t pshader, centity_t *cent ) {
 		CG_Printf( "CG_ParticleSnowFlurry pshader == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1117,7 +1130,7 @@ void CG_ParticleSnow( qhandle_t pshader, vec3_t origin, vec3_t origin2, int turb
 		CG_Printf( "CG_ParticleSnow pshader == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1178,7 +1191,7 @@ void CG_ParticleBubble( qhandle_t pshader, vec3_t origin, vec3_t origin2, int tu
 		CG_Printf( "CG_ParticleSnow pshader == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1245,7 +1258,7 @@ void CG_ParticleSmoke( qhandle_t pshader, centity_t *cent ) {
 		CG_Printf( "CG_ParticleSmoke == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1375,7 +1388,7 @@ void CG_ParticleBulletDebris( vec3_t org, vec3_t vel, int duration ) {
 
 	cparticle_t *p;
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1423,7 +1436,7 @@ void CG_ParticleDirtBulletDebris( vec3_t org, vec3_t vel, int duration ) {
 	int r = rand() % 3;
 	cparticle_t *p;
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 	p = free_particles;
@@ -1471,7 +1484,7 @@ void CG_ParticleDirtBulletDebris_Core( vec3_t org, vec3_t vel, int duration,
 //	int r = rand(); // TTimo: unused
 	cparticle_t *p;
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 	p = free_particles;
@@ -1539,7 +1552,7 @@ void CG_ParticleExplosion( char *animStr, vec3_t origin, vec3_t vel, int duratio
 		return;
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 	p = free_particles;
@@ -1680,7 +1693,7 @@ void CG_ParticleBat( centity_t *cent ) {
 	cparticle_t *p;
 	vec3_t origin;
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1712,7 +1725,7 @@ void CG_ParticleBats( qhandle_t pshader, centity_t *cent ) {
 	cparticle_t *p;
 	vec3_t origin;
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 	p = free_particles;
@@ -1784,7 +1797,7 @@ void CG_ParticleImpactSmokePuffExtended( qhandle_t pshader, vec3_t origin, vec3_
 		CG_Printf( "CG_ParticleImpactSmokePuff pshader == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1843,7 +1856,7 @@ void CG_Particle_Bleed( qhandle_t pshader, vec3_t start, vec3_t dir, int fleshEn
 		return;
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 	p = free_particles;
@@ -1912,7 +1925,7 @@ void CG_Particle_OilParticle( qhandle_t pshader, vec3_t origin, vec3_t dir, int 
 		CG_Printf( "CG_Particle_OilParticle == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -1973,7 +1986,7 @@ void CG_Particle_OilSlick( qhandle_t pshader, centity_t *cent ) {
 		CG_Printf( "CG_Particle_OilSlick == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -2120,7 +2133,7 @@ void CG_BloodPool( localEntity_t *le, qhandle_t pshader, trace_t *tr ) {
 		CG_Printf( "CG_BloodPool pshader == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -2210,7 +2223,7 @@ void CG_ParticleBloodCloud( centity_t *cent, vec3_t origin, vec3_t dir ) {
 	{
 		VectorMA( point, crittersize, forward, point );
 
-		if ( !free_particles ) {
+		if ( !free_particles && !CG_GrowParticles() ) {
 			return;
 		}
 
@@ -2312,7 +2325,7 @@ void CG_ParticleBloodCloudZombie( centity_t *cent, vec3_t origin, vec3_t dir ) {
 	{
 		VectorMA( point, crittersize, forward, point );
 
-		if ( !free_particles ) {
+		if ( !free_particles && !CG_GrowParticles() ) {
 			return;
 		}
 
@@ -2391,7 +2404,7 @@ void CG_ParticleBloodCloudZombie( centity_t *cent, vec3_t origin, vec3_t dir ) {
 void CG_ParticleSparks( vec3_t org, vec3_t vel, int duration, float x, float y, float speed ) {
 	cparticle_t *p;
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -2477,7 +2490,7 @@ void CG_ParticleDust( centity_t *cent, vec3_t origin, vec3_t dir ) {
 	{
 		VectorMA( point, crittersize, forward, point );
 
-		if ( !free_particles ) {
+		if ( !free_particles && !CG_GrowParticles() ) {
 			return;
 		}
 
@@ -2566,7 +2579,7 @@ void CG_ParticleMisc( qhandle_t pshader, vec3_t origin, int size, int duration, 
 		CG_Printf( "CG_ParticleImpactSmokePuff pshader == ZERO!\n" );
 	}
 
-	if ( !free_particles ) {
+	if ( !free_particles && !CG_GrowParticles() ) {
 		return;
 	}
 
@@ -2605,3 +2618,17 @@ void CG_ParticleMisc( qhandle_t pshader, vec3_t origin, int size, int duration, 
 
 	p->rotate = qfalse;
 }
+
+#ifndef _arch_dreamcast
+// for cg_poolstats.c
+int CG_PoolParticles( int *size ) {
+	cparticle_t *p;
+	int n = 0;
+
+	for ( p = active_particles ; p ; p = p->next ) {
+		n++;
+	}
+	*size = sizeof( cparticle_t );
+	return n;
+}
+#endif
