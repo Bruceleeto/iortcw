@@ -1362,6 +1362,35 @@ void R_LoadImage( const char *name, byte **pic, int *width, int *height )
 }
 
 
+#ifdef NO_TEXTURES
+/*
+==============
+R_AverageImage
+
+NO_TEXTURES builds keep only one pixel of each world/model texture: its
+average colour (weighted by alpha) and average alpha.  Written into pic[0].
+==============
+*/
+static void R_AverageImage( byte *pic, int width, int height ) {
+	int i, c = width * height;
+	double r = 0, g = 0, b = 0, a = 0;
+
+	for ( i = 0; i < c; i++ ) {
+		double w = pic[i * 4 + 3];
+		r += pic[i * 4 + 0] * w;
+		g += pic[i * 4 + 1] * w;
+		b += pic[i * 4 + 2] * w;
+		a += w;
+	}
+	if ( a > 0 ) {
+		pic[0] = r / a;
+		pic[1] = g / a;
+		pic[2] = b / a;
+	}
+	pic[3] = a / c;
+}
+#endif
+
 //----(SA)	modified
 /*
 ===============
@@ -1410,6 +1439,13 @@ image_t *R_FindImageFileExt( const char *name, imgType_t type, imgFlags_t flags,
 	if ( pic == NULL ) {
 		return NULL;
 	}
+
+#ifdef NO_TEXTURES
+	if ( flags & IMGFLAG_PICMIP ) {
+		R_AverageImage( pic, width, height );
+		width = height = 1;
+	}
+#endif
 
 	image = R_CreateImageExt( ( char * ) name, pic, width, height, type, flags, 0, characterMIP );
 	ri.Free( pic );

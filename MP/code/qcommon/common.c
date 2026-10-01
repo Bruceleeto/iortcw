@@ -2897,6 +2897,13 @@ void Com_Init( char *commandLine ) {
 	if ( !Com_AddStartupCommands() ) {
 		// if the user didn't give any commands, run default action
 		if ( !com_dedicated->integer ) {
+#ifdef AUTOMAP
+			// build-time default map (Makefile MAP=): skip intro and menu
+			Cvar_Set( "com_introplayed", "1" );
+			Cbuf_AddText( "devmap " AUTOMAP "\n" );
+		}
+		if ( 0 ) {
+#endif
 #ifdef CINEMATICS_LOGO
 			Cbuf_AddText( "cinematic " CINEMATICS_LOGO "\n" );
 #endif

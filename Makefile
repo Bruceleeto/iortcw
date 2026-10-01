@@ -5,13 +5,24 @@
 #   make mp            build multiplayer    -> build/mp-x86/iowolfmp.x86
 #   make               build both
 #   make clean         remove build/
+#   make pvrtest       build the tools/gpu_pvr smoke test
 #
 # Everything (engine, renderer, qagame, cgame, ui) is linked into one
 # executable; no renderer or game shared libraries are built or loaded.
 #
 # Options:
 #   ARCH=x86           x86 (-m32, default) or x86_64
-#   RENDERER=opengl1   opengl1 (default) or rend2
+#   RENDERER=opengl1   opengl1 (default), rend2, or pvr (Dreamcast PowerVR
+#                      backend, run on PC through tools/gpu_pvr; x86 only)
+#   AUDIO=0            no sound at all: no backend, codecs (ogg/vorbis/opus)
+#                      or VoIP are built; all S_* calls do nothing
+#   TEXTURES=0         world/model textures become one pixel of their average
+#                      colour (menus, fonts and lightmaps stay); opengl1/pvr
+#   MAP=<name>         start straight into this map when no + commands are
+#                      given; pvr builds default to escape1 (SP) / mp_beach
+#                      (MP), MAP= goes to the menu as normal
+#   USE_VOIP=0         drop VoIP (and opus with it); default 1
+#   USE_MUMBLE=1       Mumble positional audio link; default 0
 #   DEBUG=1            debug build (-O0 -g)
 #   BASEDIR=<dir>      default fs_basepath (default: <repo>/assets)
 #   V=1                show full command lines
@@ -20,6 +31,13 @@
 ARCH     ?= x86
 RENDERER ?= opengl1
 DEBUG    ?= 0
+AUDIO    ?= 1
+TEXTURES ?= 1
+USE_VOIP ?= 1
+USE_MUMBLE ?= 0
+ifeq ($(AUDIO),0)
+  override USE_VOIP = 0
+endif
 
 BUILD_DIR ?= build
 BASEDIR   ?= $(CURDIR)/assets
@@ -43,7 +61,25 @@ else
   echo_cmd = @echo
 endif
 
-.PHONY: all sp mp game clean
+ifeq ($(ARCH),x86)
+  # non-PIE: avoids i386 PIC thunks (which break module symbol localizing)
+  # and text relocations from the hand-written asm
+  ARCH_FLAGS  = -m32 -fno-pie
+  ARCH_LDFLAGS = -no-pie
+  ARCH_STRING = i386
+  ARCH_OPT    = -march=i586
+else ifeq ($(ARCH),x86_64)
+  ARCH_FLAGS  = -m64
+  ARCH_STRING = x86_64
+  ARCH_OPT    =
+else
+  $(error ARCH must be x86 or x86_64)
+endif
+
+SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null || echo -I/usr/include/SDL2 -D_REENTRANT)
+SDL_LIBS   ?= -lSDL2
+
+.PHONY: all sp mp game clean pvrtest
 
 all: sp mp
 
@@ -52,6 +88,24 @@ sp mp:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+#############################################################################
+# tools/gpu_pvr: KOS PVR API on a software PVR, for running Dreamcast
+# renderer code on PC (32-bit only)
+#############################################################################
+
+GPU_PVR_DIR = tools/gpu_pvr
+GPU_PVR_OUT = $(BUILD_DIR)/gpu_pvr-$(ARCH)
+include $(GPU_PVR_DIR)/gpu_pvr.mk
+
+PVRTEST = $(GPU_PVR_OUT)/pvrtest
+
+pvrtest: $(PVRTEST)
+
+$(PVRTEST): $(GPU_PVR_DIR)/test/pvrtest.c $(GPU_PVR_LIB)
+	$(echo_cmd) "LD $@"
+	$(Q)$(CXX) $(ARCH_FLAGS) $(ARCH_LDFLAGS) -O2 -w $(GPU_PVR_CFLAGS) $(SDL_CFLAGS) \
+	  -x c $< -x none $(GPU_PVR_LIB) $(SDL_LIBS) -lpthread -lm -o $@
 
 ifdef GAME
 
@@ -73,22 +127,16 @@ else
   $(error GAME must be sp or mp)
 endif
 
-ifeq ($(ARCH),x86)
-  # non-PIE: avoids i386 PIC thunks (which break module symbol localizing)
-  # and text relocations from the hand-written asm
-  ARCH_FLAGS  = -m32 -fno-pie
-  ARCH_LDFLAGS = -no-pie
-  ARCH_STRING = i386
-  ARCH_OPT    = -march=i586
-else ifeq ($(ARCH),x86_64)
-  ARCH_FLAGS  = -m64
-  ARCH_STRING = x86_64
-  ARCH_OPT    =
-else
-  $(error ARCH must be x86 or x86_64)
+# pvr builds boot straight into a map for testing
+ifeq ($(RENDERER),pvr)
+  ifeq ($(GAME),sp)
+    MAP ?= escape1
+  else
+    MAP ?= mp_beach
+  endif
 endif
 
-B   = $(BUILD_DIR)/$(GAME)-$(ARCH)
+B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter pvr,$(RENDERER)),-pvr)$(if $(filter 0,$(AUDIO)),-noaudio)$(if $(filter 0,$(TEXTURES)),-notex)
 EXE = $(B)/$(BIN).$(ARCH)
 
 VERSION := 1.51d
@@ -105,7 +153,6 @@ endif
 
 ZDIR  = $(CODE)/zlib-1.2.11
 JPDIR = $(CODE)/jpeg-8c
-FTDIR = $(CODE)/freetype-2.9
 OGGDIR    = $(CODE)/libogg-1.3.3
 VORBISDIR = $(CODE)/libvorbis-1.3.6
 OPUSDIR   = $(CODE)/opus-1.2.1
@@ -125,19 +172,30 @@ BASE_CFLAGS = $(ARCH_FLAGS) -pipe -Wall -fno-strict-aliasing -MMD \
   -DUSE_ICON -DUSE_LOCAL_HEADERS $(GAME_DEFS) \
   -DNO_GZIP -I$(ZDIR) \
   -DUSE_INTERNAL_JPEG -I$(JPDIR) \
-  -DBUILD_FREETYPE -DFT2_BUILD_LIBRARY -I$(FTDIR)/include \
   $(OPT)
-
-SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null || echo -I/usr/include/SDL2 -D_REENTRANT)
-SDL_LIBS   ?= -lSDL2
 
 # engine + renderer
 CLIENT_CFLAGS = $(BASE_CFLAGS) $(FAST_MATH) $(SDL_CFLAGS) -I$(CODE)/SDL2/include \
-  -DUSE_STATIC_VM -DUSE_BLOOM -DUSE_MUMBLE -DUSE_VOIP \
-  -DUSE_CODEC_OPUS -DOPUS_BUILD -DHAVE_LRINTF -DFLOATING_POINT -DFLOAT_APPROX -DUSE_ALLOCA \
-  -I$(OPUSDIR)/include -I$(OPUSDIR)/celt -I$(OPUSDIR)/silk -I$(OPUSDIR)/silk/float \
-  -I$(OPUSFILEDIR)/include \
-  -DUSE_CODEC_VORBIS -I$(VORBISDIR)/include -I$(VORBISDIR)/lib -I$(OGGDIR)/include
+  -DUSE_STATIC_VM -DUSE_BLOOM
+ifeq ($(USE_MUMBLE),1)
+  CLIENT_CFLAGS += -DUSE_MUMBLE
+endif
+ifeq ($(TEXTURES),0)
+  CLIENT_CFLAGS += -DNO_TEXTURES
+endif
+ifeq ($(AUDIO),0)
+  CLIENT_CFLAGS += -DNO_AUDIO
+else
+  # opus first: opus and vorbis both have an mdct.h
+  CLIENT_CFLAGS += \
+    -DUSE_CODEC_OPUS -DOPUS_BUILD -DHAVE_LRINTF -DFLOATING_POINT -DFLOAT_APPROX -DUSE_ALLOCA \
+    -I$(OPUSDIR)/include -I$(OPUSDIR)/celt -I$(OPUSDIR)/silk -I$(OPUSDIR)/silk/float \
+    -I$(OPUSFILEDIR)/include \
+    -DUSE_CODEC_VORBIS -I$(VORBISDIR)/include -I$(VORBISDIR)/lib -I$(OGGDIR)/include
+endif
+ifeq ($(USE_VOIP),1)
+  CLIENT_CFLAGS += -DUSE_VOIP
+endif
 
 # game modules: hidden visibility so only dllEntry/vmMain stay global
 MOD_CFLAGS = $(BASE_CFLAGS) -fvisibility=hidden
@@ -151,15 +209,8 @@ LIBS = $(SDL_LIBS) -lm -ldl -lrt -lpthread
 
 rel = $(patsubst $(CODE)/%,%,$(wildcard $(addprefix $(CODE)/,$(1))))
 
-ENGINE_SRC = \
-  $(call rel,client/*.c) \
-  $(filter-out server/sv_wallhack.c,$(call rel,server/*.c)) \
-  $(filter-out qcommon/vm_armv7l.c qcommon/vm_none.c qcommon/vm_powerpc.c \
-    qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c,$(call rel,qcommon/*.c)) \
-  sys/con_log.c sys/con_tty.c sys/sys_main.c sys/sys_unix.c \
-  sdl/sdl_input.c sdl/sdl_snd.c \
-  $(filter-out splines/q_shared.cpp,$(call rel,splines/*.cpp)) \
-  $(call rel,zlib-1.2.11/*.c) \
+SOUND_SRC = $(call rel,client/snd_*.c) sdl/sdl_snd.c
+CODEC_SRC = \
   $(call rel,libogg-1.3.3/src/*.c) \
   $(filter-out %/barkmel.c %/psytune.c %/tone.c,$(call rel,libvorbis-1.3.6/lib/*.c)) \
   $(filter-out %/opus_custom_demo.c,$(call rel,opus-1.2.1/celt/*.c)) \
@@ -167,24 +218,35 @@ ENGINE_SRC = \
   $(filter-out %/opus_compare.c %/opus_demo.c %/repacketizer_demo.c,$(call rel,opus-1.2.1/src/*.c)) \
   $(filter-out %/wincerts.c,$(call rel,opusfile-0.9/src/*.c))
 
-ifeq ($(ARCH),x86)
-  ENGINE_SRC += asm/snd_mixa.s asm/matha.s asm/snapvector.c asm/ftola.c
+ENGINE_SRC = \
+  $(filter-out client/snd_% client/libmumblelink.c,$(call rel,client/*.c)) \
+  $(filter-out server/sv_wallhack.c,$(call rel,server/*.c)) \
+  $(filter-out qcommon/vm_armv7l.c qcommon/vm_none.c qcommon/vm_powerpc.c \
+    qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c,$(call rel,qcommon/*.c)) \
+  sys/con_log.c sys/con_tty.c sys/sys_main.c sys/sys_unix.c \
+  sdl/sdl_input.c \
+  $(filter-out splines/q_shared.cpp,$(call rel,splines/*.cpp)) \
+  $(call rel,zlib-1.2.11/*.c)
+
+ifeq ($(AUDIO),0)
+  # snd_main.c is the S_* front end; with NO_AUDIO it never starts a backend
+  ENGINE_SRC += client/snd_main.c
 else
-  ENGINE_SRC += asm/snapvector.c asm/ftola.c
+  ENGINE_SRC += $(SOUND_SRC) $(CODEC_SRC)
+endif
+ifeq ($(USE_MUMBLE),1)
+  ENGINE_SRC += client/libmumblelink.c
+endif
+
+ENGINE_SRC += asm/snapvector.c asm/ftola.c
+ifeq ($(ARCH),x86)
+  ENGINE_SRC += asm/matha.s
+  ifneq ($(AUDIO),0)
+    ENGINE_SRC += asm/snd_mixa.s
+  endif
 endif
 
 BOTLIB_SRC = $(call rel,botlib/*.c)
-
-FT_SRC = $(addprefix freetype-2.9/src/, \
-  base/ftsystem.c base/ftdebug.c base/ftinit.c base/ftbase.c base/ftbbox.c \
-  base/ftbdf.c base/ftbitmap.c base/ftcid.c base/ftfntfmt.c base/ftfstype.c \
-  base/ftgasp.c base/ftglyph.c base/ftgxval.c base/ftlcdfil.c base/ftmm.c \
-  base/ftotval.c base/ftpatent.c base/ftpfr.c base/ftstroke.c base/ftsynth.c \
-  base/fttype1.c base/ftwinfnt.c truetype/truetype.c type1/type1.c cff/cff.c \
-  cid/type1cid.c pfr/pfr.c type42/type42.c winfonts/winfnt.c pcf/pcf.c \
-  bdf/bdf.c sfnt/sfnt.c autofit/autofit.c pshinter/pshinter.c raster/raster.c \
-  smooth/smooth.c cache/ftcache.c gzip/ftgzip.c lzw/ftlzw.c bzip2/ftbzip2.c \
-  psaux/psaux.c psnames/psnames.c)
 
 ifeq ($(RENDERER),opengl1)
   RENDERER_SRC = $(filter-out renderer/tr_subs.c,$(call rel,renderer/*.c))
@@ -192,10 +254,25 @@ ifeq ($(RENDERER),opengl1)
 else ifeq ($(RENDERER),rend2)
   RENDERER_SRC = $(filter-out rend2/tr_subs.c,$(call rel,rend2/*.c))
   GLSL_SRC = $(call rel,rend2/glsl/*.glsl)
+else ifeq ($(RENDERER),pvr)
+  RENDERER_SRC = $(filter-out renderer/tr_subs.c,$(call rel,renderer/*.c))
+  GLSL_SRC =
 else
-  $(error RENDERER must be opengl1 or rend2)
+  $(error RENDERER must be opengl1, rend2 or pvr)
 endif
-RENDERER_SRC += sdl/sdl_gamma.c sdl/sdl_glimp.c $(call rel,jpeg-8c/*.c) $(FT_SRC)
+ifeq ($(RENDERER),pvr)
+  ifneq ($(ARCH),x86)
+    $(error RENDERER=pvr needs ARCH=x86: gpu_pvr keeps host pointers in 32 bits)
+  endif
+  # the opengl1 renderer front end on pvr/pvr_gl.c instead of SDL + OpenGL
+  RENDERER_SRC += $(call rel,jpeg-8c/*.c)
+  PVR_OBJ = $(B)/pvr/pvr_gl.c.o $(B)/pvr/pvr_glimp.c.o
+  RENDERER_LIBS = $(GPU_PVR_LIB) -lstdc++
+else
+  RENDERER_SRC += sdl/sdl_gamma.c sdl/sdl_glimp.c $(call rel,jpeg-8c/*.c)
+  PVR_OBJ =
+  RENDERER_LIBS =
+endif
 
 BG_SRC = game/bg_animation.c game/bg_misc.c game/bg_pmove.c game/bg_slidemove.c game/bg_lib.c
 
@@ -223,7 +300,7 @@ MODCOMMON_OBJ = $(call obj,modcommon,$(MODCOMMON_SRC))
 # each game module is pre-linked into one relocatable object
 MODULE_OBJ = $(B)/qagame.o $(B)/cgame.o $(B)/ui.o
 
-ALL_OBJ = $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) \
+ALL_OBJ = $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) \
   $(QAGAME_OBJ) $(CGAME_OBJ) $(UI_OBJ) $(MODCOMMON_OBJ)
 
 STRINGIFY = $(B)/tools/stringify
@@ -234,9 +311,15 @@ STRINGIFY = $(B)/tools/stringify
 
 game: $(EXE)
 
-$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(MODULE_OBJ)
+$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
 	$(echo_cmd) "LD $@"
-	$(Q)$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(Q)$(CXX) $(LDFLAGS) -o $@ $(filter %.o,$^) $(RENDERER_LIBS) $(LIBS)
+
+# pvr/ is shared by SP and MP; each game builds it against its own renderer
+$(B)/pvr/%.c.o: pvr/%.c
+	$(echo_cmd) "PVR_CC $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/renderer $(GPU_PVR_CFLAGS) -c $< -o $@
 
 # Combine a module's objects, make every hidden symbol local so modules
 # can't collide with each other or the engine, then rename the entry points.
@@ -271,6 +354,16 @@ $(B)/engine/%.s.o: $(CODE)/%.s
 # default fs_basepath; game data goes in $(BASEDIR)/main
 $(B)/engine/sys/sys_main.c.o: EXTRA_CFLAGS = -DDEFAULT_BASEDIR=\"$(BASEDIR)\"
 $(B)/engine/sys/sys_main.c.o: Makefile
+
+ifneq ($(MAP),)
+$(B)/engine/qcommon/common.c.o: EXTRA_CFLAGS = -DAUTOMAP=\"$(MAP)\"
+endif
+$(B)/engine/qcommon/common.c.o: Makefile $(B)/.map
+# rebuild common.c when MAP changes
+ifneq ($(MAP),$(shell cat $(B)/.map 2>/dev/null))
+  $(shell mkdir -p $(B) && echo '$(MAP)' > $(B)/.map)
+endif
+$(B)/.map: ;
 
 # SSE helpers need a CPU with SSE on x86
 ifeq ($(ARCH),x86)
@@ -315,6 +408,14 @@ $(B)/glsl/%.glsl.o: $(B)/glsl/%.glsl.c
 	$(Q)$(CC) $(CLIENT_CFLAGS) -c $< -o $@
 
 .SECONDARY:
+
+# rebuild everything when the compile flags change (AUDIO, TEXTURES, USE_VOIP, ...)
+FLAGS_STAMP = $(B)/.cflags
+FLAGS_NOW := $(CC) $(CXX) $(CLIENT_CFLAGS) $(MOD_CFLAGS)
+ifneq ($(FLAGS_NOW),$(shell cat $(FLAGS_STAMP) 2>/dev/null))
+  $(shell mkdir -p $(B) && printf '%s\n' '$(subst ','\'',$(FLAGS_NOW))' > $(FLAGS_STAMP))
+endif
+$(ALL_OBJ): $(FLAGS_STAMP)
 
 -include $(ALL_OBJ:.o=.d)
 

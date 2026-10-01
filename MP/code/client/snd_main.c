@@ -26,6 +26,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "snd_local.h"
 #include "snd_public.h"
 
+#ifdef NO_AUDIO
+// mixer state that cl_cin.c and cl_avi.c read directly; stays zero
+dma_t	dma;
+int		s_soundtime;
+int		s_rawend[MAX_RAW_STREAMS];
+#endif
+
 cvar_t *s_volume;
 cvar_t *s_muted;
 cvar_t *s_musicVolume;
@@ -524,6 +531,12 @@ void S_Init( void )
 	s_muteWhenMinimized = Cvar_Get( "s_muteWhenMinimized", "0", CVAR_ARCHIVE );
 	s_muteWhenUnfocused = Cvar_Get( "s_muteWhenUnfocused", "0", CVAR_ARCHIVE );
 
+#ifdef NO_AUDIO
+	// built without sound backends or codecs: every S_* call is a no-op
+	(void)cv;
+	(void)started;
+	Com_Printf( "Sound disabled (NO_AUDIO build).\n" );
+#else
 	cv = Cvar_Get( "s_initsound", "1", 0 );
 	if( !cv->integer ) {
 		Com_Printf( "Sound disabled.\n" );
@@ -561,6 +574,7 @@ void S_Init( void )
 			Com_Printf( "Sound initialization failed.\n" );
 		}
 	}
+#endif
 
 	Com_Printf( "--------------------------------\n");
 }
@@ -585,6 +599,8 @@ void S_Shutdown( void )
 	Cmd_RemoveCommand( "s_stop" );
 	Cmd_RemoveCommand( "s_info" );
 
+#ifndef NO_AUDIO
 	S_CodecShutdown( );
+#endif
 }
 
