@@ -4,7 +4,7 @@
 Return to Castle Wolfenstein single player GPL Source Code
 Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company. 
 
-This file is part of the Return to Castle Wolfenstein single player GPL Source Code (RTCW SP Source Code).  
+This file is part of the Return to Castle Wolfenstein single player GPL Source Code (ÂRTCW SP Source CodeÂ).  
 
 RTCW SP Source Code is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -3119,6 +3119,20 @@ static void ScanAndLoadShaderFiles( void ) {
 	int shaderLine;
 
 	long sum = 0, summand;
+
+	// the shaders anything names, from `make assets` (tools/rtcwconv
+	// shaders.cpp), in place of every shader file's
+	p = NULL;
+	summand = ri.FS_ReadFile( "scripts/dc.shaders", (void **)&p );
+	if ( p ) {
+		s_shaderText = ri.Hunk_Alloc( summand + 1, h_low );
+		memcpy( s_shaderText, p, summand );
+		s_shaderText[summand] = '\0';
+		ri.FS_FreeFile( p );
+		BuildShaderChecksumLookup();
+		return;
+	}
+
 	// scan for shader files
 	shaderFiles = ri.FS_ListFiles( "scripts", ".shader", &numShaderFiles );
 

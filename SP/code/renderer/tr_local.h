@@ -929,7 +929,7 @@ extern refimport_t ri;
 #define MAX_SKINS               1024
 
 
-#define MAX_DRAWSURFS           0x10000
+#define MAX_DRAWSURFS           0x2000      // a power of two; the world is a few big surfaces (.wld)
 #define DRAWSURF_MASK           ( MAX_DRAWSURFS - 1 )
 
 /*
@@ -1904,8 +1904,8 @@ typedef enum {
 // Ridah, these aren't enough for cool effects
 //#define	MAX_POLYS		256
 //#define	MAX_POLYVERTS	1024
-#define MAX_POLYS       4096
-#define MAX_POLYVERTS   8192
+#define MAX_POLYS       1024
+#define MAX_POLYVERTS   4096
 // done.
 
 // all of the information needed by the back end must be

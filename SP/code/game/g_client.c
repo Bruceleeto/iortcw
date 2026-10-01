@@ -1178,7 +1178,11 @@ qboolean G_CheckForExistingModelInfo( gclient_t *cl, char *modelName, animModelI
 				return qtrue;
 			}
 		} else {
-			level.animScriptData.modelInfo[i] = G_Alloc( sizeof( animModelInfo_t ) );
+			// parsed at full size, then cut to fit (G_GetModelInfo)
+			level.animScriptData.modelInfo[i] = malloc( sizeof( animModelInfo_t ) );
+			if ( !level.animScriptData.modelInfo[i] ) {
+				G_Error( "G_CheckForExistingModelInfo: out of memory" );
+			}
 			*modelInfo = level.animScriptData.modelInfo[i];
 			// clear the structure out ready for use
 			memset( *modelInfo, 0, sizeof( **modelInfo ) );
@@ -1198,19 +1202,62 @@ G_GetModelInfo
 ==============
 */
 qboolean G_ParseAnimationFiles( char *modelname, gclient_t *cl );
-qboolean G_GetModelInfo( int clientNum, char *modelName, animModelInfo_t **modelInfo ) {
 
-	if ( !G_CheckForExistingModelInfo( &level.clients[clientNum], modelName, modelInfo ) ) {
-		level.clients[clientNum].modelInfo = *modelInfo;
-		if ( !G_ParseAnimationFiles( modelName, &level.clients[clientNum] ) ) {
-			G_Error( "Failed to load animation scripts for model %s\n", modelName );
+// a parsed model, full size, to one with just the script items it has (most
+// models use a few dozen of the 256 there's room for, at 376 bytes each)
+static animModelInfo_t *G_FitModelInfo( animModelInfo_t *full ) {
+	int size = (int)( (byte *)&full->scriptItems[full->numScriptItems] - (byte *)full );
+	animModelInfo_t *mi = G_Alloc( size );
+	animScript_t *scripts[4] = { &mi->scriptAnims[0][0], &mi->scriptCannedAnims[0][0], &mi->scriptStateChange[0][0], mi->scriptEvents };
+	int counts[4] = { sizeof( mi->scriptAnims ) / sizeof( animScript_t ), sizeof( mi->scriptCannedAnims ) / sizeof( animScript_t ),
+					  sizeof( mi->scriptStateChange ) / sizeof( animScript_t ), sizeof( mi->scriptEvents ) / sizeof( animScript_t ) };
+	int i, j, k;
+
+	memcpy( mi, full, size );
+	// the scripts point into scriptItems
+	for ( i = 0; i < 4; i++ ) {
+		for ( j = 0; j < counts[i]; j++ ) {
+			for ( k = 0; k < scripts[i][j].numItems; k++ ) {
+				scripts[i][j].items[k] = mi->scriptItems + ( scripts[i][j].items[k] - full->scriptItems );
+			}
 		}
 	}
+	free( full );
+	return mi;
+}
 
+// the client's model's info, parsed the first time a client has it
+static void G_LoadModelInfo( gclient_t *cl, char *modelName ) {
+	if ( !G_CheckForExistingModelInfo( cl, modelName, &cl->modelInfo ) ) {
+		int slot = level.animScriptData.clientModels[cl->ps.clientNum] - 1;
+
+		if ( !G_ParseAnimationFiles( modelName, cl ) ) {
+			G_Error( "Failed to load animation scripts for model %s\n", modelName );
+		}
+		cl->modelInfo = level.animScriptData.modelInfo[slot] = G_FitModelInfo( cl->modelInfo );
+	}
+}
+
+qboolean G_GetModelInfo( int clientNum, char *modelName, animModelInfo_t **modelInfo ) {
+	G_LoadModelInfo( &level.clients[clientNum], modelName );
+	*modelInfo = level.clients[clientNum].modelInfo;
 	return qtrue;
 }
 
-static char text[100000];                   // <- was causing callstacks >64k
+// a file to parse, in its own buffer, freed with free
+static char *G_ReadTextFile( const char *filename, fileHandle_t f, int len ) {
+	char *text = malloc( len + 1 );
+
+	if ( !text ) {
+		G_Printf( "File %s: out of memory\n", filename );
+		trap_FS_FCloseFile( f );
+		return NULL;
+	}
+	trap_FS_Read( text, len, f );
+	text[len] = 0;
+	trap_FS_FCloseFile( f );
+	return text;
+}
 
 /*
 =============
@@ -1221,6 +1268,7 @@ qboolean G_ParseAnimationFiles( char *modelname, gclient_t *cl ) {
 	char filename[MAX_QPATH];
 	fileHandle_t f;
 	int len;
+	char *text;
 
 	// set the name of the model in the modelinfo structure
 	Q_strncpyz( cl->modelInfo->modelname, modelname, sizeof( cl->modelInfo->modelname ) );
@@ -1232,16 +1280,13 @@ qboolean G_ParseAnimationFiles( char *modelname, gclient_t *cl ) {
 		G_Printf( "G_ParseAnimationFiles(): file '%s' not found\n", filename );       //----(SA)	added
 		return qfalse;
 	}
-	if ( len >= sizeof( text ) - 1 ) {
-		G_Printf( "File %s too long\n", filename );
+	if ( !( text = G_ReadTextFile( filename, f, len ) ) ) {
 		return qfalse;
 	}
-	trap_FS_Read( text, len, f );
-	text[len] = 0;
-	trap_FS_FCloseFile( f );
 
 	// parse the text
 	BG_AnimParseAnimConfig( cl->modelInfo, filename, text );
+	free( text );
 
 	// load the script file
 	Com_sprintf( filename, sizeof( filename ), "models/players/%s/wolfanim.script", modelname );
@@ -1257,16 +1302,13 @@ qboolean G_ParseAnimationFiles( char *modelname, gclient_t *cl ) {
 			return qfalse;
 		}
 	}
-	if ( len >= sizeof( text ) - 1 ) {
-		G_Printf( "File %s too long\n", filename );
+	if ( !( text = G_ReadTextFile( filename, f, len ) ) ) {
 		return qfalse;
 	}
-	trap_FS_Read( text, len, f );
-	text[len] = 0;
-	trap_FS_FCloseFile( f );
 
 	// parse the text
 	BG_AnimParseAnimScript( cl->modelInfo, &level.animScriptData, cl->ps.clientNum, filename, text );
+	free( text );
 
 	// ask the client to send us the movespeeds if available
 	if ( g_gametype.integer == GT_SINGLE_PLAYER && g_entities[0].client && g_entities[0].client->pers.connected == CON_CONNECTED ) {
@@ -1399,11 +1441,7 @@ void ClientUserinfoChanged( int clientNum ) {
 		modelname[ strstr( modelname, "\\" ) - modelname ] = 0;
 	}
 
-	if ( !G_CheckForExistingModelInfo( client, modelname, &client->modelInfo ) ) {
-		if ( !G_ParseAnimationFiles( modelname, client ) ) {
-			G_Error( "Failed to load animation scripts for model %s\n", modelname );
-		}
-	}
+	G_LoadModelInfo( client, modelname );
 
 	// team`
 	// DHM - Nerve :: Already took care of models and skins above

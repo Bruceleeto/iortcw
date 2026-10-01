@@ -3852,7 +3852,7 @@ static void FS_CheckPak0( void )
 	qboolean founddemo = qfalse;
 	unsigned int foundPak = 0;
 
-#ifdef _arch_dreamcast
+#if defined( _arch_dreamcast ) || defined( DCSIM )
 	Cvar_Set( "com_standalone", "0" );
 	return;	// the disc has the pk3s unpacked (make disc)
 #endif

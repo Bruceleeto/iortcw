@@ -1,0 +1,242 @@
+/*
+ * DCSIM: the Dreamcast's malloc (newlib's, dcsim_mallocr.inc) on an arena
+ * the size of the RAM it has, from the end of the Dreamcast build's image
+ * (DCSIM_HEAP_START, the .elf's _end) to the top of its 32MB less the
+ * kernel stack, as KallistiOS gives it out (mm_sbrk). Less DCSIM_KOS_BYTES,
+ * what KallistiOS mallocs itself before the game starts. See dcsim.h.
+ */
+#undef malloc
+#undef calloc
+#undef realloc
+#undef memalign
+#undef free
+
+#include <execinfo.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define DC_MEM_TOP          ( 0x8c000000u + 32 * 1024 * 1024 - 64 * 1024 )
+
+static unsigned char *arena;        // where DCSIM_HEAP_START is
+static uintptr_t sbrkBase;          // as a Dreamcast address
+
+static void *dcsim_sbrk( ptrdiff_t increment ) {
+	uintptr_t base = sbrkBase, newBase;
+
+	increment = ( increment + 3 ) & ~3;
+	newBase = base + increment;
+	if ( newBase >= DC_MEM_TOP ) {
+		printf( "Out of memory. Requested sbrk_base 0x%x, was 0x%x, diff %d\n",
+				(unsigned)newBase, (unsigned)base, (int)increment );
+		return (void *)-1;
+	}
+	sbrkBase = newBase;
+	return arena + ( base - DCSIM_HEAP_START );
+}
+
+// the Dreamcast's malloc, all its names dl_
+#define malloc              dl_malloc
+#define calloc              dl_calloc
+#define realloc             dl_realloc
+#define memalign            dl_memalign
+#define free                dl_free
+#define cfree               dl_cfree
+#define valloc              dl_valloc
+#define pvalloc             dl_pvalloc
+#define mallinfo            dl_mallinfo
+#define mallopt             dl_mallopt
+#define malloc_stats        dl_malloc_stats
+#define malloc_trim         dl_malloc_trim
+#define malloc_usable_size  dl_malloc_usable_size
+#define HAVE_MMAP           0
+#define MORECORE            dcsim_sbrk
+#define MORECORE_CLEARS     0
+#define malloc_getpagesize  ( 4096 )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#include "dcsim_mallocr.inc"
+#pragma GCC diagnostic pop
+#undef malloc
+#undef calloc
+#undef realloc
+#undef memalign
+#undef free
+
+static int inArena( void *p ) {
+	return arena && (unsigned char *)p >= arena && (unsigned char *)p < arena + ( DC_MEM_TOP - DCSIM_HEAP_START );
+}
+
+static void init( void ) {
+	static unsigned char *block;
+	size_t size = DC_MEM_TOP - DCSIM_HEAP_START;
+
+	if ( arena ) {
+		return;
+	}
+	// the same place in a page as on the Dreamcast, so it lines up alike
+	block = aligned_alloc( 4096, size + 8192 );
+	if ( !block ) {
+		fprintf( stderr, "DCSIM: no %u bytes for the arena\n", (unsigned)size );
+		exit( 1 );
+	}
+	arena = block + ( DCSIM_HEAP_START & 4095 );
+	sbrkBase = DCSIM_HEAP_START;
+	// what KallistiOS has taken before the game starts
+	dl_malloc( DCSIM_KOS_BYTES );
+	printf( "DCSIM: Dreamcast heap %u K (image ends 0x%x), %u K of it KallistiOS's\n",
+			(unsigned)( size / 1024 ), (unsigned)DCSIM_HEAP_START, (unsigned)( DCSIM_KOS_BYTES / 1024 ) );
+}
+
+/*
+ * With DCSIM_ALLOCS set (a file name start), every block in the arena is
+ * kept with who asked for it, and DCSim_DumpAllocs writes them out: a line a
+ * block, its size and the calls that made it, for addr2line.
+ */
+#define TRACK_FRAMES    10
+#define TRACK_SLOTS     ( 1 << 20 )
+
+typedef struct {
+	void *p;            // NULL: empty; (void *)1: was one
+	unsigned size;
+	void *frames[TRACK_FRAMES];
+} track_t;
+
+static track_t *tracked;
+static int tracking = -1;
+
+static unsigned slotFor( void *p ) {
+	return (unsigned)( ( (uintptr_t)p >> 3 ) * 2654435761u ) & ( TRACK_SLOTS - 1 );
+}
+
+static void track( void *p, size_t size ) {
+	void *frames[TRACK_FRAMES + 2];
+	unsigned i;
+	int n;
+
+	if ( tracking < 0 ) {
+		tracking = getenv( "DCSIM_ALLOCS" ) != NULL;
+		if ( tracking ) {
+			tracked = calloc( TRACK_SLOTS, sizeof( *tracked ) );
+		}
+	}
+	if ( !tracking || !p ) {
+		return;
+	}
+	n = backtrace( frames, TRACK_FRAMES + 2 );
+	for ( i = slotFor( p ); tracked[i].p && tracked[i].p != (void *)1; i = ( i + 1 ) & ( TRACK_SLOTS - 1 ) ) {
+	}
+	tracked[i].p = p;
+	tracked[i].size = size;
+	memset( tracked[i].frames, 0, sizeof( tracked[i].frames ) );
+	// past track and the dcsim_ call
+	if ( n > 2 ) {
+		memcpy( tracked[i].frames, frames + 2, ( n - 2 ) * sizeof( void * ) );
+	}
+}
+
+static void untrack( void *p ) {
+	unsigned i;
+
+	if ( tracking <= 0 || !p ) {
+		return;
+	}
+	for ( i = slotFor( p ); tracked[i].p; i = ( i + 1 ) & ( TRACK_SLOTS - 1 ) ) {
+		if ( tracked[i].p == p ) {
+			tracked[i].p = (void *)1;
+			return;
+		}
+	}
+}
+
+void DCSim_DumpAllocs( const char *when ) {
+	static int count;
+	char name[1024];
+	FILE *f;
+	unsigned i;
+	int j;
+
+	if ( tracking <= 0 ) {
+		return;
+	}
+	snprintf( name, sizeof( name ), "%s%d.txt", getenv( "DCSIM_ALLOCS" ), ++count );
+	if ( !( f = fopen( name, "w" ) ) ) {
+		return;
+	}
+	fprintf( f, "# %s\n", when );
+	for ( i = 0; i < TRACK_SLOTS; i++ ) {
+		if ( tracked[i].p && tracked[i].p != (void *)1 ) {
+			fprintf( f, "%u", tracked[i].size );
+			for ( j = 0; j < TRACK_FRAMES && tracked[i].frames[j]; j++ ) {
+				fprintf( f, " %p", tracked[i].frames[j] );
+			}
+			fprintf( f, "\n" );
+		}
+	}
+	fclose( f );
+	printf( "DCSIM: blocks in use written to %s\n", name );
+}
+
+void *dcsim_malloc( size_t size ) {
+	void *p;
+
+	init();
+	p = dl_malloc( size );
+	track( p, size );
+	return p;
+}
+
+void *dcsim_calloc( size_t n, size_t size ) {
+	void *p;
+
+	init();
+	p = dl_calloc( n, size );
+	track( p, n * size );
+	return p;
+}
+
+void *dcsim_memalign( size_t align, size_t size ) {
+	void *p;
+
+	init();
+	p = dl_memalign( align, size );
+	track( p, size );
+	return p;
+}
+
+// a block from the system's malloc (strdup and the like) goes back to it
+void dcsim_free( void *p ) {
+	if ( !p ) {
+		return;
+	}
+	if ( inArena( p ) ) {
+		untrack( p );
+		dl_free( p );
+	} else {
+		free( p );
+	}
+}
+
+void *dcsim_realloc( void *p, size_t size ) {
+	init();
+	if ( p && !inArena( p ) ) {
+		return realloc( p, size );
+	}
+	untrack( p );
+	p = dl_realloc( p, size );
+	track( p, size );
+	return p;
+}
+
+void DCSim_Info( int *inUse, int *freeBytes ) {
+	struct dl_mallinfo mi;
+
+	init();
+	mi = dl_mallinfo();
+	*inUse = mi.uordblks;
+	*freeBytes = ( DC_MEM_TOP - sbrkBase ) + mi.fordblks;
+}

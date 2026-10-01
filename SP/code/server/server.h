@@ -149,7 +149,7 @@ typedef struct client_s {
 	int ping;
 
 	int				oldServerTime;
-	qboolean		csUpdated[MAX_CONFIGSTRINGS];	
+	byte			csUpdated[MAX_CONFIGSTRINGS / 8];	// a bit a configstring (64 clients: 8K each as qbooleans)
 } client_t;
 
 //=============================================================================

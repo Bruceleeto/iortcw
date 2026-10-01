@@ -96,7 +96,7 @@ void SV_UpdateConfigstrings(client_t *client)
 
 	for( index = 0; index < MAX_CONFIGSTRINGS; index++ ) {
 		// if the CS hasn't changed since we went to CS_PRIMED, ignore
-		if(!client->csUpdated[index])
+		if ( !( client->csUpdated[index >> 3] & ( 1 << ( index & 7 ) ) ) )
 			continue;
 
 		// do not always send server info to all clients
@@ -105,7 +105,7 @@ void SV_UpdateConfigstrings(client_t *client)
 			continue;
 		}
 		SV_SendConfigstring(client, index);
-		client->csUpdated[index] = qfalse;
+		client->csUpdated[index >> 3] &= ~( 1 << ( index & 7 ) );
 	}
 }
 
@@ -145,7 +145,7 @@ void SV_SetConfigstring( int index, const char *val ) {
 		for ( i = 0, client = svs.clients; i < sv_maxclients->integer ; i++, client++ ) {
 			if ( client->state < CS_ACTIVE ) {
 				if ( client->state == CS_PRIMED )
-					client->csUpdated[ index ] = qtrue;
+					client->csUpdated[ index >> 3 ] |= 1 << ( index & 7 );
 				continue;
 			}
 			// do not always send server info to all clients

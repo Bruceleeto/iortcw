@@ -75,6 +75,7 @@ struct AasStats {
 	int files;
 	size_t bytesIn, bytesOut;
 	long facesIn, facesOut;
+	int skipped;                /* second worlds left empty: no big characters */
 };
 
 /* .aas -> .aasc: only the ladder faces (and their edges and vertexes) kept.
@@ -139,5 +140,20 @@ bool BspLightmapJobs(const std::vector<uint8_t> &bsp, const std::string &mapName
 
 /* Converts each image to its .dt. Returns how many failed. */
 int ConvertTextures(const std::vector<TexJob> &jobs, const TexOptions &opt, TexStats &st);
+
+/* ---- shaders.cpp ---- */
+
+struct ShaderStats {
+	int files, shaders, kept;
+	size_t bytesIn, bytesOut;
+};
+
+/* the words in a file that may name a shader */
+void ShaderNames(const uint8_t *data, size_t size);
+/* a .shader file's shaders (fileName as the renderer lists it) */
+bool ShaderFile(const std::string &fileName, const std::vector<uint8_t> &data, ShaderStats &st);
+/* scripts/dc.shaders: the shaders named, of all the files given; empty
+ * with no .shader files */
+void WriteShaders(std::vector<uint8_t> &data, ShaderStats &st);
 
 #endif

@@ -36,7 +36,7 @@ If you have questions concerning this license or the applicable additional terms
 static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *mod_name );
 // done.
 static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, const char *name );
-static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *name );
+static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *name, qboolean inHunk );
 static qboolean R_LoadMDR(model_t *mod, void *buffer, int filesize, const char *name );
 
 extern cvar_t *r_compressModels;
@@ -189,6 +189,31 @@ qhandle_t R_RegisterMDS(const char *name, model_t *mod)
 	int	ident;
 	qboolean loaded = qfalse;
 
+	// little endian, it's used as it is: read straight into the hunk, so a
+	// body (1.5MB) doesn't need room for it twice while it loads
+	if(LittleLong(1) == 1)
+	{
+		fileHandle_t f;
+		long len = ri.FS_FOpenFileRead(va("%sc", name), &f, qfalse);
+
+		if(len <= 0 || !f)
+			len = ri.FS_FOpenFileRead(name, &f, qfalse);
+		if(len <= 0 || !f)
+		{
+			mod->type = MOD_BAD;
+			return 0;
+		}
+		buf.v = ri.Hunk_Alloc(len, h_low);
+		len = ri.FS_Read(buf.v, len, f) == len;
+		ri.FS_FCloseFile(f);
+		ident = LittleLong(*buf.u);
+		if(len && (ident == MDS_IDENT || ident == MDSC_IDENT) && R_LoadMDS(mod, buf.u, name, qtrue))
+			return mod->index;
+		ri.Printf(PRINT_WARNING,"R_RegisterMDS: couldn't load mds file %s\n", name);
+		mod->type = MOD_BAD;
+		return 0;
+	}
+
 	// body.mdsc, if `make assets` made one, before body.mds
 	ri.FS_ReadFile(va("%sc", name), (void **) &buf.v);
 	if(!buf.u)
@@ -201,7 +226,7 @@ qhandle_t R_RegisterMDS(const char *name, model_t *mod)
 	
 	ident = LittleLong(*(unsigned *)buf.u);
 	if(ident == MDS_IDENT || ident == MDSC_IDENT)
-		loaded = R_LoadMDS(mod, buf.u, name);
+		loaded = R_LoadMDS(mod, buf.u, name, qfalse);
 
 	ri.FS_FreeFile (buf.v);
 	
@@ -1701,7 +1726,8 @@ static qboolean R_LoadMDR( model_t *mod, void *buffer, int filesize, const char 
 R_LoadMDS
 =================
 */
-static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name ) {
+// inHunk: buffer is the model's own hunk block already, to use in place
+static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qboolean inHunk ) {
 	int i, j, k;
 	mdsHeader_t         *pinmodel, *mds;
 	mdsFrame_t          *frame;
@@ -1739,9 +1765,12 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name ) {
 	mod->type = MOD_MDS;
 	size = LittleLong( pinmodel->ofsEnd );
 	mod->dataSize += size;
-	mds = mod->mds = ri.Hunk_Alloc( size, h_low );
-
-	memcpy( mds, buffer, LittleLong( pinmodel->ofsEnd ) );
+	if ( inHunk ) {
+		mds = mod->mds = buffer;
+	} else {
+		mds = mod->mds = ri.Hunk_Alloc( size, h_low );
+		memcpy( mds, buffer, LittleLong( pinmodel->ofsEnd ) );
+	}
 
 	LL( mds->ident );
 	LL( mds->version );

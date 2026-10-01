@@ -853,6 +853,9 @@ void AICast_StartFrame( int time ) {
 	// update the player's area, only update if it's valid
 	for ( i = 0; i < 2; i++ ) {
 		trap_AAS_SetCurrentWorld( i );
+		if ( !trap_AAS_Initialized() ) {
+			continue;   // a map with no big characters has no second world
+		}
 		castcount = BotPointAreaNum( g_entities[0].s.pos.trBase );
 		if ( castcount ) {
 			caststates[0].lastValidAreaNum[i] = castcount;

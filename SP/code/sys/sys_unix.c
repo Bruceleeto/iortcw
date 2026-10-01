@@ -828,6 +828,12 @@ dialogResult_t Sys_Dialog( dialogType_t type, const char *message, const char *t
 
 	const char              *session = getenv( "DESKTOP_SESSION" );
 	qboolean                tried[ NUM_DIALOG_PROGRAMS ] = { qfalse };
+
+#ifdef DCSIM
+	// as on the Dreamcast: no dialogs, the message is in the log
+	Sys_Print( va( "%s: %s\n", title, message ) );
+	return DR_OK;
+#endif
 	dialogCommandBuilder_t  commands[ NUM_DIALOG_PROGRAMS ] = { NULL };
 	dialogCommandType_t     preferredCommandType = NONE;
 	int                     i;

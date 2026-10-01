@@ -49,7 +49,12 @@ If you have questions concerning this license or the applicable additional terms
 #include <unistd.h>
 #include <arch/arch.h>
 #include <arch/stack.h>
-#define DC_MALLOC_RESERVE	( 4 * 1024 * 1024 )
+#endif
+// the hunk as malloc'd blocks instead of one block set aside at start
+#if defined( _arch_dreamcast ) || defined( DCSIM ) || defined( HUNK_MALLOC )
+#undef HUNK_MALLOC
+#define HUNK_MALLOC
+#include <malloc.h>
 #endif
 #define DEF_COMHUNKMEGS 	256
 #define DEF_COMZONEMEGS		32
@@ -1010,10 +1015,11 @@ typedef struct hunkblock_s {
 static hunkblock_t *hunkblocks;
 
 static hunkUsed_t hunk_low, hunk_high;
-static hunkUsed_t  *hunk_permanent, *hunk_temp;
-
-static byte    *s_hunkData = NULL;
 static int s_hunkTotal;
+#ifndef HUNK_MALLOC
+static hunkUsed_t  *hunk_permanent, *hunk_temp;
+static byte    *s_hunkData = NULL;
+#endif
 
 static int s_zoneTotal;
 //static	int		s_smallZoneTotal; // TTimo: unused
@@ -1065,6 +1071,7 @@ Com_TouchMemory
 Touch all known used data to make sure it is paged in
 ===============
 */
+#ifndef HUNK_MALLOC
 void Com_TouchMemory( void ) {
 	int start, end;
 	int i, j;
@@ -1089,6 +1096,7 @@ void Com_TouchMemory( void ) {
 
 	Com_Printf( "Com_TouchMemory: %i msec\n", end - start );
 }
+#endif
 
 
 
@@ -1178,6 +1186,7 @@ void Hunk_SmallLog( void ) {
 	FS_Write( buf, strlen( buf ), logfile );
 }
 
+#ifndef HUNK_MALLOC
 /*
 =================
 Com_InitHunkMemory
@@ -1208,27 +1217,12 @@ void Com_InitHunkMemory( void ) {
 		pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
 	}
 
-#ifdef _arch_dreamcast
-	// the RAM still free above the heap, less what the malloc users (zone,
-	// game, ui, cgame pools) need; com_hunkMegs means nothing here
-	{
-		uintptr_t heapTop = (uintptr_t)sbrk( 0 );
-		uintptr_t top = _arch_mem_top - THD_KERNEL_STACK_SIZE;
-
-		s_hunkTotal = top > heapTop + DC_MALLOC_RESERVE + 32 ? top - heapTop - DC_MALLOC_RESERVE - 32 : 0;
-		Com_Printf( "Hunk: %i K of %i K free (%i K kept for malloc)\n", s_hunkTotal / 1024,
-					(int)( top - heapTop ) / 1024, DC_MALLOC_RESERVE / 1024 );
-		(void)nMinAlloc;
-		(void)pMsg;
-	}
-#else
 	if ( cv->integer < nMinAlloc ) {
 		s_hunkTotal = 1024 * 1024 * nMinAlloc;
 		Com_Printf( pMsg, nMinAlloc, s_hunkTotal / ( 1024 * 1024 ) );
 	} else {
 		s_hunkTotal = cv->integer * 1024 * 1024;
 	}
-#endif
 
 
 	s_hunkData = malloc( s_hunkTotal + 31 );
@@ -1307,6 +1301,9 @@ Hunk_Clear
 The server calls this before shutting down or loading a new map
 =================
 */
+void Com_MemoryReport( const char *when ) {
+}
+
 void Hunk_Clear( void ) {
 #ifndef _arch_dreamcast
 	HunkBy_Report();
@@ -1403,8 +1400,10 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 		Hunk_Log();
 		Hunk_SmallLog();
 
+		Com_MemoryReport( "out of hunk" );
 		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
 #else
+		Com_MemoryReport( "out of hunk" );
 		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
 #endif
 	}
@@ -1473,6 +1472,7 @@ void *Hunk_AllocateTempMemory( int size ) {
 #endif
 
 	if ( hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal ) {
+		Com_MemoryReport( "out of hunk" );
 		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
 	}
 
@@ -1556,6 +1556,237 @@ void Hunk_ClearTempMemory( void ) {
 		hunk_temp->temp = hunk_temp->permanent;
 	}
 }
+
+#else	// HUNK_MALLOC
+
+/*
+==============================================================================
+
+The hunk as malloc: each allocation is its own block on a list, freed all at
+once when the hunk is cleared (or back to the mark). Nothing is set aside up
+front, so the hunk and everything else that mallocs share all the RAM there
+is, each taking just what it uses. Temp memory is plain malloc and free.
+
+==============================================================================
+*/
+
+typedef struct hunkAlloc_s {
+	struct hunkAlloc_s *next;
+	int size;
+} hunkAlloc_t;
+
+typedef struct hunkTemp_s {
+	int magic;
+	int size;
+	struct hunkTemp_s *prev, *next;
+} hunkTemp_t;
+
+#define HUNK_ALIGN      32      // cacheline, as the hunk was; the header fills it
+static hunkAlloc_t *hunkAllocs, *hunkMark;
+static hunkTemp_t *hunkTemps;
+static qboolean s_hunkInit;
+
+static int Hunk_FreeRAM( void ) {
+#if defined( DCSIM )
+	int inUse, freeBytes;
+
+	DCSim_Info( &inUse, &freeBytes );
+	return freeBytes;
+#elif defined( _arch_dreamcast )
+	struct mallinfo mi = mallinfo();
+	uintptr_t heapTop = (uintptr_t)sbrk( 0 );
+	uintptr_t top = _arch_mem_top - THD_KERNEL_STACK_SIZE;
+
+	return ( top > heapTop ? top - heapTop : 0 ) + mi.fordblks;
+#else
+	return 64 * 1024 * 1024;
+#endif
+}
+
+/*
+=================
+Com_MemoryReport
+
+How full the hunk and malloc are, after a load and when one runs out
+=================
+*/
+#ifdef DCSIM
+#include <execinfo.h>
+#endif
+
+void Com_MemoryReport( const char *when ) {
+#if defined( DCSIM ) || defined( _arch_dreamcast )
+#ifdef DCSIM
+	int inUse, freeBytes;
+
+	DCSim_Info( &inUse, &freeBytes );
+#else
+	struct mallinfo mi = mallinfo();
+	int inUse = mi.uordblks;
+#endif
+
+	Com_Printf( "MEM %s: hunk %d K (temp %d K now, %d K peak); malloc %d K in use, %d K free\n",
+				when, hunk_low.permanent / 1024, hunk_high.temp / 1024, hunk_high.tempHighwater / 1024,
+				inUse / 1024, Hunk_FreeRAM() / 1024 );
+#ifdef DCSIM
+	DCSim_DumpAllocs( when );
+	// who ran out: addr2line -f -e iowolfsp.x86 on these
+	if ( strstr( when, "out of" ) ) {
+		void *frames[16];
+		int i, n = backtrace( frames, 16 );
+
+		Com_Printf( "MEM backtrace:" );
+		for ( i = 1; i < n; i++ ) {
+			Com_Printf( " %p", frames[i] );
+		}
+		Com_Printf( "\n" );
+	}
+#endif
+#endif
+}
+
+void Com_TouchMemory( void ) {
+}
+
+void Com_InitHunkMemory( void ) {
+	if ( FS_LoadStack() != 0 ) {
+		Com_Error( ERR_FATAL, "Hunk initialization failed. File system load stack not zero" );
+	}
+	Cvar_Get( "com_hunkMegs", DEF_COMHUNKMEGS_S, CVAR_LATCH | CVAR_ARCHIVE );
+	s_hunkInit = qtrue;
+	Com_Printf( "Hunk: malloc'd as needed, %i K free\n", Hunk_FreeRAM() / 1024 );
+	Hunk_Clear();
+	Cmd_AddCommand( "meminfo", Com_Meminfo_f );
+}
+
+int Hunk_MemoryRemaining( void ) {
+	return Hunk_FreeRAM();
+}
+
+void Hunk_SetMark( void ) {
+	hunkMark = hunkAllocs;
+	hunk_low.mark = hunk_low.permanent;
+}
+
+static void Hunk_FreeTo( hunkAlloc_t *to ) {
+	while ( hunkAllocs && hunkAllocs != to ) {
+		hunkAlloc_t *next = hunkAllocs->next;
+		hunk_low.permanent -= hunkAllocs->size;
+		free( hunkAllocs );
+		hunkAllocs = next;
+	}
+}
+
+void Hunk_ClearToMark( void ) {
+	Hunk_FreeTo( hunkMark );
+}
+
+qboolean Hunk_CheckMark( void ) {
+	return hunkMark != NULL;
+}
+
+void CL_ShutdownCGame( void );
+void CL_ShutdownUI( void );
+void SV_ShutdownGameProgs( void );
+
+void Hunk_Clear( void ) {
+#ifndef DEDICATED
+	CL_ShutdownCGame();
+	CL_ShutdownUI();
+#endif
+	SV_ShutdownGameProgs();
+#ifndef DEDICATED
+	CIN_CloseAllVideos();
+#endif
+	Hunk_FreeTo( NULL );
+	hunkMark = NULL;
+	// temp blocks stay with whoever has them, to free as they do
+	hunk_low.permanent = 0;
+	hunk_high.tempHighwater = hunk_high.temp;
+
+	Cvar_Set( "com_hunkused", "0" );
+	Com_Printf( "Hunk_Clear: reset the hunk ok\n" );
+	VM_Clear();
+}
+
+void *Hunk_Alloc( int size, ha_pref preference ) {
+	hunkAlloc_t *a;
+
+	if ( !s_hunkInit ) {
+		Com_Error( ERR_FATAL, "Hunk_Alloc: Hunk memory system not initialized" );
+	}
+	// rounded as the hunk did: some code writes a little past what it
+	// asked for, which there landed in the slack or the next block
+	size = ( size + 31 ) & ~31;
+	a = memalign( HUNK_ALIGN, HUNK_ALIGN + size );
+	if ( !a ) {
+		Com_MemoryReport( "out of memory" );
+		Com_Error( ERR_DROP, "Hunk_Alloc failed on %i", size );
+	}
+	a->next = hunkAllocs;
+	a->size = size;
+	hunkAllocs = a;
+	hunk_low.permanent += size;
+	memset( (byte *)a + HUNK_ALIGN, 0, size );
+	return (byte *)a + HUNK_ALIGN;
+}
+
+void *Hunk_AllocateTempMemory( int size ) {
+	hunkTemp_t *t;
+
+	if ( !s_hunkInit ) {
+		return Z_Malloc( size );
+	}
+	size = PAD( size, 32 );
+	t = malloc( sizeof( *t ) + size );
+	if ( !t ) {
+		Com_MemoryReport( "out of memory" );
+		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
+	}
+	t->magic = HUNK_MAGIC;
+	t->size = size;
+	t->prev = NULL;
+	t->next = hunkTemps;
+	if ( hunkTemps ) {
+		hunkTemps->prev = t;
+	}
+	hunkTemps = t;
+	hunk_high.temp += size;
+	if ( hunk_high.temp > hunk_high.tempHighwater ) {
+		hunk_high.tempHighwater = hunk_high.temp;
+	}
+	return t + 1;
+}
+
+void Hunk_FreeTempMemory( void *buf ) {
+	hunkTemp_t *t;
+
+	if ( !s_hunkInit ) {
+		Z_Free( buf );
+		return;
+	}
+	t = (hunkTemp_t *)buf - 1;
+	if ( t->magic != HUNK_MAGIC ) {
+		Com_Error( ERR_FATAL, "Hunk_FreeTempMemory: bad magic" );
+	}
+	t->magic = HUNK_FREE_MAGIC;
+	if ( t->prev ) {
+		t->prev->next = t->next;
+	} else {
+		hunkTemps = t->next;
+	}
+	if ( t->next ) {
+		t->next->prev = t->prev;
+	}
+	hunk_high.temp -= t->size;
+	free( t );
+}
+
+// each temp block is freed by its owner
+void Hunk_ClearTempMemory( void ) {
+}
+
+#endif	// HUNK_MALLOC
 
 /*
 ===================================================================

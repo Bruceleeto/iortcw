@@ -33,7 +33,6 @@ If you have questions concerning this license or the applicable additional terms
  *
 */
 
-static char text[100000];
 
 #include "cg_local.h"
 
@@ -138,7 +137,7 @@ Read a configuration file containing gib models for use with this character
 ======================
 */
 static qboolean CG_ParseGibModels( const char *filename, clientInfo_t *ci ) {
-	char        *text_p;
+	char        *text, *text_p;
 	int len;
 	int i;
 	char        *token;
@@ -151,8 +150,8 @@ static qboolean CG_ParseGibModels( const char *filename, clientInfo_t *ci ) {
 	if ( len <= 0 ) {
 		return qfalse;
 	}
-	if ( len >= sizeof( text ) - 1 ) {
-		CG_Printf( "File %s too long\n", filename );
+	if ( !( text = malloc( len + 1 ) ) ) {
+		CG_Printf( "File %s: out of memory\n", filename );
 		trap_FS_FCloseFile( f );
 		return qfalse;
 	}
@@ -172,6 +171,7 @@ static qboolean CG_ParseGibModels( const char *filename, clientInfo_t *ci ) {
 		ci->gibModels[i] = trap_R_RegisterModel( token );
 	}
 
+	free( text );
 	return qtrue;
 }
 

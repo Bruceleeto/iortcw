@@ -392,7 +392,7 @@ void AAS_ParseBSPEntities( void ) {
 
 	bspworld.ebuffer = NULL;
 
-	script = LoadScriptMemory( bspworld.dentdata, bspworld.entdatasize, "entdata" );
+	script = LoadScriptMemory( (char *)botimport.BSPEntityData(), strlen( botimport.BSPEntityData() ), "entdata" );
 	SetScriptFlags( script, SCFL_NOSTRINGWHITESPACES | SCFL_NOSTRINGESCAPECHARS ); //SCFL_PRIMITIVE);
 
 	bufsize = 0;
@@ -447,7 +447,7 @@ void AAS_ParseBSPEntities( void ) {
 	// RF, now parse the entities into memory
 	// RF, NOTE: removed error checks for speed, no need to do them twice
 
-	script = LoadScriptMemory( bspworld.dentdata, bspworld.entdatasize, "entdata" );
+	script = LoadScriptMemory( (char *)botimport.BSPEntityData(), strlen( botimport.BSPEntityData() ), "entdata" );
 	SetScriptFlags( script, SCFL_NOSTRINGWHITESPACES | SCFL_NOSTRINGESCAPECHARS ); //SCFL_PRIMITIVE);
 
 	bspworld.numentities = 1;
@@ -516,9 +516,7 @@ void AAS_DumpBSPData( void ) {
 //===========================================================================
 int AAS_LoadBSPFile( void ) {
 	AAS_DumpBSPData();
-	bspworld.entdatasize = strlen( botimport.BSPEntityData() ) + 1;
-	bspworld.dentdata = (char *) GetClearedHunkMemory( bspworld.entdatasize );
-	memcpy( bspworld.dentdata, botimport.BSPEntityData(), bspworld.entdatasize );
+	// parsed straight from the server's copy, not kept again
 	AAS_ParseBSPEntities();
 	bspworld.loaded = qtrue;
 	return BLERR_NOERROR;

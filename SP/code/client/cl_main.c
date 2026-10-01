@@ -812,6 +812,77 @@ void CL_CheckUserinfo( void ) {
 	}
 }
 
+#ifdef DCSIM
+/*
+==================
+CL_DCSimNewGame
+
++set dcsim_newgame 1: play the start of the game as a player would, from the
+menu: New Game (play.menu's action), the pregame menu's arrow after each
+load (uiScript playerstart), skip the cutscene as a key does, then
+quit 10 seconds into escape1; at once on an error, and after a minute
+whatever happens
+==================
+*/
+static void CL_DCSimNewGame( void ) {
+	static int start, started, escape, lastSkip, pregameServerId = -1;
+	int now = Sys_Milliseconds();
+
+	if ( !Cvar_VariableIntegerValue( "dcsim_newgame" ) ) {
+		return;
+	}
+	if ( !start ) {
+		start = now;
+	}
+	if ( now - start > 60000 ) {
+		Com_Printf( "DCSIM newgame: a minute and not done, quitting\n" );
+		Cbuf_AddText( "quit\n" );
+		return;
+	}
+	if ( !started ) {
+		// the menu is up
+		if ( clc.state == CA_DISCONNECTED && ( Key_GetCatcher() & KEYCATCH_UI ) && now - start > 1000 ) {
+			Com_Printf( "DCSIM newgame: New Game\n" );
+			Cbuf_AddText( "set g_gameskill 1; spmap cutscene1\n" );
+			started = now;
+		}
+		return;
+	}
+	if ( clc.state == CA_DISCONNECTED && now - started > 2000 ) {
+		Com_Printf( "DCSIM newgame: back at the menu (an error), quitting\n" );
+		Cbuf_AddText( "quit\n" );
+		return;
+	}
+	if ( clc.state != CA_ACTIVE ) {
+		return;
+	}
+	// the pregame menu's arrow: what uiScript playerstart does
+	if ( ( Key_GetCatcher() & KEYCATCH_UI ) && cl.serverId != pregameServerId ) {
+		Com_Printf( "DCSIM newgame: the pregame arrow\n" );
+		Cbuf_AddText( "fade 0 0 0 0 3\n" );
+		Cvar_Set( "g_playerstart", "1" );
+		VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_NONE );
+		pregameServerId = cl.serverId;
+		return;
+	}
+	if ( cl.cameraMode && now - lastSkip > 500 ) {
+		CL_AddReliableCommand( "cameraInterrupt", qfalse );
+		lastSkip = now;
+	}
+	if ( !Q_stricmp( Cvar_VariableString( "mapname" ), "escape1" ) ) {
+		if ( !escape ) {
+			Com_Printf( "DCSIM newgame: in escape1\n" );
+			escape = now;
+		} else if ( now - escape > 10000 ) {
+			Com_Printf( "DCSIM newgame: 10 seconds into escape1, quitting\n" );
+			Com_MemoryReport( "10 seconds into escape1" );
+			Cbuf_AddText( "quit\n" );
+			escape = now + 100000;
+		}
+	}
+}
+#endif
+
 /*
 ==================
 CL_Frame
@@ -823,6 +894,9 @@ void CL_Frame( int msec ) {
 	if ( !com_cl_running->integer ) {
 		return;
 	}
+#ifdef DCSIM
+	CL_DCSimNewGame();
+#endif
 
 
 	if ( cls.cddialog ) {
@@ -1099,6 +1173,7 @@ void CL_InitRef( void ) {
 	ri.CM_EntityString = CM_EntityString;
 	ri.FS_FOpenFileRead = FS_FOpenFileRead;
 	ri.FS_FCloseFile = FS_FCloseFile;
+	ri.FS_Read = FS_Read;
 	ri.CM_DrawDebugSurface = CM_DrawDebugSurface;
 	ri.FS_ReadFile = FS_ReadFile;
 	ri.FS_FreeFile = FS_FreeFile;

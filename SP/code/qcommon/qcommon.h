@@ -711,6 +711,7 @@ void Z_Free( void *ptr );
 void Z_FreeTags( int tag );
 
 void Hunk_Clear( void );
+void Com_MemoryReport( const char *when );
 void Hunk_ClearToMark( void );
 void Hunk_SetMark( void );
 qboolean Hunk_CheckMark( void );

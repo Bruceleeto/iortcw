@@ -1171,6 +1171,22 @@ int AAS_ReadRouteCache( void ) {
 			return qfalse;
 		} //end if
 	} //end if
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// the routes worked out ahead (most of the file, 1.7MB for escape1) are
+	// left: they're worked out as they're needed, into the cache
+	// (max_routingcache). The visibility and waypoints are kept.
+	for ( i = 0; i < routecacheheader.numportalcache + routecacheheader.numareacache; i++ )
+	{
+		byte skip[1024];
+
+		botimport.FS_Read( &size, sizeof( size ), fp );
+		LL( size );
+		for ( size -= sizeof( size ); size > 0; size -= sizeof( skip ) ) {
+			botimport.FS_Read( skip, size < (int)sizeof( skip ) ? size : (int)sizeof( skip ), fp );
+		}
+	}
+	routecacheheader.numportalcache = routecacheheader.numareacache = 0;
+#endif
 	//read all the portal cache
 	for ( i = 0; i < routecacheheader.numportalcache; i++ )
 	{
@@ -1248,7 +1264,13 @@ void AAS_InitRouting( void ) {
 #endif //ROUTING_DEBUG
 	   //
 	routingcachesize = 0;
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// a cache (least recently used goes): on the Dreamcast 4MB is more than
+	// there is to spare
+	max_routingcachesize = 1024 * (int) LibVarValue( "max_routingcache", "1024" );
+#else
 	max_routingcachesize = 1024 * (int) LibVarValue( "max_routingcache", "4096" );
+#endif
 	//
 	// Ridah, load or create the routing cache
 	if ( !AAS_ReadRouteCache() ) {

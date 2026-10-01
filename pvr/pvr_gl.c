@@ -45,10 +45,12 @@
 #define MAX_MATRIX_DEPTH	32
 #define MAX_TEXTURES		16384
 #define MAX_IMMEDIATE		4096
-/* a list's buffer grows (doubling) as frames need it, up to the vertex
-   buffer pvrgl_Init gives the PVR: no frame can send it more than that */
-#define LIST_BUFFER_START	( 64 * 1024 )
-#define LIST_BUFFER_MAX		( 768 * 1024 )
+/* the lists are kept in blocks, from one pool for all of them, made as
+   frames need them, up to the vertex buffer pvrgl_Init gives the PVR: no
+   frame can send it more than that, whichever lists it is in */
+#define VERTEX_BUFFER		( 768 * 1024 )
+#define LIST_BLOCK			( 16 * 1024 )
+#define LIST_BLOCKS			( VERTEX_BUFFER / LIST_BLOCK )
 
 /* scale factors on 1/w, see the comment at the top */
 #define DEPTH_SCALE_SKY		0.01f
@@ -90,9 +92,10 @@ typedef struct {
 } clipVert_t;
 
 typedef struct {
-	uint8_t		*data;
-	int			size;
-	int			used;
+	uint8_t		*blocks[LIST_BLOCKS];
+	int			numBlocks;
+	int			used;			/* bytes, in all its blocks */
+	int			whole;			/* used, to the end of its last whole primitive */
 	int			overflowed;
 	pvr_poly_hdr_t	last;		/* last header written to this list */
 	int			hasLast;
@@ -154,6 +157,8 @@ static struct {
 
 	/* frame */
 	listBuffer_t	lists[5];	/* indexed by pvr_list_t */
+	uint8_t		*freeBlocks[LIST_BLOCKS];	/* made, in no list this frame */
+	int			numFreeBlocks, numBlocks;
 	int			clears;			/* depth clears so far this frame */
 	int			drawnSinceClear;
 	GLenum		error;
@@ -946,24 +951,30 @@ void APIENTRY pvrglTexParameteri( GLenum target, GLenum pname, GLint param ) {
 /* ===================================================================== */
 
 static void ListWrite( listBuffer_t *l, const void *data ) {
-	if ( l->used + 32 > l->size ) {
-		int size = l->size ? l->size * 2 : LIST_BUFFER_START;
-		uint8_t *grown;
+	if ( l->overflowed ) {
+		return;
+	}
+	if ( l->used == l->numBlocks * LIST_BLOCK ) {
+		uint8_t *block = NULL;
 
-		if ( size > LIST_BUFFER_MAX ) {
-			size = LIST_BUFFER_MAX;
+		if ( gl.numFreeBlocks ) {
+			block = gl.freeBlocks[--gl.numFreeBlocks];
+		} else if ( gl.numBlocks < LIST_BLOCKS && ( block = malloc( LIST_BLOCK ) ) ) {
+			gl.numBlocks++;
 		}
-		grown = size > l->size ? realloc( l->data, size ) : NULL;
-
-		if ( !grown ) {
+		if ( !block ) {
+			// no half a primitive for the PVR
 			l->overflowed = 1;
+			l->used = l->whole;
 			return;
 		}
-		l->data = grown;
-		l->size = size;
+		l->blocks[l->numBlocks++] = block;
 	}
-	memcpy( l->data + l->used, data, 32 );
+	memcpy( l->blocks[l->used / LIST_BLOCK] + l->used % LIST_BLOCK, data, 32 );
 	l->used += 32;
+	if ( *(const uint32_t *)data != PVR_CMD_VERTEX ) {
+		l->whole = l->used;
+	}
 }
 
 static int BlendFactor( GLenum f, int isDst ) {
@@ -1448,7 +1459,10 @@ void APIENTRY pvrglEnd( void ) {
 static void ResetLists( void ) {
 	int i;
 	for ( i = 0; i < 5; i++ ) {
-		gl.lists[i].used = 0;
+		while ( gl.lists[i].numBlocks ) {
+			gl.freeBlocks[gl.numFreeBlocks++] = gl.lists[i].blocks[--gl.lists[i].numBlocks];
+		}
+		gl.lists[i].used = gl.lists[i].whole = 0;
 		gl.lists[i].overflowed = 0;
 		gl.lists[i].hasLast = 0;
 	}
@@ -1476,6 +1490,7 @@ void pvrgl_EndFrame( void ) {
 	}
 	for ( i = 0; i < 3; i++ ) {
 		listBuffer_t *l = &gl.lists[order[i]];
+		int b;
 		if ( !l->used ) {
 			continue;
 		}
@@ -1483,10 +1498,12 @@ void pvrgl_EndFrame( void ) {
 			continue;
 		}
 		if ( l->overflowed ) {
-			fprintf( stderr, "pvr_gl: list %d overflowed its %d KB buffer\n", order[i], l->size / 1024 );
+			fprintf( stderr, "pvr_gl: list %d overflowed: the lists have %d KB between them\n", order[i], VERTEX_BUFFER / 1024 );
 		}
 		pvr_list_begin( order[i] );
-		pvr_prim( l->data, l->used );
+		for ( b = 0; b * LIST_BLOCK < l->used; b++ ) {
+			pvr_prim( l->blocks[b], l->used - b * LIST_BLOCK < LIST_BLOCK ? l->used - b * LIST_BLOCK : LIST_BLOCK );
+		}
 		pvr_list_finish();
 	}
 	pvr_scene_finish();
@@ -1497,7 +1514,7 @@ void pvrgl_EndFrame( void ) {
 int pvrgl_Init( void ) {
 	pvr_init_params_t params = {
 		{ PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16 },
-		768 * 1024,		/* vertex buffer */
+		VERTEX_BUFFER,	/* vertex buffer */
 		0,				/* no DMA */
 		0,				/* no FSAA */
 		1,				/* autosort disabled: translucent in submission order */
@@ -1512,7 +1529,7 @@ int pvrgl_Init( void ) {
 		return -1;
 	}
 
-	memset( &gl, 0, sizeof( gl ) );	/* the list buffers grow as they get used (ListWrite) */
+	memset( &gl, 0, sizeof( gl ) );	/* the list blocks are made as they get used (ListWrite) */
 
 	gl.matrixMode = GL_MODELVIEW;
 	Mat_Identity( gl.modelview[0] );
@@ -1549,8 +1566,9 @@ void pvrgl_Shutdown( void ) {
 			free( gl.textures[i] );
 		}
 	}
-	for ( i = 0; i < 5; i++ ) {
-		free( gl.lists[i].data );
+	ResetLists();
+	for ( i = 0; i < gl.numFreeBlocks; i++ ) {
+		free( gl.freeBlocks[i] );
 	}
 	free( vcache );
 	free( vstamp );

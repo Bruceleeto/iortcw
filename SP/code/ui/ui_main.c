@@ -5469,7 +5469,9 @@ UI_Init
 void _UI_Init( qboolean inGameLoad ) {
 	const char *menuSet;
 
-	//uiInfo.inGameLoad = inGameLoad;
+	// loading a level: only the menus a level has (the rest, the main menu's,
+	// when it goes back to them, UI_LoadNonIngame)
+	uiInfo.inGameLoad = inGameLoad;
 
 	UI_RegisterCvars();
 	UI_InitMemory();
@@ -5598,15 +5600,14 @@ void _UI_Init( qboolean inGameLoad ) {
 #endif
 	}
 
-#if 0
 	if ( uiInfo.inGameLoad ) {
 		UI_LoadMenus( "ui/ingame.txt", qtrue );
+		// the one main menu a level opens (cgame's "briefing" popup)
+		UI_ParseMenu( "ui/briefing.menu" );
 	} else {
+		UI_LoadMenus( menuSet, qtrue );
+		UI_LoadMenus( "ui/ingame.txt", qfalse );
 	}
-#else
-	UI_LoadMenus( menuSet, qtrue );
-	UI_LoadMenus( "ui/ingame.txt", qfalse );
-#endif
 
 	Menus_CloseAll();
 
@@ -5784,6 +5785,9 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 			trap_Cvar_Set( "g_reloading", "0" );
 
 			trap_Key_SetCatcher( KEYCATCH_UI );
+			if ( uiInfo.inGameLoad ) {
+				UI_LoadNonIngame();
+			}
 			Menus_ActivateByName( "credit" );
 			return;
 //----(SA)	end

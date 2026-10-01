@@ -16,6 +16,11 @@
 #                      made), unpacked, in a selfboot disc image
 #                      -> build/iowolfsp.cdi (needs mkdcdisc; sources KOS's
 #                      environ.sh itself)
+#   make sp DCSIM=1    the PC build with just the Dreamcast's heap (its own
+#                      malloc, on the RAM the Dreamcast build leaves free)
+#                      -> build/sp-x86-dcsim/iowolfsp.x86; needs the
+#                      Dreamcast build (make disc) and runs on its files:
+#                      +set fs_basepath $PWD/build/disc
 #
 # Everything (engine, renderer, qagame, cgame, ui) is linked into one
 # executable; no renderer or game shared libraries are built or loaded.
@@ -61,6 +66,18 @@ else ifneq ($(PLATFORM),linux)
 endif
 
 BUILD_DIR ?= build
+
+# DCSIM=1: the PC build on the Dreamcast's heap (SP/code/sys/dcsim.h), built
+# as the Dreamcast is, so a map that doesn't fit fails here too
+DCSIM ?= 0
+ifeq ($(DCSIM),1)
+  ifeq ($(PLATFORM),dc)
+    $(error DCSIM=1 is for the PC build)
+  endif
+  override RENDERER = pvr
+  override AUDIO = 0
+  override VIDEO = 0
+endif
 BASEDIR   ?= $(CURDIR)/assets
 
 CC  ?= gcc
@@ -219,10 +236,11 @@ define assets_pk3
 $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
-	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
+	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' \
+	  '*.shader' '*.skin' '*.menu' '*.txt' '*.cfg' '*.script' '*.ai' '*.camera' '*.sounds' '*.md3' '*.dat' '*.h' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
-	$$(Q)$(RTCWCONV) -p $(PVRTEX) $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef
@@ -273,7 +291,7 @@ ifeq ($(RENDERER),pvr)
   MAP ?= escape1
 endif
 
-B   = $(BUILD_DIR)/$(GAME)-$(ARCH)
+B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter 1,$(DCSIM)),-dcsim)
 ifeq ($(PLATFORM),dc)
   EXE = $(B)/$(BIN).elf
 else
@@ -314,6 +332,20 @@ BASE_CFLAGS = $(ARCH_FLAGS) -pipe -Wall -fno-strict-aliasing -MMD \
   -DNO_GZIP -I$(ZDIR) $(if $(filter dc,$(PLATFORM)),-DIOAPI_NO_64) \
   -DUSE_INTERNAL_JPEG -I$(JPDIR) \
   $(OPT)
+
+ifeq ($(DCSIM),1)
+  # the heap starts where the Dreamcast build's image ends
+  DCSIM_ELF ?= $(BUILD_DIR)/sp-sh4/iowolfsp.elf
+  DCSIM_NM  ?= /opt/toolchains/dc/sh-elf/bin/sh-elf-nm
+  DCSIM_END := $(shell $(DCSIM_NM) $(DCSIM_ELF) 2>/dev/null | awk '$$3 == "_end" { print $$1 }')
+  ifeq ($(DCSIM_END),)
+    $(error DCSIM=1 needs the Dreamcast build, $(DCSIM_ELF) (make disc), for where its heap starts)
+  endif
+  # what KallistiOS mallocs before the game does: on the Dreamcast 22985K is
+  # free when the hunk starts, here 23088K without it
+  DCSIM_KOS_BYTES ?= 105472
+  BASE_CFLAGS += -DDCSIM -include $(CURDIR)/$(CODE)/sys/dcsim.h
+endif
 
 # engine + renderer
 CLIENT_CFLAGS = $(BASE_CFLAGS) $(FAST_MATH) $(SDL_CFLAGS) -I$(CODE)/SDL2/include \
@@ -372,6 +404,10 @@ ENGINE_SRC = \
   sys/con_log.c sys/sys_main.c sys/sys_unix.c \
   $(filter-out splines/q_shared.cpp,$(call rel,splines/*.cpp)) \
   $(call rel,zlib-1.2.11/*.c)
+
+ifeq ($(DCSIM),1)
+  ENGINE_SRC += sys/dcsim_malloc.c
+endif
 
 ifeq ($(AUDIO),0)
   # snd_main.c is the S_* front end; with NO_AUDIO it never starts a backend
@@ -534,6 +570,9 @@ ifneq ($(MAP),$(shell cat $(B)/.map 2>/dev/null))
   $(shell mkdir -p $(B) && echo '$(MAP)' > $(B)/.map)
 endif
 $(B)/.map: ;
+
+$(B)/engine/sys/dcsim_malloc.c.o: EXTRA_CFLAGS = -DDCSIM_HEAP_START=0x$(DCSIM_END)u -DDCSIM_KOS_BYTES=$(DCSIM_KOS_BYTES)
+$(B)/engine/sys/dcsim_malloc.c.o: $(DCSIM_ELF) $(CODE)/sys/dcsim_mallocr.inc Makefile
 
 # SSE helpers need a CPU with SSE on x86
 ifeq ($(ARCH),x86)

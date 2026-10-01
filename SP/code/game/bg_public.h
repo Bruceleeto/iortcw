@@ -1656,9 +1656,10 @@ typedef struct
 	animScript_t scriptStateChange[MAX_AISTATES][MAX_AISTATES];             // state change events
 	animScript_t scriptEvents[NUM_ANIM_EVENTTYPES];                         // events that trigger special anims
 
-	// global list of script items for this model
-	animScriptItem_t scriptItems[MAX_ANIMSCRIPT_ITEMS_PER_MODEL];
+	// global list of script items for this model; last, so a parsed model
+	// keeps just the numScriptItems it has (G_GetModelInfo)
 	int numScriptItems;
+	animScriptItem_t scriptItems[MAX_ANIMSCRIPT_ITEMS_PER_MODEL];
 
 } animModelInfo_t;
 

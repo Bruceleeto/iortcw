@@ -1133,7 +1133,13 @@ qboolean G_SaveGame( char *username ) {
 	// open the file
 	Com_sprintf( filename, MAX_QPATH, "save\\temp.svg" );
 	if ( trap_FS_FOpenFile( filename, &f, FS_WRITE ) < 0 ) {
+#ifdef _arch_dreamcast
+		// nowhere to write yet (VMU saves to come)
+		G_Printf( S_COLOR_YELLOW "WARNING: G_SaveGame: cannot open file for saving\n" );
+		return qfalse;
+#else
 		G_Error( "G_SaveGame: cannot open file for saving\n" );
+#endif
 	}
 
 	// write the version

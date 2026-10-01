@@ -172,6 +172,7 @@ typedef struct {
 	char *( *CM_EntityString )( void );
 	long ( *FS_FOpenFileRead )( const char *qpath, fileHandle_t *file, qboolean uniqueFILE );
 	void ( *FS_FCloseFile )( fileHandle_t f );
+	int ( *FS_Read )( void *buffer, int len, fileHandle_t f );
 
 	// visualization for debugging collision detection
 	void ( *CM_DrawDebugSurface )( void( *drawPoly ) ( int color, int numPoints, float *points ) );

@@ -320,25 +320,28 @@ int AAS_LoadFiles( const char *mapname ) {
 	int errnum;
 	char aasfile[MAX_QPATH];
 	fileHandle_t fp = 0;
+	int length;
 
 	Q_strncpyz( ( *aasworld ).mapname, mapname, sizeof( ( *aasworld ).mapname ) );
 	//NOTE: first reset the entity links into the AAS areas and BSP leaves
 	// the AAS link heap and BSP link heap are reset after respectively the
 	// AAS file and BSP file are loaded
 	AAS_ResetEntityLinks();
-	//
-
-	// load bsp info
-	AAS_LoadBSPFile();
 
 	//load the aas file: the .aasc from rtcwconv (only the faces the game
-	//still reads) if there is one
+	//still reads) if there is one; an empty one is a world the map has no
+	//one for (no big characters), so it isn't loaded
 	Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aasc", mapname );
-	if ( botimport.FS_FOpenFile( aasfile, &fp, FS_READ ) < 0 || !fp ) {
-		Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aas", mapname );
-	}
+	length = botimport.FS_FOpenFile( aasfile, &fp, FS_READ );
 	if ( fp ) {
 		botimport.FS_FCloseFile( fp );
+	}
+	if ( fp && length == 0 ) {
+		botimport.Print( PRT_MESSAGE, "%s: not needed here\n", aasfile );
+		return BLERR_CANNOTOPENAASFILE;
+	}
+	if ( length < 0 || !fp ) {
+		Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aas", mapname );
 	}
 	errnum = AAS_LoadAASFile( aasfile );
 	if ( errnum != BLERR_NOERROR ) {
@@ -366,6 +369,11 @@ int AAS_LoadMap( const char *mapname ) {
 	char this_mapname[MAPNAME_LEN], intstr[4];
 	qboolean loaded = qfalse;
 	int missingErrNum = 0;
+
+	// the bsp's entities, once for all the worlds
+	if ( mapname ) {
+		AAS_LoadBSPFile();
+	}
 
 	for ( i = 0; i < MAX_AAS_WORLDS; i++ )
 	{

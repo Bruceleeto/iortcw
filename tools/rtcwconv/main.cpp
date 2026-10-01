@@ -20,7 +20,14 @@
  *          first; none when the .mdc is better kept
  *   .aas   bot navigation -> .aasc without the faces the game doesn't read
  *          (aas.cpp), which the botlib looks for first
+ *          and an empty maps/<map>_b1.aasc for a map with no big characters
+ *          (the only ones that use the second world), which the botlib
+ *          then doesn't load
+ *   .shader  the shaders anything names -> scripts/dc.shaders
+ *          (shaders.cpp), which the renderer loads in place of them all;
+ *          the names are looked for in every file and in -n's
  */
+#include <algorithm>
 #include <map>
 #include <errno.h>
 #include <filesystem>
@@ -61,22 +68,24 @@ static bool WriteFile( const fs::path &p, const std::vector<uint8_t> &data ) {
 static void Usage( void ) {
 	fprintf( stderr,
 		"usage: rtcwconv [options] <in dir> <out dir>\n"
-		"  -a <f>   bone turn allowed against its parent, in degrees (default 0.5)\n"
-		"  -o <f>   frame bounds / offset error allowed, in units (default 0.1)\n"
+		"  -a <f>   bone turn allowed against its parent, in degrees (default 1)\n"
+		"  -o <f>   frame bounds / offset error allowed, in units (default 1)\n"
 		"  -s <n>   most frames between two keys (default 255)\n"
 		"  -p <f>   pvrtex binary: convert images to .dt too\n"
 		"  -t <n>   largest texture side (default 128; 2D art 256)\n"
 		"  -j <n>   pvrtex runs at once (default: one per core)\n"
 		"  -c <f>   curve subdivisions, as r_subdivisions (default 12)\n"
+		"  -n <d>   more files that name shaders (the game's source), for dc.shaders\n"
 		"  -v       a line per file\n" );
 	exit( 1 );
 }
 
 int main( int argc, char **argv ) {
-	MdsOptions opt = { 0.5f, 0.1f, 255 };
+	MdsOptions opt = { 1.0f, 1.0f, 255 };
 	TexOptions texOpt = { "", 128, 256, 0, false };
 	bool verbose = false;
 	float subdivisions = 12;
+	std::vector<std::string> nameDirs;
 	int i;
 
 	for ( i = 1; i < argc && argv[i][0] == '-'; i++ ) {
@@ -96,6 +105,8 @@ int main( int argc, char **argv ) {
 			texOpt.jobs = atoi( argv[++i] );
 		} else if ( i + 1 < argc && !strcmp( argv[i], "-c" ) ) {
 			subdivisions = atof( argv[++i] );
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-n" ) ) {
+			nameDirs.push_back( argv[++i] );
 		} else {
 			Usage();
 		}
@@ -112,6 +123,8 @@ int main( int argc, char **argv ) {
 	ColStats col = {};
 	WldStats wld = {};
 	MdcStats mdc = {};
+	ShaderStats shaders = {};
+	std::vector<fs::path> smallMaps;	/* .bsps with no big characters, without extension */
 	std::map<std::string, TexJob> images;	/* by name without extension */
 	std::vector<TexJob> lightmaps;
 	int failed = 0;
@@ -122,6 +135,24 @@ int main( int argc, char **argv ) {
 		}
 		fs::path rel = fs::relative( e.path(), inDir );
 		std::string ext = e.path().extension().string();
+
+		/* what may name a shader: all but images and sounds (a .bsp's
+		 * entities and shader names, below) */
+		if ( strcasecmp( ext.c_str(), ".tga" ) && strcasecmp( ext.c_str(), ".jpg" ) && strcasecmp( ext.c_str(), ".wav" ) &&
+			 strcasecmp( ext.c_str(), ".bsp" ) && strcasecmp( ext.c_str(), ".aas" ) ) {
+			std::vector<uint8_t> in;
+			if ( !ReadFile( e.path(), in ) ) {
+				failed++;
+				continue;
+			}
+			if ( !strcasecmp( ext.c_str(), ".shader" ) ) {
+				if ( !ShaderFile( e.path().filename().string(), in, shaders ) ) {
+					failed++;
+				}
+				continue;
+			}
+			ShaderNames( in.data(), in.size() );
+		}
 
 		if ( !strcasecmp( ext.c_str(), ".mds" ) ) {
 			std::vector<uint8_t> in, out;
@@ -171,12 +202,73 @@ int main( int argc, char **argv ) {
 			fs::path colPath = outDir / rel, wldPath = outDir / rel;
 			colPath.replace_extension( ".col" );
 			wldPath.replace_extension( ".wld" );
-			if ( !ReadFile( e.path(), in ) || !ConvertCol( in, out, col, rel.c_str() ) || !WriteFile( colPath, out ) ||
+			if ( ReadFile( e.path(), in ) ) {
+				/* the big characters, which use the second aas world
+				 * (BBOX_LARGE in ai_cast_characters.c) */
+				static const char *big[] = { "\"ai_loper\"", "\"ai_stimsoldier_dual\"", "\"ai_stimsoldier_rocket\"",
+					"\"ai_stimsoldier_tesla\"", "\"ai_supersoldier\"", "\"ai_protosoldier\"", "\"ai_boss_helga\"",
+					"\"ai_boss_heinrich\"" };
+				uint32_t entOfs, entLen;
+				memcpy( &entOfs, &in[8], 4 );
+				memcpy( &entLen, &in[12], 4 );
+				if ( in.size() >= 16 && entOfs <= in.size() && entLen <= in.size() - entOfs ) {
+					std::string ents( in.begin() + entOfs, in.begin() + entOfs + entLen );
+					std::transform( ents.begin(), ents.end(), ents.begin(), ::tolower );
+					bool any = false;
+					for ( const char *b : big ) {
+						any |= ents.find( b ) != std::string::npos;
+					}
+					if ( !any ) {
+						fs::path p = rel;
+						smallMaps.push_back( p.replace_extension() );
+					}
+				}
+				/* entities, shaders and fogs name shaders */
+				for ( int lump : { 0, 1, 12 } ) {
+					uint32_t ofs, len;
+					if ( in.size() >= 8 + ( lump + 1 ) * 8u ) {
+						memcpy( &ofs, &in[8 + lump * 8], 4 );
+						memcpy( &len, &in[12 + lump * 8], 4 );
+						if ( ofs <= in.size() && len <= in.size() - ofs ) {
+							ShaderNames( &in[ofs], len );
+						}
+					}
+				}
+			}
+			if ( in.empty() || !ConvertCol( in, out, col, rel.c_str() ) || !WriteFile( colPath, out ) ||
 				 !ConvertWld( in, wldOut, wld, rel.c_str(), subdivisions ) || !WriteFile( wldPath, wldOut ) ) {
 				failed++;
 			} else if ( !texOpt.pvrtex.empty() && !BspLightmapJobs( in, e.path().stem().string(), outDir, lightmaps ) ) {
 				failed++;
 			}
+		}
+	}
+
+	/* after the .aas, whatever order they came in */
+	for ( const auto &m : smallMaps ) {
+		fs::path b1 = outDir / m;
+		b1 += "_b1.aasc";
+		if ( fs::exists( b1 ) ) {
+			if ( !WriteFile( b1, {} ) ) {
+				failed++;
+			}
+			aas.skipped++;
+		}
+	}
+
+	for ( const auto &d : nameDirs ) {
+		for ( const auto &e : fs::recursive_directory_iterator( d ) ) {
+			std::vector<uint8_t> in;
+			if ( e.is_regular_file() && ReadFile( e.path(), in ) ) {
+				ShaderNames( in.data(), in.size() );
+			}
+		}
+	}
+	{
+		std::vector<uint8_t> out;
+		WriteShaders( out, shaders );
+		if ( !out.empty() && !WriteFile( outDir / "scripts" / "dc.shaders", out ) ) {
+			failed++;
 		}
 	}
 
@@ -206,6 +298,10 @@ int main( int argc, char **argv ) {
 				mdc.boneSurfaces, mdc.surfaces, mdc.bones, mdc.frames ? 100.0 * mdc.keys / mdc.frames : 0.0,
 				mdc.numErr ? mdc.sumErr / mdc.numErr : 0.0, mdc.maxErr, mdc.kept );
 	}
+	if ( shaders.files ) {
+		printf( "shaders: %d files, %.0f K -> %.0f K; %d of %d shaders named somewhere\n",
+				shaders.files, shaders.bytesIn / 1024.0, shaders.bytesOut / 1024.0, shaders.kept, shaders.shaders );
+	}
 	if ( col.files ) {
 		printf( "col: %d files, %.1f MB of bsp -> %.1f MB; %d patches (%d with no contents left out)\n",
 				col.files, col.bytesIn / 1048576.0, col.bytesOut / 1048576.0, col.patches, col.patchesSkipped );
@@ -216,8 +312,8 @@ int main( int argc, char **argv ) {
 				wld.verts, wld.triangles, wld.gridIn / 1048576.0, wld.gridOut / 1048576.0 );
 	}
 	if ( aas.files ) {
-		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces kept\n",
-				aas.files, aas.bytesIn / 1048576.0, aas.bytesOut / 1048576.0, aas.facesOut, aas.facesIn );
+		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces kept; %d maps with no big characters, their second world left out\n",
+				aas.files, aas.bytesIn / 1048576.0, aas.bytesOut / 1048576.0, aas.facesOut, aas.facesIn, aas.skipped );
 	}
 	if ( tex.files ) {
 		printf( "tex: %d files, %.1f MB of 16 bit texels -> %.1f MB of .dt\n",
