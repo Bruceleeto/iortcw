@@ -6,6 +6,9 @@
 #   make               build both
 #   make clean         remove build/
 #   make pvrtest       build the tools/gpu_pvr smoke test
+#   make assets        Dreamcast versions of the game data (tools/rtcwconv):
+#                      sp_dc.pk3 / mp_dc.pk3, written to ASSETS_DIR
+#                      (default assets/main, next to the original pk3s)
 #
 #   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
 #                         (source /opt/toolchains/dc/kos/environ.sh first)
@@ -21,6 +24,7 @@
 #                      backend, run on PC through tools/gpu_pvr; x86 only)
 #   AUDIO=0            no sound at all: no backend, codecs (ogg/vorbis/opus)
 #                      or VoIP are built; all S_* calls do nothing
+#   VIDEO=0            no RoQ video player: cinematics are skipped
 #   TEXTURES=0         world/model textures become one pixel of their average
 #                      colour (menus, fonts and lightmaps stay); opengl1/pvr
 #   MAP=<name>         start straight into this map when no + commands are
@@ -39,6 +43,7 @@ RENDERER ?= opengl1
 DEBUG    ?= 0
 AUDIO    ?= 1
 TEXTURES ?= 1
+VIDEO    ?= 1
 USE_VOIP ?= 1
 USE_MUMBLE ?= 0
 
@@ -49,6 +54,7 @@ ifeq ($(PLATFORM),dc)
   override ARCH = sh4
   override RENDERER = pvr
   override AUDIO = 0
+  override VIDEO = 0
   override USE_MUMBLE = 0
   BASEDIR ?= /cd
 else ifneq ($(PLATFORM),linux)
@@ -70,6 +76,7 @@ ifeq ($(origin CXX),default)
   CXX = g++
 endif
 HOST_CC  ?= $(CC)
+HOST_CXX ?= $(CXX)
 OBJCOPY  ?= objcopy
 
 ifeq ($(PLATFORM),dc)
@@ -77,6 +84,7 @@ ifeq ($(PLATFORM),dc)
   override CC  = kos-cc
   override CXX = kos-c++
   HOST_CC  = gcc
+  HOST_CXX = g++
   OBJCOPY  = $(KOS_CC_PREFIX)-objcopy
   # plain gcc for the partial module links: kos-cc would add the KOS link
   # script and libraries to a -r link
@@ -124,7 +132,7 @@ endif
 
 MODULE_LD ?= $(CC) $(ARCH_FLAGS) -r -nostdlib
 
-.PHONY: all sp mp game clean pvrtest
+.PHONY: all sp mp game clean pvrtest assets
 
 all: sp mp
 
@@ -153,6 +161,49 @@ $(PVRTEST): $(GPU_PVR_DIR)/test/pvrtest.c $(GPU_PVR_LIB)
 	$(echo_cmd) "LD $@"
 	$(Q)$(CXX) $(ARCH_FLAGS) $(ARCH_LDFLAGS) -O2 -w $(GPU_PVR_CFLAGS) $(SDL_CFLAGS) \
 	  -x c $< -x none $(GPU_PVR_LIB) $(SDL_LIBS) -lpthread -lm -o $@
+
+#############################################################################
+# make assets: tools/rtcwconv over the models in each game's pk3s. The
+# converted files have their own extensions (.mdsc), so they shadow nothing
+# and the renderer picks them first. sp_ / mp_ keep each pk3 to its own game.
+#############################################################################
+
+ASSETS_DIR ?= $(CURDIR)/assets/main
+ASSETS_OUT  = $(BUILD_DIR)/assets
+RTCWCONV    = $(BUILD_DIR)/tools/rtcwconv
+RTCWCONV_SRC = $(wildcard tools/rtcwconv/*.cpp tools/rtcwconv/TriStripper/src/*.cpp)
+RTCWCONV_HDR = $(wildcard tools/rtcwconv/*.h tools/rtcwconv/TriStripper/include/*.h \
+  tools/rtcwconv/TriStripper/include/detail/*.h) mdsc/mdsc.h
+
+# the pk3s in the order each game loads them (later ones win): its own
+# sp_ / mp_ paks first, then the rest, never the other game's
+ALL_PAKS = $(filter-out %/sp_dc.pk3 %/mp_dc.pk3,$(sort $(wildcard $(ASSETS_DIR)/*.pk3)))
+SP_PAKS  = $(filter $(ASSETS_DIR)/sp_%,$(ALL_PAKS)) \
+  $(filter-out $(ASSETS_DIR)/sp_% $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
+MP_PAKS  = $(filter $(ASSETS_DIR)/mp_%,$(ALL_PAKS)) \
+  $(filter-out $(ASSETS_DIR)/sp_% $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
+
+assets: $(ASSETS_DIR)/sp_dc.pk3 $(ASSETS_DIR)/mp_dc.pk3
+
+$(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_HDR)
+	$(echo_cmd) "HOST_CXX $@"
+	@mkdir -p $(@D)
+	$(Q)$(HOST_CXX) -std=c++17 -O2 -w -Imdsc -Itools/rtcwconv -Itools/rtcwconv/TriStripper/include \
+	  $(RTCWCONV_SRC) -x c mdsc/mdsc.c -x none -lm -o $@
+
+# 1 = sp / mp, 2 = its pk3s in load order
+define assets_pk3
+$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
+	$$(echo_cmd) "ASSETS $$@"
+	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
+	  [ $$$$? -le 11 ] || exit 1; done
+	$$(Q)$(RTCWCONV) $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
+	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
+endef
+$(eval $(call assets_pk3,sp,$(SP_PAKS)))
+$(eval $(call assets_pk3,mp,$(MP_PAKS)))
 
 ifdef GAME
 
@@ -183,7 +234,7 @@ ifeq ($(RENDERER),pvr)
   endif
 endif
 
-B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter pvr,$(RENDERER)),-pvr)$(if $(filter 0,$(AUDIO)),-noaudio)$(if $(filter 0,$(TEXTURES)),-notex)
+B   = $(BUILD_DIR)/$(GAME)-$(ARCH)
 ifeq ($(PLATFORM),dc)
   EXE = $(B)/$(BIN).elf
 else
@@ -233,6 +284,9 @@ ifeq ($(USE_MUMBLE),1)
 endif
 ifeq ($(TEXTURES),0)
   CLIENT_CFLAGS += -DNO_TEXTURES
+endif
+ifeq ($(VIDEO),0)
+  CLIENT_CFLAGS += -DNO_VIDEO
 endif
 ifeq ($(AUDIO),0)
   CLIENT_CFLAGS += -DNO_AUDIO
@@ -357,6 +411,10 @@ obj = $(patsubst %,$(B)/$(1)/%.o,$(2))
 ENGINE_OBJ   = $(call obj,engine,$(ENGINE_SRC))
 BOTLIB_OBJ   = $(call obj,botlib,$(BOTLIB_SRC))
 RENDERER_OBJ = $(call obj,engine,$(RENDERER_SRC))
+# MDSC models (make assets); the opengl1 renderer reads them, rend2 doesn't
+ifneq ($(RENDERER),rend2)
+  MDSC_OBJ   = $(B)/mdsc/mdsc.c.o
+endif
 GLSL_OBJ     = $(patsubst %,$(B)/glsl/%.o,$(GLSL_SRC))
 QAGAME_OBJ   = $(call obj,qagame,$(QAGAME_SRC))
 # cgame also links the -DUI build of ui_shared, like the original Makefiles
@@ -367,7 +425,7 @@ MODCOMMON_OBJ = $(call obj,modcommon,$(MODCOMMON_SRC))
 # each game module is pre-linked into one relocatable object
 MODULE_OBJ = $(B)/qagame.o $(B)/cgame.o $(B)/ui.o
 
-ALL_OBJ = $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) \
+ALL_OBJ = $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) $(MDSC_OBJ) \
   $(QAGAME_OBJ) $(CGAME_OBJ) $(UI_OBJ) $(MODCOMMON_OBJ)
 
 STRINGIFY = $(B)/tools/stringify
@@ -378,7 +436,7 @@ STRINGIFY = $(B)/tools/stringify
 
 game: $(EXE)
 
-$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
+$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) $(MDSC_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
 	$(echo_cmd) "LD $@"
 	$(Q)$(CXX) $(LDFLAGS) -o $@ $(filter %.o,$^) $(RENDERER_LIBS) $(LIBS)
 
@@ -387,6 +445,12 @@ $(B)/pvr/%.c.o: pvr/%.c
 	$(echo_cmd) "PVR_CC $<"
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/renderer $(GPU_PVR_CFLAGS) -c $< -o $@
+
+# mdsc/ is shared by SP, MP and tools/rtcwconv
+$(B)/mdsc/%.c.o: mdsc/%.c
+	$(echo_cmd) "MDSC_CC $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(CLIENT_CFLAGS) -c $< -o $@
 
 # dc/ is the Dreamcast platform glue, also shared by SP and MP
 $(B)/dc/%.c.o: dc/%.c
@@ -482,9 +546,10 @@ $(B)/glsl/%.glsl.o: $(B)/glsl/%.glsl.c
 
 .SECONDARY:
 
-# rebuild everything when the compile flags change (AUDIO, TEXTURES, USE_VOIP, ...)
+# one build dir per game/arch: changing any option (RENDERER, AUDIO, VIDEO,
+# TEXTURES, ...) rebuilds everything in it
 FLAGS_STAMP = $(B)/.cflags
-FLAGS_NOW := $(CC) $(CXX) $(CLIENT_CFLAGS) $(MOD_CFLAGS)
+FLAGS_NOW := $(RENDERER) $(CC) $(CXX) $(CLIENT_CFLAGS) $(MOD_CFLAGS)
 ifneq ($(FLAGS_NOW),$(shell cat $(FLAGS_STAMP) 2>/dev/null))
   $(shell mkdir -p $(B) && printf '%s\n' '$(subst ','\'',$(FLAGS_NOW))' > $(FLAGS_STAMP))
 endif

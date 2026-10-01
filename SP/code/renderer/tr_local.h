@@ -32,6 +32,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qfiles.h"
+#include "../../../mdsc/mdsc.h"
 #include "../qcommon/qcommon.h"
 #include "tr_public.h"
 #include "qgl.h"
@@ -890,6 +891,8 @@ typedef struct model_s {
 #define MAX_MOD_KNOWN   2048
 
 void        R_ModelInit( void );
+mdsFrame_t  *R_MDSFrame( mdsHeader_t *header, int frame );
+void        R_ClearMDSFrames( void );
 model_t     *R_GetModelByHandle( qhandle_t hModel );
 int         R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex );
 void        R_ModelBounds( qhandle_t handle, vec3_t mins, vec3_t maxs );

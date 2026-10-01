@@ -183,7 +183,10 @@ qhandle_t R_RegisterMDS(const char *name, model_t *mod)
 	int	ident;
 	qboolean loaded = qfalse;
 
-	ri.FS_ReadFile(name, (void **) &buf.v);
+	// body.mdsc, if `make assets` made one, before body.mds
+	ri.FS_ReadFile(va("%sc", name), (void **) &buf.v);
+	if(!buf.u)
+		ri.FS_ReadFile(name, (void **) &buf.v);
 	if(!buf.u)
 	{
 		mod->type = MOD_BAD;
@@ -191,7 +194,7 @@ qhandle_t R_RegisterMDS(const char *name, model_t *mod)
 	}
 	
 	ident = LittleLong(*(unsigned *)buf.u);
-	if(ident == MDS_IDENT)
+	if(ident == MDS_IDENT || ident == MDSC_IDENT)
 		loaded = R_LoadMDS(mod, buf.u, name);
 
 	ri.FS_FreeFile (buf.v);
@@ -1635,13 +1638,24 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name ) {
 	shader_t            *sh;
 	int frameSize;
 	int                 *collapseMap, *boneref;
+	qboolean compact;
 
 	pinmodel = (mdsHeader_t *)buffer;
 
+	// MDSC (tools/rtcwconv) is an .mds with its frames packed, see mdsc/mdsc.h
+	compact = LittleLong( pinmodel->ident ) == MDSC_IDENT;
 	version = LittleLong( pinmodel->version );
-	if ( version != MDS_VERSION ) {
+	if ( version != ( compact ? MDSC_VERSION : MDS_VERSION ) ) {
 		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has wrong version (%i should be %i)\n",
-				   mod_name, version, MDS_VERSION );
+				   mod_name, version, compact ? MDSC_VERSION : MDS_VERSION );
+		return qfalse;
+	}
+	if ( compact && LittleLong( 1 ) != 1 ) {
+		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s: MDSC is little endian only\n", mod_name );
+		return qfalse;
+	}
+	if ( LittleLong( pinmodel->numBones ) > MDSC_MAX_BONES ) {
+		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has more than %i bones\n", mod_name, MDSC_MAX_BONES );
 		return qfalse;
 	}
 
@@ -1838,6 +1852,8 @@ void R_ModelInit( void ) {
 
 	mod = R_AllocModel();
 	mod->type = MOD_BAD;
+
+	R_ClearMDSFrames();
 }
 
 

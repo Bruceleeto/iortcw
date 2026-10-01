@@ -47,6 +47,61 @@ If you have questions concerning this license or the applicable additional terms
 #include "client.h"
 #include "snd_local.h"
 
+#ifdef NO_VIDEO
+/*
+ * Built without the RoQ player (VIDEO=0): every video fails to open, as if
+ * the file were missing.  A system cinematic (intro, end of level) acts as
+ * if it finished at once, so whatever was queued in "nextmap" still runs.
+ */
+
+int CIN_PlayCinematic( const char *arg, int x, int y, int w, int h, int systemBits ) {
+	Com_DPrintf( "CIN_PlayCinematic( %s ): no video in this build\n", arg );
+	return -1;
+}
+
+e_status CIN_StopCinematic( int handle ) {
+	return FMV_EOF;
+}
+
+e_status CIN_RunCinematic( int handle ) {
+	return FMV_EOF;
+}
+
+void CIN_DrawCinematic( int handle ) {
+}
+
+void CIN_SetExtents( int handle, int x, int y, int w, int h ) {
+}
+
+void CIN_SetLooping( int handle, qboolean loop ) {
+}
+
+void CIN_UploadCinematic( int handle ) {
+}
+
+void CIN_CloseAllVideos( void ) {
+}
+
+void CL_PlayCinematic_f( void ) {
+	char *s = Cvar_VariableString( "nextmap" );
+
+	if ( s[0] ) {
+		Cbuf_ExecuteText( EXEC_APPEND, va( "%s\n", s ) );
+		Cvar_Set( "nextmap", "" );
+	}
+}
+
+void SCR_DrawCinematic( void ) {
+}
+
+void SCR_RunCinematic( void ) {
+}
+
+void SCR_StopCinematic( void ) {
+}
+
+#else // !NO_VIDEO
+
 #define MAXSIZE             8
 #define MINSIZE             4
 
@@ -1753,3 +1808,5 @@ void CIN_UploadCinematic( int handle ) {
 		}
 	}
 }
+
+#endif // !NO_VIDEO

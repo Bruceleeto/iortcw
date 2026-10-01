@@ -63,7 +63,6 @@ static mdsBoneFrameCompressed_t    *cBonePtr, *cTBonePtr, *cOldBonePtr, *cOldTBo
 static mdsBoneInfo_t   *boneInfo, *thisBoneInfo, *parentBoneInfo;
 static mdsFrame_t      *frame, *torsoFrame;
 static mdsFrame_t      *oldFrame, *oldTorsoFrame;
-static int frameSize;
 static short           *sh, *sh2;
 static float           *pf;
 static vec3_t angles, tangles, torsoParentOffset, torsoAxis[3], tmpAxis[3];
@@ -136,19 +135,67 @@ static float RB_ProjectRadius( float r, vec3_t location ) {
 
 /*
 =============
+R_MDSFrame
+
+A frame of an .mds, or of an MDSC (tools/rtcwconv) decoded into a small
+cache. The last MDS_FRAME_CACHE frames asked for stay put: R_CalcBones holds
+four at once.
+=============
+*/
+#define MDS_FRAME_CACHE 8
+
+static struct {
+	mdsHeader_t *header;
+	int frame;
+	int used;
+} mdsFrameCache[MDS_FRAME_CACHE];
+static int mdsFrameData[MDS_FRAME_CACHE][MDSC_FRAME_SIZE( MDSC_MAX_BONES ) / sizeof( int )];
+static int mdsFrameTime;
+
+mdsFrame_t *R_MDSFrame( mdsHeader_t *header, int frame ) {
+	int i, oldest = 0;
+
+	if ( header->ident != MDSC_IDENT ) {
+		int frameSize = (int) ( sizeof( mdsFrame_t ) - sizeof( mdsBoneFrameCompressed_t ) + header->numBones * sizeof( mdsBoneFrameCompressed_t ) );
+		return ( mdsFrame_t * )( ( byte * ) header + header->ofsFrames + frame * frameSize );
+	}
+
+	for ( i = 0; i < MDS_FRAME_CACHE; i++ ) {
+		if ( mdsFrameCache[i].header == header && mdsFrameCache[i].frame == frame ) {
+			mdsFrameCache[i].used = ++mdsFrameTime;
+			return (mdsFrame_t *)mdsFrameData[i];
+		}
+		if ( mdsFrameCache[i].used < mdsFrameCache[oldest].used ) {
+			oldest = i;
+		}
+	}
+
+	MDSC_DecodeFrame( header, frame, mdsFrameData[oldest] );
+	mdsFrameCache[oldest].header = header;
+	mdsFrameCache[oldest].frame = frame;
+	mdsFrameCache[oldest].used = ++mdsFrameTime;
+	return (mdsFrame_t *)mdsFrameData[oldest];
+}
+
+// models are being freed: their frames can't be trusted any more
+void R_ClearMDSFrames( void ) {
+	Com_Memset( mdsFrameCache, 0, sizeof( mdsFrameCache ) );
+	mdsFrameTime = 0;
+}
+
+/*
+=============
 R_CullModel
 =============
 */
 static int R_CullModel( mdsHeader_t *header, trRefEntity_t *ent ) {
 	vec3_t bounds[2];
 	mdsFrame_t  *oldFrame, *newFrame;
-	int i, frameSize;
-
-	frameSize = (int) ( sizeof( mdsFrame_t ) - sizeof( mdsBoneFrameCompressed_t ) + header->numBones * sizeof( mdsBoneFrameCompressed_t ) );
+	int i;
 
 	// compute frame pointers
-	newFrame = ( mdsFrame_t * )( ( byte * ) header + header->ofsFrames + ent->e.frame * frameSize );
-	oldFrame = ( mdsFrame_t * )( ( byte * ) header + header->ofsFrames + ent->e.oldframe * frameSize );
+	newFrame = R_MDSFrame( header, ent->e.frame );
+	oldFrame = R_MDSFrame( header, ent->e.oldframe );
 
 	// cull bounding sphere ONLY if this is not an upscaled entity
 	if ( !ent->e.nonNormalizedAxes ) {
@@ -275,7 +322,7 @@ static int R_ComputeFogNum( mdsHeader_t *header, trRefEntity_t *ent ) {
 	}
 
 	// FIXME: non-normalized axis issues
-	mdsFrame = ( mdsFrame_t * )( ( byte * ) header + header->ofsFrames + ( sizeof( mdsFrame_t ) + sizeof( mdsBoneFrameCompressed_t ) * ( header->numBones - 1 ) ) * ent->e.frame );
+	mdsFrame = R_MDSFrame( header, ent->e.frame );
 	VectorAdd( ent->e.origin, mdsFrame->localOrigin, localOrigin );
 	for ( i = 1 ; i < tr.world->numfogs ; i++ ) {
 		fog = &tr.world->fogs[i];
@@ -900,16 +947,10 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 		torsoFrontlerp = 1.0f - torsoBacklerp;
 	}
 
-	frameSize = (int) ( sizeof( mdsFrame_t ) + ( header->numBones - 1 ) * sizeof( mdsBoneFrameCompressed_t ) );
-
-	frame = ( mdsFrame_t * )( (byte *)header + header->ofsFrames +
-							  refent->frame * frameSize );
-	torsoFrame = ( mdsFrame_t * )( (byte *)header + header->ofsFrames +
-								   refent->torsoFrame * frameSize );
-	oldFrame = ( mdsFrame_t * )( (byte *)header + header->ofsFrames +
-								 refent->oldframe * frameSize );
-	oldTorsoFrame = ( mdsFrame_t * )( (byte *)header + header->ofsFrames +
-									  refent->oldTorsoFrame * frameSize );
+	frame = R_MDSFrame( header, refent->frame );
+	torsoFrame = R_MDSFrame( header, refent->torsoFrame );
+	oldFrame = R_MDSFrame( header, refent->oldframe );
+	oldTorsoFrame = R_MDSFrame( header, refent->oldTorsoFrame );
 
 	//
 	// lerp all the needed bones (torsoParent is always the first bone in the list)
