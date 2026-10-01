@@ -62,14 +62,9 @@ cvar_t  *sv_minPing;
 cvar_t  *sv_maxPing;
 cvar_t  *sv_gametype;
 cvar_t  *sv_pure;
-cvar_t  *sv_floodProtect;
 cvar_t	*sv_lanForceRate; // dedicated 1 (LAN) server forces local client rates to 99999 (bug #491)
 cvar_t  *sv_allowAnonymous;
 
-cvar_t	*sv_banFile;
-
-serverBan_t serverBans[SERVER_MAXBANS];
-int serverBansCount = 0;
 
 // Rafael gameskill
 cvar_t  *sv_gameskill;
@@ -383,337 +378,6 @@ CONNECTIONLESS COMMANDS
 ==============================================================================
 */
 
-// This is deliberately quite large to make it more of an effort to DoS
-#define MAX_BUCKETS			16384
-#define MAX_HASHES			1024
-
-static leakyBucket_t buckets[ MAX_BUCKETS ];
-static leakyBucket_t *bucketHashes[ MAX_HASHES ];
-leakyBucket_t outboundLeakyBucket;
-
-/*
-================
-SVC_HashForAddress
-================
-*/
-static long SVC_HashForAddress( netadr_t address ) {
-	byte 		*ip = NULL;
-	size_t	size = 0;
-	int			i;
-	long		hash = 0;
-
-	switch ( address.type ) {
-		case NA_IP:  ip = address.ip;  size = 4; break;
-		case NA_IP6: ip = address.ip6; size = 16; break;
-		default: break;
-	}
-
-	for ( i = 0; i < size; i++ ) {
-		hash += (long)( ip[ i ] ) * ( i + 119 );
-	}
-
-	hash = ( hash ^ ( hash >> 10 ) ^ ( hash >> 20 ) );
-	hash &= ( MAX_HASHES - 1 );
-
-	return hash;
-}
-
-/*
-================
-SVC_BucketForAddress
-
-Find or allocate a bucket for an address
-================
-*/
-static leakyBucket_t *SVC_BucketForAddress( netadr_t address, int burst, int period ) {
-	leakyBucket_t	*bucket = NULL;
-	int						i;
-	long					hash = SVC_HashForAddress( address );
-	int						now = Sys_Milliseconds();
-
-	for ( bucket = bucketHashes[ hash ]; bucket; bucket = bucket->next ) {
-		switch ( bucket->type ) {
-			case NA_IP:
-				if ( memcmp( bucket->ipv._4, address.ip, 4 ) == 0 ) {
-					return bucket;
-				}
-				break;
-
-			case NA_IP6:
-				if ( memcmp( bucket->ipv._6, address.ip6, 16 ) == 0 ) {
-					return bucket;
-				}
-				break;
-
-			default:
-				break;
-		}
-	}
-
-	for ( i = 0; i < MAX_BUCKETS; i++ ) {
-		int interval;
-
-		bucket = &buckets[ i ];
-		interval = now - bucket->lastTime;
-
-		// Reclaim expired buckets
-		if ( bucket->lastTime > 0 && ( interval > ( burst * period ) ||
-					interval < 0 ) ) {
-			if ( bucket->prev != NULL ) {
-				bucket->prev->next = bucket->next;
-			} else {
-				bucketHashes[ bucket->hash ] = bucket->next;
-			}
-			
-			if ( bucket->next != NULL ) {
-				bucket->next->prev = bucket->prev;
-			}
-
-			Com_Memset( bucket, 0, sizeof( leakyBucket_t ) );
-		}
-
-		if ( bucket->type == NA_BAD ) {
-			bucket->type = address.type;
-			switch ( address.type ) {
-				case NA_IP:  Com_Memcpy( bucket->ipv._4, address.ip, 4 );   break;
-				case NA_IP6: Com_Memcpy( bucket->ipv._6, address.ip6, 16 ); break;
-				default: break;
-			}
-
-			bucket->lastTime = now;
-			bucket->burst = 0;
-			bucket->hash = hash;
-
-			// Add to the head of the relevant hash chain
-			bucket->next = bucketHashes[ hash ];
-			if ( bucketHashes[ hash ] != NULL ) {
-				bucketHashes[ hash ]->prev = bucket;
-			}
-
-			bucket->prev = NULL;
-			bucketHashes[ hash ] = bucket;
-
-			return bucket;
-		}
-	}
-
-	// Couldn't allocate a bucket for this address
-	return NULL;
-}
-
-/*
-================
-SVC_RateLimit
-================
-*/
-qboolean SVC_RateLimit( leakyBucket_t *bucket, int burst, int period ) {
-	if ( bucket != NULL ) {
-		int now = Sys_Milliseconds();
-		int interval = now - bucket->lastTime;
-		int expired = interval / period;
-		int expiredRemainder = interval % period;
-
-		if ( expired > bucket->burst || interval < 0 ) {
-			bucket->burst = 0;
-			bucket->lastTime = now;
-		} else {
-			bucket->burst -= expired;
-			bucket->lastTime = now - expiredRemainder;
-		}
-
-		if ( bucket->burst < burst ) {
-			bucket->burst++;
-
-			return qfalse;
-		}
-	}
-
-	return qtrue;
-}
-
-/*
-================
-SVC_RateLimitAddress
-
-Rate limit for a particular address
-================
-*/
-qboolean SVC_RateLimitAddress( netadr_t from, int burst, int period ) {
-	leakyBucket_t *bucket = SVC_BucketForAddress( from, burst, period );
-
-	return SVC_RateLimit( bucket, burst, period );
-}
-
-/*
-================
-SVC_Status
-
-Responds with all the info that qplug or qspy can see about the server
-and all connected players.  Used for getting detailed information after
-the simple info query.
-================
-*/
-static void SVC_Status( netadr_t from ) {
-	char player[1024];
-	char status[MAX_MSGLEN];
-	int i;
-	client_t    *cl;
-	playerState_t   *ps;
-	int statusLength;
-	int playerLength;
-	char infostring[MAX_INFO_STRING];
-
-	// ignore if we are in single player
-	if ( Cvar_VariableValue( "g_gametype" ) == GT_SINGLE_PLAYER || Cvar_VariableValue("ui_singlePlayerActive")) {
-		return;
-	}
-
-	// Prevent using getstatus as an amplifier
-	if ( SVC_RateLimitAddress( from, 10, 1000 ) ) {
-		Com_DPrintf( "SVC_Status: rate limit from %s exceeded, dropping request\n",
-			NET_AdrToString( from ) );
-		return;
-	}
-
-	// Allow getstatus to be DoSed relatively easily, but prevent
-	// excess outbound bandwidth usage when being flooded inbound
-	if ( SVC_RateLimit( &outboundLeakyBucket, 10, 100 ) ) {
-		Com_DPrintf( "SVC_Status: rate limit exceeded, dropping request\n" );
-		return;
-	}
-
-	// A maximum challenge length of 128 should be more than plenty.
-	if(strlen(Cmd_Argv(1)) > 128)
-		return;
-
-	strcpy( infostring, Cvar_InfoString( CVAR_SERVERINFO ) );
-
-	// echo back the parameter to status. so master servers can use it as a challenge
-	// to prevent timed spoofed reply packets that add ghost servers
-	Info_SetValueForKey( infostring, "challenge", Cmd_Argv( 1 ) );
-
-	status[0] = 0;
-	statusLength = 0;
-
-	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
-		cl = &svs.clients[i];
-		if ( cl->state >= CS_CONNECTED ) {
-			ps = SV_GameClientNum( i );
-			Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n",
-						 ps->persistant[PERS_SCORE], cl->ping, cl->name );
-			playerLength = strlen( player );
-			if ( statusLength + playerLength >= sizeof( status ) ) {
-				break;      // can't hold any more
-			}
-			strcpy( status + statusLength, player );
-			statusLength += playerLength;
-		}
-	}
-
-	NET_OutOfBandPrint( NS_SERVER, from, "statusResponse\n%s\n%s", infostring, status );
-}
-
-/*
-================
-SVC_Info
-
-Responds with a short info message that should be enough to determine
-if a user is interested in a server to do a full status
-================
-*/
-void SVC_Info( netadr_t from ) {
-	int		i, count, humans;
-	char    *gamedir;
-	char infostring[MAX_INFO_STRING];
-
-	// ignore if we are in single player
-	if ( Cvar_VariableValue( "g_gametype" ) == GT_SINGLE_PLAYER ) {
-		return;
-	}
-
-	// Prevent using getinfo as an amplifier
-	if ( SVC_RateLimitAddress( from, 10, 1000 ) ) {
-		Com_DPrintf( "SVC_Info: rate limit from %s exceeded, dropping request\n",
-			NET_AdrToString( from ) );
-		return;
-	}
-
-	// Allow getinfo to be DoSed relatively easily, but prevent
-	// excess outbound bandwidth usage when being flooded inbound
-	if ( SVC_RateLimit( &outboundLeakyBucket, 10, 100 ) ) {
-		Com_DPrintf( "SVC_Info: rate limit exceeded, dropping request\n" );
-		return;
-	}
-
-	/*
-	 * Check whether Cmd_Argv(1) has a sane length. This was not done in the original Quake3 version which led
-	 * to the Infostring bug discovered by Luigi Auriemma. See http://aluigi.altervista.org/ for the advisory.
-	 */
-
-	// A maximum challenge length of 128 should be more than plenty.
-	if(strlen(Cmd_Argv(1)) > 128)
-		return;
-
-	// don't count privateclients
-	count = humans = 0;
-	for ( i = sv_privateClients->integer ; i < sv_maxclients->integer ; i++ ) {
-		if ( svs.clients[i].state >= CS_CONNECTED ) {
-			count++;
-			if (svs.clients[i].netchan.remoteAddress.type != NA_BOT) {
-				humans++;
-			}
-		}
-	}
-
-	infostring[0] = 0;
-
-	// echo back the parameter to status. so servers can use it as a challenge
-	// to prevent timed spoofed reply packets that add ghost servers
-	Info_SetValueForKey( infostring, "challenge", Cmd_Argv( 1 ) );
-
-	Info_SetValueForKey( infostring, "gamename", com_gamename->string );
-
-#ifdef LEGACY_PROTOCOL
-	if(com_legacyprotocol->integer > 0)
-		Info_SetValueForKey(infostring, "protocol", va("%i", com_legacyprotocol->integer));
-	else
-#endif
-		Info_SetValueForKey(infostring, "protocol", va("%i", com_protocol->integer));
-
-	Info_SetValueForKey( infostring, "hostname", sv_hostname->string );
-	Info_SetValueForKey( infostring, "mapname", sv_mapname->string );
-	Info_SetValueForKey( infostring, "clients", va( "%i", count ) );
-	Info_SetValueForKey( infostring, "g_humanplayers", va( "%i", humans ) );
-	Info_SetValueForKey( infostring, "sv_maxclients",
-						 va( "%i", sv_maxclients->integer - sv_privateClients->integer ) );
-	Info_SetValueForKey( infostring, "gametype", va( "%i", sv_gametype->integer ) );
-	Info_SetValueForKey( infostring, "pure", va( "%i", sv_pure->integer ) );
-	Info_SetValueForKey( infostring, "g_needpass", va( "%d", Cvar_VariableIntegerValue( "g_needpass" ) ) );
-
-#ifdef USE_VOIP
-	if (sv_voipProtocol->string && *sv_voipProtocol->string) {
-		Info_SetValueForKey( infostring, "voip", sv_voipProtocol->string );
-	}
-#endif
-
-	if ( sv_minPing->integer ) {
-		Info_SetValueForKey( infostring, "minPing", va( "%i", sv_minPing->integer ) );
-	}
-	if ( sv_maxPing->integer ) {
-		Info_SetValueForKey( infostring, "maxPing", va( "%i", sv_maxPing->integer ) );
-	}
-	gamedir = Cvar_VariableString( "fs_game" );
-	if ( *gamedir ) {
-		Info_SetValueForKey( infostring, "game", gamedir );
-	}
-	Info_SetValueForKey( infostring, "sv_allowAnonymous", va( "%i", sv_allowAnonymous->integer ) );
-
-	// Rafael gameskill
-	Info_SetValueForKey( infostring, "gameskill", va( "%i", sv_gameskill->integer ) );
-	// done
-
-	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse\n%s", infostring );
-}
 
 /*
 ==============
@@ -743,13 +407,7 @@ static void SVC_RemoteCommand( netadr_t from, msg_t *msg ) {
 
 	if ( !strlen( sv_rconPassword->string ) ||
 		 strcmp( Cmd_Argv( 1 ), sv_rconPassword->string ) ) {
-		static leakyBucket_t bucket;
 
-		// Make DoS via rcon impractical
-		if ( SVC_RateLimit( &bucket, 10, 1000 ) ) {
-			Com_DPrintf( "SVC_RemoteCommand: rate limit exceeded, dropping request\n" );
-			return;
-		}
 
 		valid = qfalse;
 		Com_DPrintf( "Bad rcon from %s:\n%s\n", NET_AdrToString( from ), Cmd_Argv( 2 ) );
@@ -762,12 +420,6 @@ static void SVC_RemoteCommand( netadr_t from, msg_t *msg ) {
 	svs.redirectAddress = from;
 	Com_BeginRedirect( sv_outputbuf, SV_OUTPUTBUF_LENGTH, SV_FlushRedirect );
 
-	// Prevent using rcon as an amplifier and make dictionary attacks impractical
-	if ( SVC_RateLimitAddress( from, 10, 1000 ) ) {
-		Com_DPrintf( "SVC_RemoteCommand: rate limit from %s exceeded, dropping request\n",
-			NET_AdrToString( from ) );
- 		return;
- 	}
 
 	if ( !strlen( sv_rconPassword->string ) ) {
 		Com_Printf( "No rconpassword set.\n" );
@@ -826,11 +478,7 @@ static void SV_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	c = Cmd_Argv( 0 );
 	Com_DPrintf( "SV packet %s : %s\n", NET_AdrToString( from ), c );
 
-	if ( !Q_stricmp( c,"getstatus" ) ) {
-		SVC_Status( from );
-	} else if ( !Q_stricmp( c,"getinfo" ) ) {
-		SVC_Info( from );
-	} else if ( !Q_stricmp( c,"getchallenge" ) ) {
+	if ( !Q_stricmp( c,"getchallenge" ) ) {
 		SV_GetChallenge( from );
 	} else if ( !Q_stricmp( c,"connect" ) ) {
 		SV_DirectConnect( from );
@@ -943,6 +591,10 @@ static void SV_CalcPings( void ) {
 			continue;
 		}
 
+		if ( !cl->frames ) {
+			cl->ping = 999;
+			continue;
+		}
 		total = 0;
 		count = 0;
 		for ( j = 0 ; j < PACKET_BACKUP ; j++ ) {

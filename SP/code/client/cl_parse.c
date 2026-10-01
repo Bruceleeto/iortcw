@@ -250,7 +250,6 @@ void CL_ParseSnapshot( msg_t *msg ) {
 	if ( newSnap.deltaNum <= 0 ) {
 		newSnap.valid = qtrue;      // uncompressed frame
 		old = NULL;
-		clc.demowaiting = qfalse;   // we can start recording now
 	} else {
 		old = &cl.snapshots[newSnap.deltaNum & PACKET_MASK];
 		if ( !old->valid ) {
@@ -366,11 +365,6 @@ void CL_SystemInfoChanged( void ) {
 		clc.voipEnabled = !Q_stricmp(s, "opus");
 	}
 #endif
-
-	// don't set any vars when playing a demo
-	if ( clc.demoplaying ) {
-		return;
-	}
 
 	s = Info_ValueForKey( systemInfo, "sv_cheats" );
 	cl_connectedToCheatServer = atoi( s );
@@ -533,10 +527,6 @@ void CL_ParseGamestate( msg_t *msg ) {
 	// parse serverId and other cvars
 	CL_SystemInfoChanged();
 
-	// stop recording now so the demo won't have an unnecessary level load at the end.
-	if(cl_autoRecordDemo->integer && clc.demorecording)
-		CL_StopRecord_f();
-
 	// reinitialize the filesystem if the game directory has changed
 	if(!cl_oldGameSet && (Cvar_Flags("fs_game") & CVAR_MODIFIED))
 	{
@@ -655,8 +645,8 @@ qboolean CL_ShouldIgnoreVoipSender(int sender)
 {
 	if (!cl_voip->integer)
 		return qtrue;  // VoIP is disabled.
-	else if ((sender == clc.clientNum) && (!clc.demoplaying))
-		return qtrue;  // ignore own voice (unless playing back a demo).
+	else if (sender == clc.clientNum)
+		return qtrue;  // ignore own voice
 	else if (clc.voipMuteAll)
 		return qtrue;  // all channels are muted with extreme prejudice.
 	else if (clc.voipIgnore[sender])

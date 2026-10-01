@@ -92,6 +92,7 @@ called to open a channel to a remote system
 */
 void Netchan_Setup(netsrc_t sock, netchan_t *chan, netadr_t adr, int qport, int challenge, qboolean compat)
 {
+	Netchan_Free( chan );
 	memset( chan, 0, sizeof( *chan ) );
 
 	chan->sock = sock;
@@ -194,6 +195,7 @@ void Netchan_Transmit( netchan_t *chan, int length, const byte *data ) {
 
 	// fragment large reliable messages
 	if ( length >= FRAGMENT_SIZE ) {
+		if ( !chan->unsentBuffer ) chan->unsentBuffer = Z_Malloc( MAX_MSGLEN );
 		chan->unsentFragments = qtrue;
 		chan->unsentLength = length;
 		Com_Memcpy( chan->unsentBuffer, data, length );
@@ -364,7 +366,7 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 
 		// copy the fragment to the fragment buffer
 		if ( fragmentLength < 0 || msg->readcount + fragmentLength > msg->cursize ||
-			 chan->fragmentLength + fragmentLength > sizeof( chan->fragmentBuffer ) ) {
+			 chan->fragmentLength + fragmentLength > MAX_MSGLEN ) {
 			if ( showdrop->integer || showpackets->integer ) {
 				Com_Printf( "%s:illegal fragment length\n"
 							, NET_AdrToString( chan->remoteAddress ) );
@@ -372,6 +374,7 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 			return qfalse;
 		}
 
+		if ( !chan->fragmentBuffer ) chan->fragmentBuffer = Z_Malloc( MAX_MSGLEN );
 		memcpy( chan->fragmentBuffer + chan->fragmentLength,
 				msg->data + msg->readcount, fragmentLength );
 
@@ -691,3 +694,13 @@ int NET_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 	}
 }
 
+
+/* Release optional fragment storage without changing connection sequence numbers. */
+void Netchan_Free( netchan_t *chan ) {
+	Z_Free( chan->fragmentBuffer );
+	Z_Free( chan->unsentBuffer );
+	chan->fragmentBuffer = chan->unsentBuffer = NULL;
+	chan->fragmentLength = 0;
+	chan->unsentFragments = qfalse;
+	chan->unsentFragmentStart = chan->unsentLength = 0;
+}

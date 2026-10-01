@@ -101,7 +101,6 @@ extern vmCvar_t ui_cdkey;
 extern vmCvar_t ui_cdkeychecked;
 extern vmCvar_t ui_selectedPlayer;
 extern vmCvar_t ui_selectedPlayerName;
-extern vmCvar_t ui_netSource;
 extern vmCvar_t ui_menuFiles;
 extern vmCvar_t ui_gameType;
 extern vmCvar_t ui_netGameType;
@@ -117,17 +116,11 @@ extern vmCvar_t ui_savegameListAutosave;    //----(SA)	added
 extern vmCvar_t ui_savegameName;    //----(SA)	added
 
 // NERVE - SMF - multiplayer cvars
-extern vmCvar_t ui_serverFilterType;
 extern vmCvar_t ui_currentNetMap;
 extern vmCvar_t ui_currentMap;
 extern vmCvar_t ui_mapIndex;
 
-extern vmCvar_t ui_browserMaster;
-extern vmCvar_t ui_browserGameType;
-extern vmCvar_t ui_browserShowFull;
-extern vmCvar_t ui_browserShowEmpty;
 
-extern vmCvar_t ui_serverStatusTimeOut;
 // -NERVE - SMF
 
 //
@@ -428,12 +421,6 @@ extern void UI_ControlsMenu( void );
 extern void Controls_Cache( void );
 
 //
-// ui_demo2.c
-//
-extern void UI_DemosMenu( void );
-extern void Demos_Cache( void );
-
-//
 // ui_cinematics.c
 //
 extern void UI_CinematicsMenu( void );
@@ -646,11 +633,7 @@ typedef struct {
 #define MAX_STATUSLENGTH        64
 #define MAX_LISTBOXWIDTH        59
 #define UI_FONT_THRESHOLD       0.1
-#define MAX_DISPLAY_SERVERS     2048
 #define MAX_DISPLAY_SAVEGAMES   256
-#define MAX_SERVERSTATUS_LINES  128
-#define MAX_SERVERSTATUS_TEXT   1024
-#define MAX_FOUNDPLAYER_SERVERS 16
 #define TEAM_MEMBERS 5
 #define GAMES_ALL           0
 #define GAMES_FFA           1
@@ -660,7 +643,6 @@ typedef struct {
 #define MAPS_PER_TIER 3
 #define MAX_TIERS 16
 #define MAX_MODS 64
-#define MAX_DEMOS 512
 #define MAX_MOVIES 256
 #define MAX_PLAYERMODELS 256
 #define MAX_SAVEGAMES 256
@@ -735,47 +717,6 @@ typedef struct {
 	qhandle_t mapHandles[MAPS_PER_TIER];
 } tierInfo;
 
-typedef struct serverFilter_s {
-	const char *description;
-	const char *basedir;
-} serverFilter_t;
-
-typedef struct {
-	char adrstr[MAX_ADDRESSLENGTH];
-	int start;
-} pinglist_t;
-
-
-typedef struct serverStatus_s {
-	pinglist_t pingList[MAX_PINGREQUESTS];
-	int numqueriedservers;
-	int currentping;
-	int nextpingtime;
-	int maxservers;
-	int refreshtime;
-	int numServers;
-	int sortKey;
-	int sortDir;
-	int lastCount;
-	qboolean refreshActive;
-	int currentServer;
-	int displayServers[MAX_DISPLAY_SERVERS];
-	int numDisplayServers;
-	int numPlayersOnServers;
-	int nextDisplayRefresh;
-	int nextSortTime;
-	qhandle_t currentServerPreview;
-	int currentServerCinematic;
-	int motdLen;
-	int motdWidth;
-	int motdPaintX;
-	int motdPaintX2;
-	int motdOffset;
-	int motdTime;
-	char motd[MAX_STRING_CHARS];
-} serverStatus_t;
-
-
 typedef struct savegameStatus_s {
 
 	int sortKey;
@@ -785,27 +726,6 @@ typedef struct savegameStatus_s {
 
 } savegameStatus_t;
 
-
-typedef struct {
-	char adrstr[MAX_ADDRESSLENGTH];
-	char name[MAX_ADDRESSLENGTH];
-	int startTime;
-	int serverNum;
-	qboolean valid;
-} pendingServer_t;
-
-typedef struct {
-	int num;
-	pendingServer_t server[MAX_SERVERSTATUSREQUESTS];
-} pendingServerStatus_t;
-
-typedef struct {
-	char address[MAX_ADDRESSLENGTH];
-	char *lines[MAX_SERVERSTATUS_LINES][4];
-	char text[MAX_SERVERSTATUS_TEXT];
-	char pings[MAX_CLIENTS * 3];
-	int numLines;
-} serverStatusInfo_t;
 
 typedef struct {
 	const char *modName;
@@ -818,7 +738,6 @@ typedef struct {
 	int newBestTime;
 	int showPostGameTime;
 	qboolean newHighScore;
-	qboolean demoAvailable;
 	qboolean soundHighScore;
 
 	int characterCount;
@@ -862,9 +781,6 @@ typedef struct {
 	int modCount;
 	int modIndex;
 
-	const char *demoList[MAX_DEMOS];
-	int demoCount;
-	int demoIndex;
 
 	const char *movieList[MAX_MOVIES];
 	int movieCount;
@@ -878,22 +794,6 @@ typedef struct {
 //	int					savegameIndex;
 	savegameStatus_t savegameStatus;
 //----(SA)	end
-
-	serverStatus_t serverStatus;
-
-	// for the showing the status of a server
-	char serverStatusAddress[MAX_ADDRESSLENGTH];
-	serverStatusInfo_t serverStatusInfo;
-	int nextServerStatusRefresh;
-
-	// to retrieve the status of server to find a player
-	pendingServerStatus_t pendingServerStatus;
-	char findPlayerName[MAX_STRING_CHARS];
-	char foundPlayerServerAddresses[MAX_FOUNDPLAYER_SERVERS][MAX_ADDRESSLENGTH];
-	char foundPlayerServerNames[MAX_FOUNDPLAYER_SERVERS][MAX_ADDRESSLENGTH];
-	int currentFoundPlayerServer;
-	int numFoundPlayerServers;
-	int nextFindPlayerRefresh;
 
 	int currentCrosshair;
 	int startPostGameTime;
@@ -952,7 +852,6 @@ extern char         *UI_Argv( int arg );
 extern char         *UI_Cvar_VariableString( const char *var_name );
 extern void         UI_Refresh( int time );
 extern void         UI_KeyEvent( int key );
-extern void         UI_StartDemoLoop( void );
 void                UI_LoadBestScores( const char *map, int game );           // NERVE - SMF
 extern qboolean m_entersound;
 extern uiStatic_t uis;
@@ -1037,33 +936,9 @@ void            trap_GetClipboardData( char *buf, int bufsize );
 void            trap_GetClientState( uiClientState_t *state );
 void            trap_GetGlconfig( glconfig_t *glconfig );
 int             trap_GetConfigString( int index, char* buff, int buffsize );
-int             trap_LAN_GetServerCount( int source );          // NERVE - SMF
-int             trap_LAN_GetLocalServerCount( void );
-void            trap_LAN_GetLocalServerAddressString( int n, char *buf, int buflen );
-int             trap_LAN_GetGlobalServerCount( void );
-void            trap_LAN_GetGlobalServerAddressString( int n, char *buf, int buflen );
-int             trap_LAN_GetPingQueueCount( void );
-void            trap_LAN_ClearPing( int n );
-void            trap_LAN_GetPing( int n, char *buf, int buflen, int *pingtime );
-void            trap_LAN_GetPingInfo( int n, char *buf, int buflen );
 int             trap_MemoryRemaining( void );
 
 // NERVE - SMF - multiplayer traps
-qboolean        trap_LAN_UpdateVisiblePings( int source );
-void            trap_LAN_MarkServerVisible( int source, int n, qboolean visible );
-void            trap_LAN_ResetPings( int n );
-void            trap_LAN_SaveCachedServers( void );
-int             trap_LAN_CompareServers( int source, int sortKey, int sortDir, int s1, int s2 );
-void            trap_LAN_GetServerAddressString( int source, int n, char *buf, int buflen );
-void trap_LAN_GetServerInfo( int source, int n, char *buf, int buflen );
-int             trap_LAN_AddServer( int source, const char *name, const char *addr );
-void            trap_LAN_RemoveServer( int source, const char *addr );
-int             trap_LAN_GetServerPing( int source, int n );
-int             trap_LAN_ServerIsVisible( int source, int n );
-int             trap_LAN_ServerStatus( const char *serverAddress, char *serverStatus, int maxLen );
-void            trap_LAN_SaveCachedServers( void );
-void            trap_LAN_LoadCachedServers( void );
-void            trap_LAN_MarkServerVisible( int source, int n, qboolean visible );
 // -NERVE - SMF
 
 void            trap_GetCDKey( char *buf, int buflen );

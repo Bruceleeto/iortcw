@@ -97,7 +97,6 @@ If you have questions concerning this license or the applicable additional terms
 #define MAX_TEAMNAME		32
 #define MAX_MASTER_SERVERS      5	// number of supported master servers
 
-#define DEMOEXT	"dm_"			// standard demo extension
 
 #ifdef _MSC_VER
 

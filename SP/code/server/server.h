@@ -184,13 +184,12 @@ typedef struct client_s {
 	int downloadSendTime;               // time we last got an ack from the client
 
 	int deltaMessage;                   // frame last client usercmd message
-	int nextReliableTime;               // svs.time when another reliable command will be allowed
 	int lastPacketTime;                 // svs.time when packet was last received
 	int lastConnectTime;                // svs.time when connection started
 	int lastSnapshotTime;		    // svs.time of last sent snapshot
 	qboolean rateDelayed;               // true if nextSnapshotTime was set based on rate instead of snapshotMsec
 	int timeoutCount;                   // must timeout a few frames in a row so debugging doesn't break
-	clientSnapshot_t frames[PACKET_BACKUP];     // updates can be delta'd from here
+	clientSnapshot_t *frames;     // updates can be delta'd from here
 	int ping;
 	int rate;                           // bytes / second
 	int snapshotMsec;                   // requests a snapshot every snapshotMsec unless rate choked
@@ -269,17 +268,6 @@ typedef struct {
 	int masterResolveTime[MAX_MASTER_SERVERS]; // next svs.time that server should do dns lookup for master server
 } serverStatic_t;
 
-#define SERVER_MAXBANS	1024
-// Structure for managing bans
-typedef struct
-{
-	netadr_t ip;
-	// For a CIDR-Notation type suffix
-	int subnet;
-	
-	qboolean isexception;
-} serverBan_t;
-
 //=============================================================================
 
 extern serverStatic_t svs;                  // persistant server info across maps
@@ -310,13 +298,9 @@ extern cvar_t  *sv_minPing;
 extern cvar_t  *sv_maxPing;
 extern cvar_t  *sv_gametype;
 extern cvar_t  *sv_pure;
-extern cvar_t  *sv_floodProtect;
 extern cvar_t  *sv_lanForceRate;
 extern cvar_t  *sv_allowAnonymous;
-extern cvar_t  *sv_banFile;
 
-extern	serverBan_t serverBans[SERVER_MAXBANS];
-extern	int serverBansCount;
 
 #ifdef USE_VOIP
 extern	cvar_t	*sv_voip;
@@ -334,28 +318,6 @@ extern cvar_t  *sv_reloading;   //----(SA)	added
 //
 // sv_main.c
 //
-typedef struct leakyBucket_s leakyBucket_t;
-struct leakyBucket_s {
-	netadrtype_t	type;
-
-	union {
-		byte	_4[4];
-		byte	_6[16];
-	} ipv;
-
-	int						lastTime;
-	signed char		burst;
-
-	long					hash;
-
-	leakyBucket_t *prev, *next;
-};
-
-extern leakyBucket_t outboundLeakyBucket;
-
-qboolean SVC_RateLimit( leakyBucket_t *bucket, int burst, int period );
-qboolean SVC_RateLimitAddress( netadr_t from, int burst, int period );
-
 void SV_FinalMessage( char *message );
 void QDECL SV_SendServerCommand( client_t *cl, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
 
@@ -406,6 +368,7 @@ void SV_UserinfoChanged( client_t *cl );
 
 void SV_ClientEnterWorld( client_t *client, usercmd_t *cmd );
 void SV_FreeClient(client_t *client);
+clientSnapshot_t *SV_ClientFrames(client_t *client);
 void SV_DropClient( client_t *drop, const char *reason );
 
 void SV_ExecuteClientCommand( client_t *cl, const char *s, qboolean clientOK );

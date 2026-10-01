@@ -133,7 +133,7 @@ static void SV_WriteSnapshotToClient( client_t *client, msg_t *msg ) {
 	int snapFlags;
 
 	// this is the snapshot we are creating
-	frame = &client->frames[ client->netchan.outgoingSequence & PACKET_MASK ];
+	frame = &SV_ClientFrames( client )[ client->netchan.outgoingSequence & PACKET_MASK ];
 
 	// try to use a previous frame as the source for delta compressing the snapshot
 	if ( client->deltaMessage <= 0 || client->state != CS_ACTIVE ) {
@@ -148,7 +148,7 @@ static void SV_WriteSnapshotToClient( client_t *client, msg_t *msg ) {
 		lastframe = 0;
 	} else {
 		// we have a valid snapshot to delta from
-		oldframe = &client->frames[ client->deltaMessage & PACKET_MASK ];
+		oldframe = &SV_ClientFrames( client )[ client->deltaMessage & PACKET_MASK ];
 		lastframe = client->netchan.outgoingSequence - client->deltaMessage;
 
 		// the snapshot's entities may still have rolled off the buffer, though
@@ -551,7 +551,7 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 	sv.snapshotCounter++;
 
 	// this is the frame we are creating
-	frame = &client->frames[ client->netchan.outgoingSequence & PACKET_MASK ];
+	frame = &SV_ClientFrames( client )[ client->netchan.outgoingSequence & PACKET_MASK ];
 
 //	// try to use a previous frame as the source for delta compressing the snapshot
 //	if ( client->deltaMessage <= 0 || client->state != CS_ACTIVE ) {
@@ -564,7 +564,7 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 //		oldframe = NULL;
 //	} else {
 //		// we have a valid snapshot to delta from
-//		oldframe = &client->frames[ client->deltaMessage & PACKET_MASK ];
+//		oldframe = &SV_ClientFrames( client )[ client->deltaMessage & PACKET_MASK ];
 //
 //		// the snapshot's entities may still have rolled off the buffer, though
 //		if ( oldframe->first_entity <= svs.nextSnapshotEntities - svs.numSnapshotEntities ) {
@@ -702,9 +702,9 @@ Called by SV_SendClientSnapshot and SV_SendClientGameState
 void SV_SendMessageToClient(msg_t *msg, client_t *client)
 {
 	// record information about the message
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageSize = msg->cursize;
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageSent = svs.time;
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageAcked = -1;
+	SV_ClientFrames( client )[client->netchan.outgoingSequence & PACKET_MASK].messageSize = msg->cursize;
+	SV_ClientFrames( client )[client->netchan.outgoingSequence & PACKET_MASK].messageSent = svs.time;
+	SV_ClientFrames( client )[client->netchan.outgoingSequence & PACKET_MASK].messageAcked = -1;
 
 	// send the datagram
 	SV_Netchan_Transmit(client, msg);
@@ -815,3 +815,11 @@ void SV_SendClientMessages(void)
 	}
 }
 
+
+/* Cast AI do not need snapshot frames. Allocate them only when a client uses them. */
+clientSnapshot_t *SV_ClientFrames( client_t *client ) {
+	if ( !client->frames ) {
+		client->frames = Z_Malloc( PACKET_BACKUP * sizeof( *client->frames ) );
+	}
+	return client->frames;
+}

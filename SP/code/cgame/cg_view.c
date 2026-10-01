@@ -1444,7 +1444,7 @@ CG_DrawActiveFrame
 Generates and draws a game scene and status information at the given time.
 =================
 */
-void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback ) {
+void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 	int inwater;
 
 	cg.cld = 0;         // NERVE - SMF - reset clientDamage
@@ -1455,7 +1455,6 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 #endif
 
 	cg.time = serverTime;
-	cg.demoPlayback = demoPlayback;
 
 	// update cvars
 	CG_UpdateCvars();

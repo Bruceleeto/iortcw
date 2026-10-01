@@ -32,18 +32,6 @@ If you have questions concerning this license or the applicable additional terms
 #include "../botlib/botlib.h"
 #include "../botlib/botai.h"
 
-#define MAX_DEBUGPOLYS      128
-
-typedef struct bot_debugpoly_s
-{
-	int inuse;
-	int color;
-	int numPoints;
-	vec3_t points[128];
-} bot_debugpoly_t;
-
-static bot_debugpoly_t debugpolygons[MAX_DEBUGPOLYS];
-
 extern botlib_export_t  *botlib_export;
 int bot_enable;
 
@@ -94,6 +82,7 @@ void SV_BotFreeClient( int clientNum ) {
 		Com_Error( ERR_DROP, "SV_BotFreeClient: bad clientNum: %i", clientNum );
 	}
 	cl = &svs.clients[clientNum];
+	SV_FreeClient( cl );
 	cl->state = CS_FREE;
 	cl->name[0] = 0;
 	if ( cl->gentity ) {
@@ -101,71 +90,6 @@ void SV_BotFreeClient( int clientNum ) {
 	}
 }
 
-/*
-==================
-BotDrawDebugPolygons
-==================
-*/
-void BotDrawDebugPolygons( void ( *drawPoly )( int color, int numPoints, float *points ), int value ) {
-	static cvar_t *bot_debug, *bot_groundonly, *bot_reachability, *bot_highlightarea;
-	static cvar_t *bot_testhidepos, *bot_testroutevispos;
-	bot_debugpoly_t *poly;
-	int i, parm0;
-
-	if ( !bot_enable ) {
-		return;
-	}
-	//bot debugging
-	if ( !bot_debug ) {
-		bot_debug = Cvar_Get( "bot_debug", "0", 0 );
-	}
-	//show reachabilities
-	if ( !bot_reachability ) {
-		bot_reachability = Cvar_Get( "bot_reachability", "0", 0 );
-	}
-	//show ground faces only
-	if ( !bot_groundonly ) {
-		bot_groundonly = Cvar_Get( "bot_groundonly", "1", 0 );
-	}
-	//get the hightlight area
-	if ( !bot_highlightarea ) {
-		bot_highlightarea = Cvar_Get( "bot_highlightarea", "0", 0 );
-	}
-	//
-	if ( !bot_testhidepos ) {
-		bot_testhidepos = Cvar_Get( "bot_testhidepos", "0", 0 );
-	}
-	//
-	if ( !bot_testroutevispos ) {
-		bot_testroutevispos = Cvar_Get( "bot_testroutevispos", "0", 0 );
-	}
-	//
-	if ( bot_debug->integer ) {
-		parm0 = 0;
-		if ( svs.clients[0].lastUsercmd.buttons & BUTTON_ATTACK ) {
-			parm0 |= 1;
-		}
-		if ( bot_reachability->integer ) {
-			parm0 |= 2;
-		}
-		if ( bot_groundonly->integer ) {
-			parm0 |= 4;
-		}
-		botlib_export->BotLibVarSet( "bot_highlightarea", bot_highlightarea->string );
-		botlib_export->BotLibVarSet( "bot_testhidepos", bot_testhidepos->string );
-		botlib_export->BotLibVarSet( "bot_testroutevispos", bot_testroutevispos->string );
-		botlib_export->Test( parm0, NULL, svs.clients[0].gentity->r.currentOrigin,
-							 svs.clients[0].gentity->r.currentAngles );
-	} //end if
-	for ( i = 0; i < MAX_DEBUGPOLYS; i++ ) {
-		poly = &debugpolygons[i];
-		if ( !poly->inuse ) {
-			continue;
-		}
-		drawPoly( poly->color, poly->numPoints, (float *) poly->points );
-		//Com_Printf("poly %i, numpoints = %d\n", i, poly->numPoints);
-	}
-}
 
 /*
 ==================
@@ -361,40 +285,9 @@ BotImport_DebugPolygonCreate
 ==================
 */
 int BotImport_DebugPolygonCreate( int color, int numPoints, vec3_t *points ) {
-	bot_debugpoly_t *poly;
-	int i;
-
-	for ( i = 1; i < MAX_DEBUGPOLYS; i++ )    {
-		if ( !debugpolygons[i].inuse ) {
-			break;
-		}
-	}
-	if ( i >= MAX_DEBUGPOLYS ) {
-		return 0;
-	}
-	poly = &debugpolygons[i];
-	poly->inuse = qtrue;
-	poly->color = color;
-	poly->numPoints = numPoints;
-	memcpy( poly->points, points, numPoints * sizeof( vec3_t ) );
-	//
-	return i;
+	return 0;
 }
 
-/*
-==================
-BotImport_DebugPolygonShow
-==================
-*/
-static void BotImport_DebugPolygonShow(int id, int color, int numPoints, vec3_t *points) {
-	bot_debugpoly_t *poly;
-
-	poly = &debugpolygons[id];
-	poly->inuse = qtrue;
-	poly->color = color;
-	poly->numPoints = numPoints;
-	memcpy( poly->points, points, numPoints * sizeof( vec3_t ) );
-}
 
 /*
 ==================
@@ -402,7 +295,7 @@ BotImport_DebugPolygonDelete
 ==================
 */
 void BotImport_DebugPolygonDelete( int id ) {
-	debugpolygons[id].inuse = qfalse;
+	// Debug geometry is disabled in SP.
 }
 
 /*
@@ -411,8 +304,7 @@ BotImport_DebugLineCreate
 ==================
 */
 static int BotImport_DebugLineCreate(void) {
-	vec3_t points[1];
-	return BotImport_DebugPolygonCreate( 0, 0, points );
+	return 0;
 }
 
 /*
@@ -421,7 +313,7 @@ BotImport_DebugLineDelete
 ==================
 */
 static void BotImport_DebugLineDelete(int line) {
-	BotImport_DebugPolygonDelete( line );
+	// Debug geometry is disabled in SP.
 }
 
 /*
@@ -430,32 +322,7 @@ BotImport_DebugLineShow
 ==================
 */
 static void BotImport_DebugLineShow(int line, vec3_t start, vec3_t end, int color) {
-	vec3_t points[4], dir, cross, up = {0, 0, 1};
-	float dot;
-
-	VectorCopy( start, points[0] );
-	VectorCopy( start, points[1] );
-	//points[1][2] -= 2;
-	VectorCopy( end, points[2] );
-	//points[2][2] -= 2;
-	VectorCopy( end, points[3] );
-
-
-	VectorSubtract( end, start, dir );
-	VectorNormalize( dir );
-	dot = DotProduct( dir, up );
-	if ( dot > 0.99 || dot < -0.99 ) {
-		VectorSet( cross, 1, 0, 0 );
-	} else { CrossProduct( dir, up, cross );}
-
-	VectorNormalize( cross );
-
-	VectorMA( points[0], 2, cross, points[0] );
-	VectorMA( points[1], -2, cross, points[1] );
-	VectorMA( points[2], -2, cross, points[2] );
-	VectorMA( points[3], 2, cross, points[3] );
-
-	BotImport_DebugPolygonShow( line, color, 4, points );
+	// Debug geometry is disabled in SP.
 }
 
 /*
@@ -694,6 +561,7 @@ int EntityInPVS( int client, int entityNum ) {
 	int i;
 
 	cl = &svs.clients[client];
+	if ( !cl->frames ) return -1;
 	frame = &cl->frames[cl->netchan.outgoingSequence & PACKET_MASK];
 	for ( i = 0; i < frame->num_entities; i++ ) {
 		if ( svs.snapshotEntities[( frame->first_entity + i ) % svs.numSnapshotEntities].number == entityNum ) {
@@ -714,6 +582,7 @@ int SV_BotGetSnapshotEntity( int client, int sequence ) {
 	clientSnapshot_t    *frame;
 
 	cl = &svs.clients[client];
+	if ( !cl->frames ) return -1;
 	frame = &cl->frames[cl->netchan.outgoingSequence & PACKET_MASK];
 	if ( sequence < 0 || sequence >= frame->num_entities ) {
 		return -1;

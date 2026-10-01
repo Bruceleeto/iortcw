@@ -497,7 +497,7 @@ CG_PredictPlayerState
 Generates cg.predictedPlayerState for the current cg.time
 cg.predictedPlayerState is guaranteed to be valid after exiting.
 
-For demo playback, this will be an interpolation between two valid
+For spectators, this will be an interpolation between two valid
 playerState_t.
 
 For normal gameplay, it will be the result of predicted usercmd_t on
@@ -535,8 +535,8 @@ void CG_PredictPlayerState( void ) {
 		cg.predictedPlayerState = cg.snap->ps;
 	}
 
-	// demo playback just copies the moves
-	if ( cg.demoPlayback || ( cg.snap->ps.pm_flags & PMF_FOLLOW ) ) {
+	// following another player just copies the moves
+	if ( ( cg.snap->ps.pm_flags & PMF_FOLLOW ) ) {
 		CG_InterpolatePlayerState( qfalse );
 		return;
 	}

@@ -235,14 +235,14 @@ typedef struct {
 	// incoming fragment assembly buffer
 	int fragmentSequence;
 	int fragmentLength;
-	byte fragmentBuffer[MAX_MSGLEN];
+	byte *fragmentBuffer;
 
 	// outgoing fragment buffer
 	// we need to space out the sending of large fragmented messages
 	qboolean unsentFragments;
 	int unsentFragmentStart;
 	int unsentLength;
-	byte unsentBuffer[MAX_MSGLEN];
+	byte *unsentBuffer;
 
 	int			challenge;
 	int		lastSentTime;
@@ -254,6 +254,7 @@ typedef struct {
 } netchan_t;
 
 void Netchan_Init( int qport );
+void Netchan_Free( netchan_t *chan );
 void Netchan_Setup(netsrc_t sock, netchan_t *chan, netadr_t adr, int qport, int challenge, qboolean compat);
 
 void Netchan_Transmit( netchan_t *chan, int length, const byte *data );
@@ -276,9 +277,6 @@ PROTOCOL
 #define PROTOCOL_LEGACY_VERSION	49
 //#define	PROTOCOL_VERSION	43	// (SA) bump this up
 
-// maintain a list of compatible protocols for demo playing
-// NOTE: that stuff only works with two digits protocols
-extern int demo_protocols[];
 
 //----(SA)	heh, whoops.  we've been talking to id servers since we got a connection...
 //#define	UPDATE_SERVER_NAME	"update.quake3arena.com"
@@ -1076,8 +1074,6 @@ void S_ClearSoundBuffer( void );
 
 void SCR_DebugGraph (float value);	// FIXME: move logging to common?
  
-// AVI files have the start of pixel lines 4 byte-aligned
-#define AVI_LINE_PADDING 4
 
 //
 // server interface

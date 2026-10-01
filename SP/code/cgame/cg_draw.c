@@ -970,7 +970,7 @@ static float CG_DrawFPS( float y ) {
 	int t, frameTime;
 
 	// don't use serverTime, because that will be drifting to
-	// correct for internet lag changes, timescales, timedemos, etc
+	// correct for internet lag changes, timescales, etc
 	t = trap_Milliseconds();
 	frameTime = t - previous;
 	previous = t;
@@ -2382,7 +2382,7 @@ static void CG_DrawCrosshair( void ) {
 	friendInSights = (qboolean)( cg.snap->ps.serverCursorHint == HINT_PLYR_FRIEND );  //----(SA)	added
 
 	// DHM - Nerve :: show reticle in limbo and spectator
-	if ( cgs.gametype >= GT_WOLF && ( ( cg.snap->ps.pm_flags & PMF_FOLLOW ) || cg.demoPlayback ) ) {
+	if ( cgs.gametype >= GT_WOLF && ( ( cg.snap->ps.pm_flags & PMF_FOLLOW ) ) ) {
 		weapnum = cg.snap->ps.weapon;
 	} else {
 		weapnum = cg.weaponSelect;
@@ -2565,7 +2565,7 @@ static void CG_DrawCrosshair3D( void ) {
 	friendInSights = (qboolean)( cg.snap->ps.serverCursorHint == HINT_PLYR_FRIEND );  //----(SA)	added
 
 	// DHM - Nerve :: show reticle in limbo and spectator
-	if ( cgs.gametype >= GT_WOLF && ( ( cg.snap->ps.pm_flags & PMF_FOLLOW ) || cg.demoPlayback ) ) {
+	if ( cgs.gametype >= GT_WOLF && ( ( cg.snap->ps.pm_flags & PMF_FOLLOW ) ) ) {
 		weapnum = cg.snap->ps.weapon;
 	} else {
 		weapnum = cg.weaponSelect;

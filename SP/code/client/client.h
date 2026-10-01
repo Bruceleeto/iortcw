@@ -83,7 +83,6 @@ typedef struct {
 } clSnapshot_t;
 
 
-
 /*
 =============================================================================
 
@@ -175,15 +174,13 @@ extern clientActive_t cl;
 =============================================================================
 
 the clientConnection_t structure is wiped when disconnecting from a server,
-either to go to a full screen console, play a demo, or connect to a different server
+either to go to a full screen console or connect to a different server
 
-A connection can be to either a server through the network layer or a
-demo through a file.
+A connection is to a server through the network layer.
 
 =============================================================================
 */
 
-#define MAX_TIMEDEMO_DURATIONS	4096
 
 typedef struct {
 
@@ -241,24 +238,6 @@ typedef struct {
 	char downloadList[MAX_INFO_STRING];        // list of paks we need to download
 	qboolean downloadRestart;       // if true, we need to do another FS_Restart because we downloaded a pak
 
-	// demo information
-	char demoName[MAX_QPATH];
-	qboolean demorecording;
-	qboolean demoplaying;
-	qboolean demowaiting;       // don't record until a non-delta message is received
-	qboolean firstDemoFrameSkipped;
-	fileHandle_t demofile;
-
-	int timeDemoFrames;             // counter of rendered frames
-	int timeDemoStart;              // cls.realtime before first frame
-	int timeDemoBaseTime;           // each frame will be at this time + frameNum * 50
-	int			timeDemoLastFrame;// time the last frame was rendered
-	int			timeDemoMinDuration;	// minimum frame duration
-	int			timeDemoMaxDuration;	// maximum frame duration
-	unsigned char	timeDemoDurations[ MAX_TIMEDEMO_DURATIONS ];	// log of frame durations
-
-	float	aviVideoFrameRemainder;
-	float	aviSoundFrameRemainder;
 
 #ifdef USE_VOIP
 	qboolean voipEnabled;
@@ -306,30 +285,6 @@ no client connection is active at all
 ==================================================================
 */
 
-typedef struct {
-	netadr_t adr;
-	int start;
-	int time;
-	char info[MAX_INFO_STRING];
-} ping_t;
-
-typedef struct {
-	netadr_t adr;
-	char hostName[MAX_NAME_LENGTH];
-	char mapName[MAX_NAME_LENGTH];
-	char game[MAX_NAME_LENGTH];
-	int netType;
-	int gameType;
-	int clients;
-	int maxClients;
-	int minPing;
-	int maxPing;
-	int ping;
-	qboolean visible;
-	int allowAnonymous;
-	int			g_humanplayers;
-	int			g_needpass;
-} serverInfo_t;
 
 typedef struct {
 
@@ -348,20 +303,6 @@ typedef struct {
 
 	int realtime;                   // ignores pause
 	int realFrametime;              // ignoring pause, so console always works
-
-	int numlocalservers;
-	serverInfo_t localServers[MAX_OTHER_SERVERS];
-
-	int numglobalservers;
-	serverInfo_t globalServers[MAX_GLOBAL_SERVERS];
-	// additional global servers
-	int numGlobalServerAddresses;
-	netadr_t globalServerAddresses[MAX_GLOBAL_SERVERS];
-
-	int numfavoriteservers;
-	serverInfo_t favoriteServers[MAX_OTHER_SERVERS];
-
-	int pingUpdateSource;       // source currently pinging or updating
 
 	// update server info
 	netadr_t updateServer;
@@ -405,7 +346,6 @@ extern cvar_t  *cl_shownet;
 extern cvar_t  *cl_showSend;
 extern cvar_t  *cl_timeNudge;
 extern cvar_t  *cl_showTimeDelta;
-extern cvar_t  *cl_freezeDemo;
 
 extern cvar_t  *cl_yawspeed;
 extern cvar_t  *cl_pitchspeed;
@@ -439,9 +379,6 @@ extern	cvar_t	*j_forward_axis;
 extern	cvar_t	*j_side_axis;
 extern	cvar_t	*j_up_axis;
 
-extern cvar_t  *cl_timedemo;
-extern	cvar_t	*cl_aviFrameRate;
-extern	cvar_t	*cl_aviMotionJpeg;
 
 extern cvar_t  *cl_activeAction;
 
@@ -451,7 +388,6 @@ extern cvar_t  *cl_conXOffset;
 extern cvar_t  *cl_inGameVideo;
 
 extern	cvar_t	*cl_lanForcePackets;
-extern	cvar_t	*cl_autoRecordDemo;
 
 extern	cvar_t	*cl_consoleKeys;
 
@@ -503,23 +439,14 @@ void CL_Disconnect_f( void );
 void CL_GetChallengePacket( void );
 void CL_Vid_Restart_f( void );
 void CL_Snd_Restart_f( void );
-void CL_StartDemoLoop( void );
-void CL_NextDemo( void );
-void CL_ReadDemoMessage( void );
-void CL_StopRecord_f(void);
 
 void CL_InitDownloads( void );
 void CL_NextDownload( void );
 
-void CL_GetPing( int n, char *buf, int buflen, int *pingtime );
-void CL_GetPingInfo( int n, char *buf, int buflen );
-void CL_ClearPing( int n );
-int CL_GetPingQueueCount( void );
 
 void CL_ShutdownRef( void );
 void CL_InitRef( void );
 qboolean CL_CDKeyValidate( const char *key, const char *checksum );
-int CL_ServerStatus( char *serverAddress, char *serverStatusString, int maxLen );
 
 qboolean CL_CheckPaused(void);
 
@@ -610,12 +537,7 @@ void CL_ParseServerMessage( msg_t *msg );
 
 //====================================================================
 
-void    CL_ServerInfoPacket( netadr_t from, msg_t *msg );
-void    CL_LocalServers_f( void );
-void    CL_GlobalServers_f( void );
 void    CL_FavoriteServers_f( void );
-void    CL_Ping_f( void );
-qboolean CL_UpdateVisiblePings_f( int source );
 
 
 //
@@ -698,27 +620,10 @@ void CL_InitUI( void );
 void CL_ShutdownUI( void );
 int Key_GetCatcher( void );
 void Key_SetCatcher( int catcher );
-void LAN_LoadCachedServers( void );
-void LAN_SaveServersToCache( void );
 
 //
 // cl_net_chan.c
 //
 void CL_Netchan_Transmit( netchan_t *chan, msg_t* msg ); //int length, const byte *data );
 qboolean CL_Netchan_Process( netchan_t *chan, msg_t *msg );
-
-//
-// cl_avi.c
-//
-qboolean CL_OpenAVIForWriting( const char *filename );
-void CL_TakeVideoFrame( void );
-void CL_WriteAVIVideoFrame( const byte *imageBuffer, int size );
-void CL_WriteAVIAudioFrame( const byte *pcmBuffer, int size );
-qboolean CL_CloseAVI( void );
-qboolean CL_VideoRecording( void );
-
-//
-// cl_main.c
-//
-void CL_WriteDemoMessage ( msg_t *msg, int headerBytes );
 

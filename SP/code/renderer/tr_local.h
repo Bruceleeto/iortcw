@@ -1448,7 +1448,6 @@ int     R_SumOfUsedImages( void );
 void    R_InitSkins( void );
 skin_t  *R_GetSkinByHandle( qhandle_t hSkin );
 
-const void *RB_TakeVideoFrameCmd( const void *data );
 
 
 //
@@ -1843,14 +1842,7 @@ typedef struct {
 	qboolean jpeg;
 } screenshotCommand_t;
 
-typedef struct {
-	int						commandId;
-	int						width;
-	int						height;
-	byte					*captureBuffer;
-	byte					*encodeBuffer;
-	qboolean			motionJpeg;
-} videoFrameCommand_t;
+
 
 typedef struct
 {
@@ -1873,7 +1865,6 @@ typedef enum {
 	RC_DRAW_BUFFER,
 	RC_SWAP_BUFFERS,
 	RC_SCREENSHOT,
-	RC_VIDEOFRAME,
 	RC_COLORMASK,
 	RC_CLEARDEPTH
 } renderCommand_t;
@@ -1925,8 +1916,6 @@ void RE_SaveJPG(char * filename, int quality, int image_width, int image_height,
                 unsigned char *image_buffer, int padding);
 size_t RE_SaveJPGToBuffer(byte *buffer, size_t bufSize, int quality,
 		          int image_width, int image_height, byte *image_buffer, int padding);
-void RE_TakeVideoFrame( int width, int height,
-		byte *captureBuffer, byte *encodeBuffer, qboolean motionJpeg );
 
 void R_DrawElements( int numIndexes, const glIndex_t *indexes );
 void VectorArrayNormalize( vec4_t *normals, unsigned int count );

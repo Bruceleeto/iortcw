@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "snd_public.h"
 
 #ifdef NO_AUDIO
-// mixer state that cl_cin.c and cl_avi.c read directly; stays zero
+// mixer state that cl_cin.c reads directly; stays zero
 dma_t	dma;
 int		s_soundtime;
 int		s_rawend[MAX_RAW_STREAMS];

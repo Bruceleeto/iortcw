@@ -30,7 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 // cg_playerstate.c -- this file acts on changes in a new playerState_t
 // With normal play, this will be done after local prediction, but when
-// following another player or playing back a demo, it will be checked
+// following another player, it will be checked
 // when the snapshot transitions like all the other entities
 
 #include "cg_local.h"

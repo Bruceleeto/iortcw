@@ -277,11 +277,6 @@ qboolean CL_GetServerCommand( int serverCommandNumber ) {
 
 	// if we have irretrievably lost a reliable command, drop the connection
 	if ( serverCommandNumber <= clc.serverCommandSequence - MAX_RELIABLE_COMMANDS ) {
-		// when a demo record was started after the client got a whole bunch of
-		// reliable commands then the client never got those first reliable commands
-		if ( clc.demoplaying ) {
-			return qfalse;
-		}
 		Com_Error( ERR_DROP, "CL_GetServerCommand: a reliable command was cycled out" );
 		return qfalse;
 	}
@@ -348,7 +343,7 @@ rescan:
 
 	if ( !strcmp( cmd, "popup" ) ) { // direct server to client popup request, bypassing cgame
 //		trap_UI_Popup(Cmd_Argv(1));
-//		if ( cls.state == CA_ACTIVE && !clc.demoplaying ) {
+//		if ( cls.state == CA_ACTIVE ) {
 //			VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_CLIPBOARD);
 //			Menus_OpenByName(Cmd_Argv(1));
 //		}
@@ -790,7 +785,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 			return 0;
 		}
 
-		if ( clc.state == CA_ACTIVE && !clc.demoplaying ) {
+		if ( clc.state == CA_ACTIVE ) {
 			// NERVE - SMF
 			if ( VMA( 1 ) && !Q_stricmp( VMA( 1 ), "UIMENU_WM_PICKTEAM" ) ) {
 				VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_WM_PICKTEAM );
@@ -989,7 +984,7 @@ void CL_InitCGame( void ) {
 	VM_Call( cgvm, CG_INIT, clc.serverMessageSequence, clc.lastExecutedServerCommand, clc.clientNum );
 
 	// reset any CVAR_CHEAT cvars registered by cgame
-	if ( !clc.demoplaying && !cl_connectedToCheatServer )
+	if ( !cl_connectedToCheatServer )
 		Cvar_SetCheatState();
 
 	// we will send a usercmd this frame, which
@@ -1040,7 +1035,7 @@ CL_CGameRendering
 =====================
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
-	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
+	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo );
 	VM_Debug( 0 );
 }
 
@@ -1072,11 +1067,6 @@ void CL_AdjustTimeDelta( void ) {
 	int deltaDelta;
 
 	cl.newSnapshots = qfalse;
-
-	// the delta never drifts when replaying a demo
-	if ( clc.demoplaying ) {
-		return;
-	}
 
 	newDelta = cl.snap.serverTime - cls.realtime;
 	deltaDelta = abs( newDelta - cl.serverTimeDelta );
@@ -1133,12 +1123,8 @@ void CL_FirstSnapshot( void ) {
 	cl.serverTimeDelta = cl.snap.serverTime - cls.realtime;
 	cl.oldServerTime = cl.snap.serverTime;
 
-	clc.timeDemoBaseTime = cl.snap.serverTime;
-
 	// if this is the first frame of active play,
 	// execute the contents of activeAction now
-	// this is to allow scripting a timedemo to start right
-	// after loading
 	if ( cl_activeAction->string[0] ) {
 		Cbuf_AddText( cl_activeAction->string );
 		Cvar_Set( "activeAction", "" );
@@ -1192,15 +1178,6 @@ void CL_SetCGameTime( void ) {
 		if ( clc.state != CA_PRIMED ) {
 			return;
 		}
-		if ( clc.demoplaying ) {
-			// we shouldn't get the first snapshot on the same frame
-			// as the gamestate, because it causes a bad time skip
-			if ( !clc.firstDemoFrameSkipped ) {
-				clc.firstDemoFrameSkipped = qtrue;
-				return;
-			}
-			CL_ReadDemoMessage();
-		}
 		if ( cl.newSnapshots ) {
 			cl.newSnapshots = qfalse;
 			CL_FirstSnapshot();
@@ -1235,10 +1212,7 @@ void CL_SetCGameTime( void ) {
 
 	// get our current view of time
 
-	if ( clc.demoplaying && cl_freezeDemo->integer ) {
-		// cl_freezeDemo is used to lock a demo in place for single frame advances
-
-	} else {
+	{
 		// cl_timeNudge is a user adjustable cvar that allows more
 		// or less latency to be added in the interest of better
 		// smoothness or better responsiveness.
@@ -1273,62 +1247,6 @@ void CL_SetCGameTime( void ) {
 	if ( cl.newSnapshots ) {
 		CL_AdjustTimeDelta();
 	}
-
-	if ( !clc.demoplaying ) {
-		return;
-	}
-
-	// if we are playing a demo back, we can just keep reading
-	// messages from the demo file until the cgame definately
-	// has valid snapshots to interpolate between
-
-	// a timedemo will always use a deterministic set of time samples
-	// no matter what speed machine it is run on,
-	// while a normal demo may have different time samples
-	// each time it is played back
-	if ( cl_timedemo->integer ) {
-		int now = Sys_Milliseconds( );
-		int frameDuration;
-
-		if ( !clc.timeDemoStart ) {
-			clc.timeDemoStart = clc.timeDemoLastFrame = now;
-			clc.timeDemoMinDuration = INT_MAX;
-			clc.timeDemoMaxDuration = 0;
-		}
-
-		frameDuration = now - clc.timeDemoLastFrame;
-		clc.timeDemoLastFrame = now;
-
-		// Ignore the first measurement as it'll always be 0
-		if( clc.timeDemoFrames > 0 )
-		{
-			if( frameDuration > clc.timeDemoMaxDuration )
-				clc.timeDemoMaxDuration = frameDuration;
-
-			if( frameDuration < clc.timeDemoMinDuration )
-				clc.timeDemoMinDuration = frameDuration;
-
-			// 255 ms = about 4fps
-			if( frameDuration > UCHAR_MAX )
-				frameDuration = UCHAR_MAX;
-
-			clc.timeDemoDurations[ ( clc.timeDemoFrames - 1 ) %
-				MAX_TIMEDEMO_DURATIONS ] = frameDuration;
-		}
-
-		clc.timeDemoFrames++;
-		cl.serverTime = clc.timeDemoBaseTime + clc.timeDemoFrames * 50;
-	}
-
-	while ( cl.serverTime >= cl.snap.serverTime ) {
-		// feed another messag, which should change
-		// the contents of cl.snap
-		CL_ReadDemoMessage();
-		if ( clc.state != CA_ACTIVE ) {
-			return;     // end of demo
-		}
-	}
-
 }
 
 /*

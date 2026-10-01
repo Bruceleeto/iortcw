@@ -2331,9 +2331,6 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		case RC_SCREENSHOT:
 			data = RB_TakeScreenshotCmd( data );
 			break;
-		case RC_VIDEOFRAME:
-			data = RB_TakeVideoFrameCmd( data );
-			break;
 		case RC_COLORMASK:
 			data = RB_ColorMask(data);
 			break;

@@ -1303,42 +1303,6 @@ qboolean FS_IsExt(const char *filename, const char *ext, int namelen)
 
 /*
 ===========
-FS_IsDemoExt
-
-Return qtrue if filename has a demo extension
-===========
-*/
-
-qboolean FS_IsDemoExt(const char *filename, int namelen)
-{
-	char *ext_test;
-	int index, protocol;
-
-	ext_test = strrchr(filename, '.');
-	if(ext_test && !Q_stricmpn(ext_test + 1, DEMOEXT, ARRAY_LEN(DEMOEXT) - 1))
-	{
-		protocol = atoi(ext_test + ARRAY_LEN(DEMOEXT));
-
-		if(protocol == com_protocol->integer)
-			return qtrue;
-
-#ifdef LEGACY_PROTOCOL
-		if(protocol == com_legacyprotocol->integer)
-			return qtrue;
-#endif
-
-		for(index = 0; demo_protocols[index]; index++)
-		{
-			if(demo_protocols[index] == protocol)
-			return qtrue;
-		}
-	}
-
-	return qfalse;
-}
-
-/*
-===========
 FS_FOpenFileReadDir
 
 Tries opening file "filename" in searchpath "search"
@@ -1558,8 +1522,7 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 //			   !FS_IsExt(filename, ".menu", len) &&		// menu files
 			   !FS_IsExt(filename, ".svg", len) &&		// savegames
 			   !FS_IsExt(filename, ".game", len) &&		// menu files
-			   !FS_IsExt(filename, ".dat", len) &&		// for journal files
-			   !FS_IsDemoExt(filename, len))			// demos
+			   !FS_IsExt(filename, ".dat", len))		// for journal files
 			{
 				*file = 0;
 				return -1;

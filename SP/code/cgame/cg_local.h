@@ -730,7 +730,6 @@ typedef struct {
 
 	int clientNum;
 
-	qboolean demoPlayback;
 	qboolean levelShot;             // taking a level menu screenshot
 	int deferredPlayerLoading;
 	qboolean loading;               // don't defer players at initial startup
@@ -1820,7 +1819,7 @@ void CG_ZoomIn_f( void );
 void CG_ZoomOut_f( void );
 void CG_ZoomUp_f( void );
 
-void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
+void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView );
 
 void CG_Concussive( centity_t *cent );
 

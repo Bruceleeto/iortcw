@@ -74,19 +74,6 @@ void SV_GetChallenge(netadr_t from)
 		return;
 	}
 
-	// Prevent using getchallenge as an amplifier
-	if ( SVC_RateLimitAddress( from, 10, 1000 ) ) {
-		Com_DPrintf( "SV_GetChallenge: rate limit from %s exceeded, dropping request\n",
-			NET_AdrToString( from ) );
-		return;
-	}
-
-	// Allow getchallenge to be DoSed relatively easily, but prevent
-	// excess outbound bandwidth usage when being flooded inbound
-	if ( SVC_RateLimit( &outboundLeakyBucket, 10, 100 ) ) {
-		Com_DPrintf( "SV_GetChallenge: rate limit exceeded, dropping request\n" );
-		return;
-	}
 
 	gameName = Cmd_Argv(2);
 
@@ -289,39 +276,6 @@ void SV_AuthorizeIpPacket( netadr_t from ) {
 #endif
 #endif
 
-/*
-==================
-SV_IsBanned
-
-Check whether a certain address is banned
-==================
-*/
-
-static qboolean SV_IsBanned(netadr_t *from, qboolean isexception)
-{
-	int index;
-	serverBan_t *curban;
-	
-	if(!isexception)
-	{
-		// If this is a query for a ban, first check whether the client is excepted
-		if(SV_IsBanned(from, qtrue))
-			return qfalse;
-	}
-	
-	for(index = 0; index < serverBansCount; index++)
-	{
-		curban = &serverBans[index];
-		
-		if(curban->isexception == isexception)
-		{
-			if(NET_CompareBaseAdrMask(curban->ip, *from, curban->subnet))
-				return qtrue;
-		}
-	}
-	
-	return qfalse;
-}
 
 /*
 ==================
@@ -351,12 +305,6 @@ void SV_DirectConnect( netadr_t from ) {
 
 	Com_DPrintf( "SVC_DirectConnect ()\n" );
 
-	// Check whether this client is banned.
-	if(SV_IsBanned(&from, qfalse))
-	{
-		NET_OutOfBandPrint(NS_SERVER, from, "print\nYou are banned from this server.\n");
-		return;
-	}
 
 	Q_strncpyz( userinfo, Cmd_Argv( 1 ), sizeof( userinfo ) );
 
@@ -543,6 +491,7 @@ gotnewcl:
 	// build a new connection
 	// accept the new client
 	// this is the only place a client_t is ever initialized
+	SV_FreeClient( newcl );
 	*newcl = temp;
 	clientNum = newcl - svs.clients;
 	ent = SV_GentityNum( clientNum );
@@ -632,6 +581,9 @@ void SV_FreeClient(client_t *client)
 	client->queuedVoipPackets = 0;
 #endif
 
+	Z_Free( client->frames );
+	client->frames = NULL;
+	Netchan_Free( &client->netchan );
 	SV_Netchan_FreeQueue(client);
 	SV_CloseDownload(client);
 }
@@ -1560,7 +1512,6 @@ SV_ClientCommand
 static qboolean SV_ClientCommand( client_t *cl, msg_t *msg ) {
 	int seq;
 	const char  *s;
-	qboolean clientOk = qtrue;
 
 	seq = MSG_ReadLong( msg );
 	s = MSG_ReadString( msg );
@@ -1580,27 +1531,7 @@ static qboolean SV_ClientCommand( client_t *cl, msg_t *msg ) {
 		return qfalse;
 	}
 
-	// malicious users may try using too many string commands
-	// to lag other players.  If we decide that we want to stall
-	// the command, we will stop processing the rest of the packet,
-	// including the usercmd.  This causes flooders to lag themselves
-	// but not other people
-	// We don't do this when the client hasn't been active yet since it's
-	// normal to spam a lot of commands when downloading
-	if ( !com_cl_running->integer &&
-		 cl->state >= CS_ACTIVE &&      // (SA) this was commented out in Wolf.  Did we do that?
-		 sv_floodProtect->integer &&
-		 svs.time < cl->nextReliableTime ) {
-		// ignore any other text messages from this client but let them keep playing
-		clientOk = qfalse;
-		Com_DPrintf( "client text ignored for %s\n", cl->name );
-		//return qfalse;	// stop processing
-	}
-
-	// don't allow another command for one second
-	cl->nextReliableTime = svs.time + 1000;
-
-	SV_ExecuteClientCommand( cl, s, clientOk );
+	SV_ExecuteClientCommand( cl, s, qtrue );
 
 	cl->lastClientCommand = seq;
 	Com_sprintf( cl->lastClientCommandString, sizeof( cl->lastClientCommandString ), "%s", s );
@@ -1684,7 +1615,7 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 	}
 
 	// save time for ping calculation
-	cl->frames[ cl->messageAcknowledge & PACKET_MASK ].messageAcked = svs.time;
+	SV_ClientFrames( cl )[ cl->messageAcknowledge & PACKET_MASK ].messageAcked = svs.time;
 
 	// if this is the first usercmd we have received
 	// this gamestate, put the client into the world
@@ -1930,7 +1861,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 			break;
 		}
 		if ( !SV_ClientCommand( cl, msg ) ) {
-			return; // we couldn't execute it because of the flood protection
+			return; // invalid or missing reliable command
 		}
 		if ( cl->state == CS_ZOMBIE ) {
 			return; // disconnect command

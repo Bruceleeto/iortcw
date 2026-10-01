@@ -286,7 +286,7 @@ void IN_CenterView( void ) {
 }
 
 void IN_Notebook( void ) {
-	if ( clc.state == CA_ACTIVE && !clc.demoplaying ) {
+	if ( clc.state == CA_ACTIVE ) {
 		Cvar_Set( "cg_youGotMail", "0" ); // clear icon	//----(SA)	added
 		VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_NOTEBOOK );    // startup notebook
 	}
@@ -742,8 +742,7 @@ qboolean CL_ReadyToSendPacket( void ) {
 	int oldPacketNum;
 	int delta;
 
-	// don't send anything if playing back a demo
-	if ( clc.demoplaying || clc.state == CA_CINEMATIC ) {
+	if ( clc.state == CA_CINEMATIC ) {
 		return qfalse;
 	}
 
@@ -819,8 +818,7 @@ void CL_WritePacket( void ) {
 	int oldPacketNum;
 	int count, key;
 
-	// don't send anything if playing back a demo
-	if ( clc.demoplaying || clc.state == CA_CINEMATIC ) {
+	if ( clc.state == CA_CINEMATIC ) {
 		return;
 	}
 
@@ -878,30 +876,6 @@ void CL_WritePacket( void ) {
 			MSG_WriteShort (&buf, clc.voipOutgoingDataSize);
 			MSG_WriteData (&buf, clc.voipOutgoingData, clc.voipOutgoingDataSize);
 
-			// If we're recording a demo, we have to fake a server packet with
-			//  this VoIP data so it gets to disk; the server doesn't send it
-			//  back to us, and we might as well eliminate concerns about dropped
-			//  and misordered packets here.
-			if(clc.demorecording && !clc.demowaiting)
-			{
-				const int voipSize = clc.voipOutgoingDataSize;
-				msg_t fakemsg;
-				byte fakedata[MAX_MSGLEN];
-				MSG_Init (&fakemsg, fakedata, sizeof (fakedata));
-				MSG_Bitstream (&fakemsg);
-				MSG_WriteLong (&fakemsg, clc.reliableAcknowledge);
-				MSG_WriteByte (&fakemsg, svc_voipOpus);
-				MSG_WriteShort (&fakemsg, clc.clientNum);
-				MSG_WriteByte (&fakemsg, clc.voipOutgoingGeneration);
-				MSG_WriteLong (&fakemsg, clc.voipOutgoingSequence);
-				MSG_WriteByte (&fakemsg, clc.voipOutgoingDataFrames);
-				MSG_WriteShort (&fakemsg, clc.voipOutgoingDataSize );
-				MSG_WriteBits (&fakemsg, clc.voipFlags, VOIP_FLAGCNT);
-				MSG_WriteData (&fakemsg, clc.voipOutgoingData, voipSize);
-				MSG_WriteByte (&fakemsg, svc_EOF);
-				CL_WriteDemoMessage (&fakemsg, 0);
-			}
-
 			clc.voipOutgoingSequence += clc.voipOutgoingDataFrames;
 			clc.voipOutgoingDataSize = 0;
 			clc.voipOutgoingDataFrames = 0;
@@ -921,7 +895,7 @@ void CL_WritePacket( void ) {
 		}
 
 		// begin a client move command
-		if ( cl_nodelta->integer || !cl.snap.valid || clc.demowaiting
+		if ( cl_nodelta->integer || !cl.snap.valid
 			 || clc.serverMessageSequence != cl.snap.messageNum ) {
 			MSG_WriteByte( &buf, clc_moveNoDelta );
 		} else {
@@ -981,7 +955,6 @@ void CL_SendCmd( void ) {
 		return;
 	}
 
-	// we create commands even if a demo is playing,
 	CL_CreateNewCommands();
 
 	// don't send a packet if the last packet was sent too recently

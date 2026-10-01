@@ -276,94 +276,10 @@ int trap_GetConfigString( int index, char* buff, int buffsize ) {
 	return syscall( UI_GETCONFIGSTRING, index, buff, buffsize );
 }
 
-int trap_LAN_GetLocalServerCount( void ) {
-	return syscall( UI_LAN_GETLOCALSERVERCOUNT );
-}
-
-void trap_LAN_GetLocalServerAddressString( int n, char *buf, int buflen ) {
-	syscall( UI_LAN_GETLOCALSERVERADDRESSSTRING, n, buf, buflen );
-}
-
-int trap_LAN_GetGlobalServerCount( void ) {
-	return syscall( UI_LAN_GETGLOBALSERVERCOUNT );
-}
-
-void trap_LAN_GetGlobalServerAddressString( int n, char *buf, int buflen ) {
-	syscall( UI_LAN_GETGLOBALSERVERADDRESSSTRING, n, buf, buflen );
-}
-
-int trap_LAN_GetPingQueueCount( void ) {
-	return syscall( UI_LAN_GETPINGQUEUECOUNT );
-}
-
-void trap_LAN_ClearPing( int n ) {
-	syscall( UI_LAN_CLEARPING, n );
-}
-
-void trap_LAN_GetPing( int n, char *buf, int buflen, int *pingtime ) {
-	syscall( UI_LAN_GETPING, n, buf, buflen, pingtime );
-}
-
-void trap_LAN_GetPingInfo( int n, char *buf, int buflen ) {
-	syscall( UI_LAN_GETPINGINFO, n, buf, buflen );
-}
 
 // NERVE - SMF
-qboolean trap_LAN_UpdateVisiblePings( int source ) {
-	return syscall( UI_LAN_UPDATEVISIBLEPINGS, source );
-}
 
-int trap_LAN_GetServerCount( int source ) {
-	return syscall( UI_LAN_GETSERVERCOUNT, source );
-}
 
-int trap_LAN_CompareServers( int source, int sortKey, int sortDir, int s1, int s2 ) {
-	return syscall( UI_LAN_COMPARESERVERS, source, sortKey, sortDir, s1, s2 );
-}
-
-void trap_LAN_GetServerAddressString( int source, int n, char *buf, int buflen ) {
-	syscall( UI_LAN_GETSERVERADDRESSSTRING, source, n, buf, buflen );
-}
-
-void trap_LAN_GetServerInfo( int source, int n, char *buf, int buflen ) {
-	syscall( UI_LAN_GETSERVERINFO, source, n, buf, buflen );
-}
-
-int trap_LAN_AddServer( int source, const char *name, const char *addr ) {
-	return syscall( UI_LAN_ADDSERVER, source, name, addr );
-}
-
-void trap_LAN_RemoveServer( int source, const char *addr ) {
-	syscall( UI_LAN_REMOVESERVER, source, addr );
-}
-
-int trap_LAN_GetServerPing( int source, int n ) {
-	return syscall( UI_LAN_GETSERVERPING, source, n );
-}
-
-int trap_LAN_ServerIsVisible( int source, int n ) {
-	return syscall( UI_LAN_SERVERISVISIBLE, source, n );
-}
-
-int trap_LAN_ServerStatus( const char *serverAddress, char *serverStatus, int maxLen ) {
-	return syscall( UI_LAN_SERVERSTATUS, serverAddress, serverStatus, maxLen );
-}
-
-void trap_LAN_SaveCachedServers( void ) {
-	syscall( UI_LAN_SAVECACHEDSERVERS );
-}
-
-void trap_LAN_LoadCachedServers( void ) {
-	syscall( UI_LAN_LOADCACHEDSERVERS );
-}
-
-void trap_LAN_MarkServerVisible( int source, int n, qboolean visible ) {
-	syscall( UI_LAN_MARKSERVERVISIBLE, source, n, visible );
-}
-
-void trap_LAN_ResetPings( int n ) {
-	syscall( UI_LAN_RESETPINGS, n );
-}
 // -NERVE - SMF
 
 int trap_MemoryRemaining( void ) {

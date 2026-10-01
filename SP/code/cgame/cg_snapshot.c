@@ -258,7 +258,7 @@ static void CG_TransitionSnapshot( void ) {
 
 		// if we are not doing client side movement prediction for any
 		// reason, then the client events and view changes will be issued now
-		if ( cg.demoPlayback || ( cg.snap->ps.pm_flags & PMF_FOLLOW )
+		if ( ( cg.snap->ps.pm_flags & PMF_FOLLOW )
 			 || cg_nopredict.integer || cg_synchronousClients.integer ) {
 			CG_TransitionPlayerState( ps, ops );
 		}
@@ -302,7 +302,7 @@ static void CG_SetNextSnap( snapshot_t *snap ) {
 	}
 
 	// if the next frame is a teleport for the playerstate, we
-	// can't interpolate during demos
+	// wait until the requested time is between snapshots
 	if ( cg.snap && ( ( snap->ps.eFlags ^ cg.snap->ps.eFlags ) & EF_TELEPORT_BIT ) ) {
 		cg.nextFrameTeleport = qtrue;
 	} else {

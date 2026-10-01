@@ -240,7 +240,7 @@ typedef enum {
 	// cgame will display loading status by calling SCR_Update, which
 	// will call CG_DrawInformation during the loading process
 	// reliableCommandSequence will be 0 on fresh loads, but higher for
-	// demos, tourney restarts, or vid_restarts
+	// tourney restarts or vid_restarts
 
 	CG_SHUTDOWN,
 //	void (*CG_Shutdown)( void );
@@ -254,9 +254,8 @@ typedef enum {
 	// command is not known to the game
 
 	CG_DRAW_ACTIVE_FRAME,
-//	void (*CG_DrawActiveFrame)( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
+//	void (*CG_DrawActiveFrame)( int serverTime, stereoFrame_t stereoView );
 	// Generates and draws a game scene and status information at the given time.
-	// If demoPlayback is set, local movement prediction will not be enabled
 
 	CG_CROSSHAIR_PLAYER,
 //	int (*CG_CrosshairPlayer)( void );

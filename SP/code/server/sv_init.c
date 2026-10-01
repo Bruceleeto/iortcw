@@ -461,6 +461,18 @@ NOT cause this to be called, unless the game is exited to
 the menu system first.
 ===============
 */
+static void SV_SetSnapshotEntityCapacity( void ) {
+	if ( sv_gametype->integer == GT_SINGLE_PLAYER ) {
+		// Cast AI never build snapshots; keep a full history for the human player.
+		svs.numSnapshotEntities = PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
+	} else if ( com_dedicated->integer ) {
+		svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
+	} else {
+		// we don't need nearly as many when playing locally
+		svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
+	}
+}
+
 static void SV_Startup( void ) {
 	if ( svs.initialized ) {
 		Com_Error( ERR_FATAL, "SV_Startup: svs.initialized" );
@@ -478,12 +490,7 @@ static void SV_Startup( void ) {
 #endif
 //	SV_InitReliableCommands( svs.clients );	// RF
 
-	if ( com_dedicated->integer ) {
-		svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-	} else {
-		// we don't need nearly as many when playing locally
-		svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-	}
+	SV_SetSnapshotEntityCapacity();
 	svs.initialized = qtrue;
 
 	// Don't respect sv_killserver unless a server is actually running
@@ -531,6 +538,7 @@ void SV_ChangeMaxClients( void ) {
 	// RF, free reliable commands for clients outside the NEW maxclients limit
 	if ( oldMaxClients > sv_maxclients->integer ) {
 		for ( i = sv_maxclients->integer ; i < oldMaxClients ; i++ ) {
+			SV_FreeClient( &svs.clients[i] );
 			SV_FreeReliableCommandsForClient( &svs.clients[i] );
 		}
 	}
@@ -541,8 +549,13 @@ void SV_ChangeMaxClients( void ) {
 		if ( svs.clients[i].state >= CS_CONNECTED ) {
 			oldClients[i] = svs.clients[i];
 		} else {
+			SV_FreeClient( &svs.clients[i] );
 			Com_Memset( &oldClients[i], 0, sizeof( client_t ) );
 		}
+	}
+
+	for ( i = count ; i < oldMaxClients ; i++ ) {
+		SV_FreeClient( &svs.clients[i] );
 	}
 
 	// free old clients arrays
@@ -576,12 +589,7 @@ void SV_ChangeMaxClients( void ) {
 	Hunk_FreeTempMemory( oldClients );
 
 	// allocate new snapshot entities
-	if ( com_dedicated->integer ) {
-		svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-	} else {
-		// we don't need nearly as many when playing locally
-		svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-	}
+	SV_SetSnapshotEntityCapacity();
 
 	// RF, allocate reliable commands for newly created client slots
 	if ( oldMaxClients < sv_maxclients->integer ) {
@@ -754,6 +762,9 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	// clear pak references
 	FS_ClearPakReferences( 0 );
+
+	// Recompute on every map load, including gametype changes without resizing clients.
+	SV_SetSnapshotEntityCapacity();
 
 	// allocate the snapshot entities on the hunk
 	svs.snapshotEntities = Hunk_Alloc( sizeof( entityState_t ) * svs.numSnapshotEntities, h_high );
@@ -1008,7 +1019,6 @@ void SV_Init (void)
 	sv_dlRate = Cvar_Get("sv_dlRate", "100", CVAR_ARCHIVE | CVAR_SERVERINFO);
 	sv_minPing = Cvar_Get( "sv_minPing", "0", CVAR_ARCHIVE | CVAR_SERVERINFO );
 	sv_maxPing = Cvar_Get( "sv_maxPing", "0", CVAR_ARCHIVE | CVAR_SERVERINFO );
-	sv_floodProtect = Cvar_Get( "sv_floodProtect", "1", CVAR_ARCHIVE | CVAR_SERVERINFO );
 	sv_allowAnonymous = Cvar_Get( "sv_allowAnonymous", "0", CVAR_SERVERINFO );
 
 	// systeminfo
@@ -1055,7 +1065,6 @@ void SV_Init (void)
 
 	sv_reloading = Cvar_Get( "g_reloading", "0", CVAR_ROM );   //----(SA)	added
 
-	sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
 
 	// initialize bot cvars so they are listed and can be set before loading the botlib
 	SV_BotInitCvars();

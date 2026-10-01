@@ -38,8 +38,6 @@ If you have questions concerning this license or the applicable additional terms
 #include <winsock.h>
 #endif
 
-int demo_protocols[] =
-{ 59, 58, 57, 0 };
 
 #define MAXPRINTMSG 4096
 
@@ -73,7 +71,6 @@ cvar_t  *com_fixedtime;
 cvar_t  *com_journal;
 cvar_t  *com_maxfps;
 cvar_t	*com_altivec;
-cvar_t  *com_timedemo;
 cvar_t  *com_sv_running;
 cvar_t  *com_cl_running;
 cvar_t  *com_logfile;       // 1 = buffer log, 2 = flush after each print
@@ -2372,7 +2369,6 @@ void Com_Init( char *commandLine ) {
 	com_fixedtime = Cvar_Get( "fixedtime", "0", CVAR_CHEAT );
 	com_showtrace = Cvar_Get( "com_showtrace", "0", CVAR_CHEAT );
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
-	com_timedemo = Cvar_Get( "timedemo", "0", CVAR_CHEAT );
 	com_cameraMode = Cvar_Get( "com_cameraMode", "0", CVAR_CHEAT );
 
 	cl_paused = Cvar_Get( "cl_paused", "0", CVAR_ROM );
@@ -2739,7 +2735,6 @@ void Com_Frame( void ) {
 	}
 
 	// Figure out how much time we have
-	if(!com_timedemo->integer)
 	{
 		if(com_dedicated->integer)
 			minMsec = SV_FrameMsec();
@@ -2765,8 +2760,6 @@ void Com_Frame( void ) {
 			minMsec -= bias;
 		}
 	}
-	else
-		minMsec = 1;
 
 	do
 	{
