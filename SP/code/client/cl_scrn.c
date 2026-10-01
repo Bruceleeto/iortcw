@@ -331,42 +331,6 @@ int SCR_GetBigStringWidth( const char *str ) {
 
 //===============================================================================
 
-#ifdef USE_VOIP
-/*
-=================
-SCR_DrawVoipMeter
-=================
-*/
-void SCR_DrawVoipMeter( void ) {
-	char	buffer[16];
-	char	string[256];
-	int limit, i;
-
-	if (!cl_voipShowMeter->integer)
-		return;  // player doesn't want to show meter at all.
-	else if (!cl_voipSend->integer)
-		return;  // not recording at the moment.
-	else if (clc.state != CA_ACTIVE)
-		return;  // not connected to a server.
-	else if (!clc.voipEnabled)
-		return;  // server doesn't support VoIP.
-	else if (!cl_voip->integer)
-		return;  // client has VoIP support disabled.
-
-	limit = (int) (clc.voipPower * 10.0f);
-	if (limit > 10)
-		limit = 10;
-
-	for (i = 0; i < limit; i++)
-		buffer[i] = '*';
-	while (i < 10)
-		buffer[i++] = ' ';
-	buffer[i] = '\0';
-
-	sprintf( string, "VoIP: [%s]", buffer );
-	SCR_DrawStringExt( 320 - strlen( string ) * 4, 10, 8, string, g_color_table[7], qtrue, qfalse );
-}
-#endif
 
 /*
 ===============================================================================
@@ -510,9 +474,6 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 		case CA_ACTIVE:
 			// always supply STEREO_CENTER as vieworg offset is now done by the engine.
 			CL_CGameRendering( stereoFrame );
-#ifdef USE_VOIP
-			SCR_DrawVoipMeter();
-#endif
 			break;
 		}
 	}

@@ -55,9 +55,6 @@ at the same time.
 
 static kbutton_t kb[NUM_BUTTONS];
 
-#ifdef USE_VOIP
-kbutton_t	in_voiprecord;
-#endif
 
 void IN_MLookDown( void ) {
 	kb[KB_MLOOK].active = qtrue;
@@ -217,19 +214,6 @@ void IN_SpeedUp( void ) {IN_KeyUp( &kb[KB_SPEED] );}
 void IN_StrafeDown( void ) {IN_KeyDown( &kb[KB_STRAFE] );}
 void IN_StrafeUp( void ) {IN_KeyUp( &kb[KB_STRAFE] );}
 
-#ifdef USE_VOIP
-void IN_VoipRecordDown(void)
-{
-	IN_KeyDown(&in_voiprecord);
-	Cvar_Set("cl_voipSend", "1");
-}
-
-void IN_VoipRecordUp(void)
-{
-	IN_KeyUp(&in_voiprecord);
-	Cvar_Set("cl_voipSend", "0");
-}
-#endif
 
 void IN_Button0Down( void ) {IN_KeyDown( &kb[KB_BUTTONS0] );}
 void IN_Button0Up( void ) {IN_KeyUp( &kb[KB_BUTTONS0] );}
@@ -862,32 +846,6 @@ void CL_WritePacket( void ) {
 		Com_Printf( "MAX_PACKET_USERCMDS\n" );
 	}
 
-#ifdef USE_VOIP
-	if (clc.voipOutgoingDataSize > 0)
-	{
-		if((clc.voipFlags & VOIP_SPATIAL) || Com_IsVoipTarget(clc.voipTargets, sizeof(clc.voipTargets), -1))
-		{
-			MSG_WriteByte (&buf, clc_voipOpus);
-			MSG_WriteByte (&buf, clc.voipOutgoingGeneration);
-			MSG_WriteLong (&buf, clc.voipOutgoingSequence);
-			MSG_WriteByte (&buf, clc.voipOutgoingDataFrames);
-			MSG_WriteData (&buf, clc.voipTargets, sizeof(clc.voipTargets));
-			MSG_WriteByte(&buf, clc.voipFlags);
-			MSG_WriteShort (&buf, clc.voipOutgoingDataSize);
-			MSG_WriteData (&buf, clc.voipOutgoingData, clc.voipOutgoingDataSize);
-
-			clc.voipOutgoingSequence += clc.voipOutgoingDataFrames;
-			clc.voipOutgoingDataSize = 0;
-			clc.voipOutgoingDataFrames = 0;
-		}
-		else
-		{
-			// We have data, but no targets. Silently discard all data
-			clc.voipOutgoingDataSize = 0;
-			clc.voipOutgoingDataFrames = 0;
-		}
-	}
-#endif
 
 	if ( count >= 1 ) {
 		if ( cl_showSend->integer ) {
@@ -1052,10 +1010,6 @@ void CL_InitInput( void ) {
 	Cmd_AddCommand( "+mlook", IN_MLookDown );
 	Cmd_AddCommand( "-mlook", IN_MLookUp );
 
-#ifdef USE_VOIP
-	Cmd_AddCommand( "+voiprecord", IN_VoipRecordDown );
-	Cmd_AddCommand( "-voiprecord", IN_VoipRecordUp );
-#endif
 
 	Cmd_AddCommand( "notebook", IN_Notebook );
 
@@ -1141,10 +1095,6 @@ void CL_ShutdownInput(void)
 	Cmd_RemoveCommand("+mlook");
 	Cmd_RemoveCommand("-mlook");
 
-#ifdef USE_VOIP
-	Cmd_RemoveCommand("+voiprecord");
-	Cmd_RemoveCommand("-voiprecord");
-#endif
 
 	Cmd_RemoveCommand( "notebook" );
 

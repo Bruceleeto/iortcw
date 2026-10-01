@@ -53,7 +53,6 @@ If you have questions concerning this license or the applicable additional terms
   #define GAMENAME_FOR_MASTER		"foobar"	// must NOT contain whitespace
   #define CINEMATICS_LOGO		"foologo.roq"
   #define CINEMATICS_INTRO		"foointro.roq"
-//  #define LEGACY_PROTOCOL	// You probably don't need this for your standalone game
 #else
   #define PRODUCT_NAME			"iortcw"
   #define BASEGAME			"main"
@@ -72,7 +71,6 @@ If you have questions concerning this license or the applicable additional terms
   #define GAMENAME_FOR_MASTER		"wolfsp"
   #define CINEMATICS_LOGO		"gmlogo.RoQ"	// non-existent
   #define CINEMATICS_INTRO		"wolfintro.RoQ"	// SP only
-  #define LEGACY_PROTOCOL
 #endif
 
 // Heartbeat for dpmaster protocol. You shouldn't change this unless you know what you're doing

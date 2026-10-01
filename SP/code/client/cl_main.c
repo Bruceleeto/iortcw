@@ -34,26 +34,8 @@ If you have questions concerning this license or the applicable additional terms
 #include "../sys/sys_local.h"
 #include "../sys/sys_loadlib.h"
 
-#ifdef USE_MUMBLE
-#include "libmumblelink.h"
-#endif
 
-#ifdef USE_MUMBLE
-cvar_t	*cl_useMumble;
-cvar_t	*cl_mumbleScale;
-#endif
 
-#ifdef USE_VOIP
-cvar_t	*cl_voipUseVAD;
-cvar_t	*cl_voipVADThreshold;
-cvar_t	*cl_voipSend;
-cvar_t	*cl_voipSendTarget;
-cvar_t	*cl_voipGainDuringCapture;
-cvar_t	*cl_voipCaptureMult;
-cvar_t	*cl_voipShowMeter;
-cvar_t	*cl_voipProtocol;
-cvar_t	*cl_voip;
-#endif
 
 #ifdef USE_RENDERER_DLOPEN
 cvar_t	*cl_renderer;
@@ -63,9 +45,6 @@ cvar_t  *cl_nodelta;
 cvar_t  *cl_debugMove;
 
 cvar_t  *cl_noprint;
-#ifdef UPDATE_SERVER_NAME
-cvar_t  *cl_motd;
-#endif
 
 cvar_t  *rcon_client_password;
 cvar_t  *rconAddress;
@@ -173,390 +152,8 @@ void CL_CDDialog( void ) {
 	cls.cddialog = qtrue;   // start it next frame
 }
 
-#ifdef USE_MUMBLE
-static
-void CL_UpdateMumble(void)
-{
-	vec3_t pos, forward, up;
-	float scale = cl_mumbleScale->value;
-	float tmp;
-	
-	if(!cl_useMumble->integer)
-		return;
-
-	// !!! FIXME: not sure if this is even close to correct.
-	AngleVectors( cl.snap.ps.viewangles, forward, NULL, up);
-
-	pos[0] = cl.snap.ps.origin[0] * scale;
-	pos[1] = cl.snap.ps.origin[2] * scale;
-	pos[2] = cl.snap.ps.origin[1] * scale;
-
-	tmp = forward[1];
-	forward[1] = forward[2];
-	forward[2] = tmp;
-
-	tmp = up[1];
-	up[1] = up[2];
-	up[2] = tmp;
-
-	if(cl_useMumble->integer > 1) {
-		fprintf(stderr, "%f %f %f, %f %f %f, %f %f %f\n",
-			pos[0], pos[1], pos[2],
-			forward[0], forward[1], forward[2],
-			up[0], up[1], up[2]);
-	}
-
-	mumble_update_coordinates(pos, forward, up);
-}
-#endif
 
 
-#ifdef USE_VOIP
-static
-void CL_UpdateVoipIgnore(const char *idstr, qboolean ignore)
-{
-	if ((*idstr >= '0') && (*idstr <= '9')) {
-		const int id = atoi(idstr);
-		if ((id >= 0) && (id < MAX_CLIENTS)) {
-			clc.voipIgnore[id] = ignore;
-			CL_AddReliableCommand(va("voip %s %d",
-			                         ignore ? "ignore" : "unignore", id), qfalse);
-			Com_Printf("VoIP: %s ignoring player #%d\n",
-			            ignore ? "Now" : "No longer", id);
-			return;
-		}
-	}
-	Com_Printf("VoIP: invalid player ID#\n");
-}
-
-static
-void CL_UpdateVoipGain(const char *idstr, float gain)
-{
-	if ((*idstr >= '0') && (*idstr <= '9')) {
-		const int id = atoi(idstr);
-		if (gain < 0.0f)
-			gain = 0.0f;
-		if ((id >= 0) && (id < MAX_CLIENTS)) {
-			clc.voipGain[id] = gain;
-			Com_Printf("VoIP: player #%d gain now set to %f\n", id, gain);
-		}
-	}
-}
-
-void CL_Voip_f( void )
-{
-	const char *cmd = Cmd_Argv(1);
-	const char *reason = NULL;
-
-	if (clc.state != CA_ACTIVE)
-		reason = "Not connected to a server";
-	else if (!clc.voipCodecInitialized)
-		reason = "Voip codec not initialized";
-	else if (!clc.voipEnabled)
-		reason = "Server doesn't support VoIP";
-	else if ((Cvar_VariableValue("g_gametype") == GT_SINGLE_PLAYER || Cvar_VariableValue("ui_singlePlayerActive")))
-		reason = "running in single-player mode";
-
-	if (reason != NULL) {
-		Com_Printf("VoIP: command ignored: %s\n", reason);
-		return;
-	}
-
-	if (strcmp(cmd, "ignore") == 0) {
-		CL_UpdateVoipIgnore(Cmd_Argv(2), qtrue);
-	} else if (strcmp(cmd, "unignore") == 0) {
-		CL_UpdateVoipIgnore(Cmd_Argv(2), qfalse);
-	} else if (strcmp(cmd, "gain") == 0) {
-		if (Cmd_Argc() > 3) {
-			CL_UpdateVoipGain(Cmd_Argv(2), atof(Cmd_Argv(3)));
-		} else if (Q_isanumber(Cmd_Argv(2))) {
-			int id = atoi(Cmd_Argv(2));
-			if (id >= 0 && id < MAX_CLIENTS) {
-				Com_Printf("VoIP: current gain for player #%d "
-					"is %f\n", id, clc.voipGain[id]);
-			} else {
-				Com_Printf("VoIP: invalid player ID#\n");
-			}
-		} else {
-			Com_Printf("usage: voip gain <playerID#> [value]\n");
-		}
-	} else if (strcmp(cmd, "muteall") == 0) {
-		Com_Printf("VoIP: muting incoming voice\n");
-		CL_AddReliableCommand("voip muteall", qfalse);
-		clc.voipMuteAll = qtrue;
-	} else if (strcmp(cmd, "unmuteall") == 0) {
-		Com_Printf("VoIP: unmuting incoming voice\n");
-		CL_AddReliableCommand("voip unmuteall", qfalse);
-		clc.voipMuteAll = qfalse;
-	} else {
-		Com_Printf("usage: voip [un]ignore <playerID#>\n"
-		           "       voip [un]muteall\n"
-		           "       voip gain <playerID#> [value]\n");
-	}
-}
-
-
-static
-void CL_VoipNewGeneration(void)
-{
-	// don't have a zero generation so new clients won't match, and don't
-	//  wrap to negative so MSG_ReadLong() doesn't "fail."
-	clc.voipOutgoingGeneration++;
-	if (clc.voipOutgoingGeneration <= 0)
-		clc.voipOutgoingGeneration = 1;
-	clc.voipPower = 0.0f;
-	clc.voipOutgoingSequence = 0;
-
-	opus_encoder_ctl(clc.opusEncoder, OPUS_RESET_STATE);
-}
-
-/*
-===============
-CL_VoipParseTargets
-
-sets clc.voipTargets according to cl_voipSendTarget
-Generally we don't want who's listening to change during a transmission,
-so this is only called when the key is first pressed
-===============
-*/
-void CL_VoipParseTargets(void)
-{
-	const char *target = cl_voipSendTarget->string;
-	char *end;
-	int val;
-
-	Com_Memset(clc.voipTargets, 0, sizeof(clc.voipTargets));
-	clc.voipFlags &= ~VOIP_SPATIAL;
-
-	while(target)
-	{
-		while(*target == ',' || *target == ' ')
-			target++;
-
-		if(!*target)
-			break;
-		
-		if(isdigit(*target))
-		{
-			val = strtol(target, &end, 10);
-			target = end;
-		}
-		else
-		{
-			if(!Q_stricmpn(target, "all", 3))
-			{
-				Com_Memset(clc.voipTargets, ~0, sizeof(clc.voipTargets));
-				return;
-			}
-			if(!Q_stricmpn(target, "spatial", 7))
-			{
-				clc.voipFlags |= VOIP_SPATIAL;
-				target += 7;
-				continue;
-			}
-			else
-			{
-				if(!Q_stricmpn(target, "attacker", 8))
-				{
-					val = VM_Call(cgvm, CG_LAST_ATTACKER);
-					target += 8;
-				}
-				else if(!Q_stricmpn(target, "crosshair", 9))
-				{
-					val = VM_Call(cgvm, CG_CROSSHAIR_PLAYER);
-					target += 9;
-				}
-				else
-				{
-					while(*target && *target != ',' && *target != ' ')
-						target++;
-
-					continue;
-				}
-
-				if(val < 0)
-					continue;
-			}
-		}
-
-		if(val < 0 || val >= MAX_CLIENTS)
-		{
-			Com_Printf(S_COLOR_YELLOW "WARNING: VoIP "
-				   "target %d is not a valid client "
-				   "number\n", val);
-
-			continue;
-		}
-
-		clc.voipTargets[val / 8] |= 1 << (val % 8);
-	}
-}
-
-/*
-===============
-CL_CaptureVoip
-
-Record more audio from the hardware if required and encode it into Opus
- data for later transmission.
-===============
-*/
-static
-void CL_CaptureVoip(void)
-{
-	const float audioMult = cl_voipCaptureMult->value;
-	const qboolean useVad = (cl_voipUseVAD->integer != 0);
-	qboolean initialFrame = qfalse;
-	qboolean finalFrame = qfalse;
-
-#if USE_MUMBLE
-	// if we're using Mumble, don't try to handle VoIP transmission ourselves.
-	if (cl_useMumble->integer)
-		return;
-#endif
-
-	// If your data rate is too low, you'll get Connection Interrupted warnings
-	//  when VoIP packets arrive, even if you have a broadband connection.
-	//  This might work on rates lower than 25000, but for safety's sake, we'll
-	//  just demand it. Who doesn't have at least a DSL line now, anyhow? If
-	//  you don't, you don't need VoIP.  :)
-	if (cl_voip->modified || cl_rate->modified) {
-		if ((cl_voip->integer) && (cl_rate->integer < 25000)) {
-			Com_Printf(S_COLOR_YELLOW "Your network rate is too slow for VoIP.\n");
-			Com_Printf("Set 'Data Rate' to 'LAN/Cable/xDSL' in 'Setup/System/Network'.\n");
-			Com_Printf("Until then, VoIP is disabled.\n");
-			Cvar_Set("cl_voip", "0");
-		}
-		Cvar_Set("cl_voipProtocol", cl_voip->integer ? "opus" : "");
-		cl_voip->modified = qfalse;
-		cl_rate->modified = qfalse;
-	}
-
-	if (!clc.voipCodecInitialized)
-		return;  // just in case this gets called at a bad time.
-
-	if (clc.voipOutgoingDataSize > 0)
-		return;  // packet is pending transmission, don't record more yet.
-
-	if (cl_voipUseVAD->modified) {
-		Cvar_Set("cl_voipSend", (useVad) ? "1" : "0");
-		cl_voipUseVAD->modified = qfalse;
-	}
-
-	if ((useVad) && (!cl_voipSend->integer))
-		Cvar_Set("cl_voipSend", "1");  // lots of things reset this.
-
-	if (cl_voipSend->modified) {
-		qboolean dontCapture = qfalse;
-		if (clc.state != CA_ACTIVE)
-			dontCapture = qtrue;  // not connected to a server.
-		else if (!clc.voipEnabled)
-			dontCapture = qtrue;  // server doesn't support VoIP.
-		else if ( cl_voip->integer == 0 )
-			dontCapture = qtrue;  // client has VoIP support disabled.
-		else if ( audioMult == 0.0f )
-			dontCapture = qtrue;  // basically silenced incoming audio.
-
-		cl_voipSend->modified = qfalse;
-
-		if(dontCapture)
-		{
-			Cvar_Set("cl_voipSend", "0");
-			return;
-		}
-
-		if (cl_voipSend->integer) {
-			initialFrame = qtrue;
-		} else {
-			finalFrame = qtrue;
-		}
-	}
-
-	// try to get more audio data from the sound card...
-
-	if (initialFrame) {
-		S_MasterGain(Com_Clamp(0.0f, 1.0f, cl_voipGainDuringCapture->value));
-		S_StartCapture();
-		CL_VoipNewGeneration();
-		CL_VoipParseTargets();
-	}
-
-	if ((cl_voipSend->integer) || (finalFrame)) { // user wants to capture audio?
-		int samples = S_AvailableCaptureSamples();
-		const int packetSamples = (finalFrame) ? VOIP_MAX_FRAME_SAMPLES : VOIP_MAX_PACKET_SAMPLES;
-
-		// enough data buffered in audio hardware to process yet?
-		if (samples >= packetSamples) {
-			// audio capture is always MONO16.
-			static int16_t sampbuffer[VOIP_MAX_PACKET_SAMPLES];
-			float voipPower = 0.0f;
-			int voipFrames;
-			int i, bytes;
-
-			if (samples > VOIP_MAX_PACKET_SAMPLES)
-				samples = VOIP_MAX_PACKET_SAMPLES;
-
-			// !!! FIXME: maybe separate recording from encoding, so voipPower
-			// !!! FIXME:  updates faster than 4Hz?
-
-			samples -= samples % VOIP_MAX_FRAME_SAMPLES;
-			if (samples != 120 && samples != 240 && samples != 480 && samples != 960 && samples != 1920 && samples != 2880 ) {
-				Com_Printf("Voip: bad number of samples %d\n", samples);
-				return;
-			}
-			voipFrames = samples / VOIP_MAX_FRAME_SAMPLES;
-
-			S_Capture(samples, (byte *) sampbuffer);  // grab from audio card.
-
-			// check the "power" of this packet...
-			for (i = 0; i < samples; i++) {
-				const float flsamp = (float) sampbuffer[i];
-				const float s = fabs(flsamp);
-				voipPower += s * s;
-				sampbuffer[i] = (int16_t) ((flsamp) * audioMult);
-			}
-
-			// encode raw audio samples into Opus data...
-			bytes = opus_encode(clc.opusEncoder, sampbuffer, samples,
-									(unsigned char *) clc.voipOutgoingData,
-									sizeof (clc.voipOutgoingData));
-			if ( bytes <= 0 ) {
-				Com_DPrintf("VoIP: Error encoding %d samples\n", samples);
-				bytes = 0;
-			}
-
-			clc.voipPower = (voipPower / (32768.0f * 32768.0f *
-			                 ((float) samples))) * 100.0f;
-
-			if ((useVad) && (clc.voipPower < cl_voipVADThreshold->value)) {
-				CL_VoipNewGeneration();  // no "talk" for at least 1/4 second.
-			} else {
-				clc.voipOutgoingDataSize = bytes;
-				clc.voipOutgoingDataFrames = voipFrames;
-
-				Com_DPrintf("VoIP: Send %d frames, %d bytes, %f power\n",
-				            voipFrames, bytes, clc.voipPower);
-
-				#if 0
-				static FILE *encio = NULL;
-				if (encio == NULL) encio = fopen("voip-outgoing-encoded.bin", "wb");
-				if (encio != NULL) { fwrite(clc.voipOutgoingData, bytes, 1, encio); fflush(encio); }
-				static FILE *decio = NULL;
-				if (decio == NULL) decio = fopen("voip-outgoing-decoded.bin", "wb");
-				if (decio != NULL) { fwrite(sampbuffer, voipFrames * VOIP_MAX_FRAME_SAMPLES * 2, 1, decio); fflush(decio); }
-				#endif
-			}
-		}
-	}
-
-	// User requested we stop recording, and we've now processed the last of
-	//  any previously-buffered data. Pause the capture device, etc.
-	if (finalFrame) {
-		S_StopCapture();
-		S_MasterGain(1.0f);
-		clc.voipPower = 0.0f;  // force this value so it doesn't linger.
-	}
-}
-#endif
 
 /*
 =======================================================================
@@ -605,9 +202,6 @@ CL_ShutdownAll
 void CL_ShutdownAll(qboolean shutdownRef)
 {
 
-#ifdef USE_CURL
-	CL_cURL_Shutdown();
-#endif
 	// clear sounds
 	S_DisableSounds();
 	// shutdown CGame
@@ -788,33 +382,7 @@ void CL_Disconnect( qboolean showMainMenu ) {
 	*clc.downloadTempName = *clc.downloadName = 0;
 	Cvar_Set( "cl_downloadName", "" );
 
-#ifdef USE_MUMBLE
-	if (cl_useMumble->integer && mumble_islinked()) {
-		Com_Printf("Mumble: Unlinking from Mumble application\n");
-		mumble_unlink();
-	}
-#endif
 
-#ifdef USE_VOIP
-	if (cl_voipSend->integer) {
-		int tmp = cl_voipUseVAD->integer;
-		cl_voipUseVAD->integer = 0;  // disable this for a moment.
-		clc.voipOutgoingDataSize = 0;  // dump any pending VoIP transmission.
-		Cvar_Set("cl_voipSend", "0");
-		CL_CaptureVoip();  // clean up any state...
-		cl_voipUseVAD->integer = tmp;
-	}
-
-	if (clc.voipCodecInitialized) {
-		int i;
-		opus_encoder_destroy(clc.opusEncoder);
-		for (i = 0; i < MAX_CLIENTS; i++) {
-			opus_decoder_destroy(clc.opusDecoder[i]);
-		}
-		clc.voipCodecInitialized = qfalse;
-	}
-	Cmd_RemoveCommand ("voip");
-#endif
 
 	if ( uivm && showMainMenu ) {
 		VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_NONE );
@@ -854,10 +422,6 @@ void CL_Disconnect( qboolean showMainMenu ) {
 	// not connected to a pure server anymore
 	cl_connectedToPureServer = qfalse;
 
-#ifdef USE_VOIP
-	// not connected to voip server anymore.
-	clc.voipEnabled = qfalse;
-#endif
 
 	CL_UpdateGUID( NULL, 0 );
 
@@ -905,32 +469,6 @@ CL_RequestMotd
 ===================
 */
 void CL_RequestMotd( void ) {
-#ifdef UPDATE_SERVER_NAME
-	char	info[MAX_INFO_STRING];
-
-	if ( !cl_motd->integer ) {
-		return;
-	}
-	Com_Printf( "Resolving %s\n", UPDATE_SERVER_NAME );
-	if ( !NET_StringToAdr( UPDATE_SERVER_NAME, &cls.updateServer, NA_IP ) ) {
-		Com_Printf( "Couldn't resolve address\n" );
-		return;
-	}
-	cls.updateServer.port = BigShort( PORT_UPDATE );
-	Com_Printf( "%s resolved to %i.%i.%i.%i:%i\n", UPDATE_SERVER_NAME,
-				cls.updateServer.ip[0], cls.updateServer.ip[1],
-				cls.updateServer.ip[2], cls.updateServer.ip[3],
-				BigShort( cls.updateServer.port ) );
-
-	info[0] = 0;
-	Com_sprintf( cls.updateChallenge, sizeof( cls.updateChallenge ), "%i", (int)( ( ( (unsigned int)rand() << 16 ) ^ (unsigned int)rand() ) ^ Com_Milliseconds() ) );
-
-	Info_SetValueForKey( info, "challenge", cls.updateChallenge );
-	Info_SetValueForKey( info, "renderer", cls.glconfig.renderer_string );
-	Info_SetValueForKey( info, "version", com_version->string );
-
-	NET_OutOfBandPrint( NS_CLIENT, cls.updateServer, "getmotd \"%s\"\n", info );
-#endif
 }
 
 /*
@@ -972,50 +510,6 @@ in anyway.
 ===================
 */
 #ifndef STANDALONE
-#ifdef USE_AUTHORIZE_SERVER
-void CL_RequestAuthorization( void ) {
-	char	nums[64];
-	int	i, j, l;
-	cvar_t 	*fs;
-
-	if ( !cls.authorizeServer.port ) {
-		Com_Printf( "Resolving %s\n", AUTHORIZE_SERVER_NAME );
-		if ( !NET_StringToAdr( AUTHORIZE_SERVER_NAME, &cls.authorizeServer, NA_IP ) ) {
-			Com_Printf( "Couldn't resolve address\n" );
-			return;
-		}
-
-		cls.authorizeServer.port = BigShort( PORT_AUTHORIZE );
-		Com_Printf( "%s resolved to %i.%i.%i.%i:%i\n", AUTHORIZE_SERVER_NAME,
-					cls.authorizeServer.ip[0], cls.authorizeServer.ip[1],
-					cls.authorizeServer.ip[2], cls.authorizeServer.ip[3],
-					BigShort( cls.authorizeServer.port ) );
-	}
-	if ( cls.authorizeServer.type == NA_BAD ) {
-		return;
-	}
-
-	// only grab the alphanumeric values from the cdkey, to avoid any dashes or spaces
-	j = 0;
-	l = strlen( cl_cdkey );
-	if ( l > 32 ) {
-		l = 32;
-	}
-	for ( i = 0 ; i < l ; i++ ) {
-		if ( ( cl_cdkey[i] >= '0' && cl_cdkey[i] <= '9' )
-				|| ( cl_cdkey[i] >= 'a' && cl_cdkey[i] <= 'z' )
-				|| ( cl_cdkey[i] >= 'A' && cl_cdkey[i] <= 'Z' ) ) {
-			nums[j] = cl_cdkey[i];
-			j++;
-		}
-	}
-	nums[j] = 0;
-
-	fs = Cvar_Get( "cl_anonymous", "0", CVAR_INIT | CVAR_SYSTEMINFO );
-
-	NET_OutOfBandPrint(NS_CLIENT, cls.authorizeServer, "getKeyAuthorize %i %s", fs->integer, nums );
-}
-#endif
 #endif
 
 /*
@@ -1438,22 +932,6 @@ Called when all downloading has been completed
 */
 void CL_DownloadsComplete( void ) {
 
-#ifdef USE_CURL
-	// if we downloaded with cURL
-	if(clc.cURLUsed) {
-		clc.cURLUsed = qfalse;
-		CL_cURL_Shutdown();
-		if( clc.cURLDisconnected ) {
-			if(clc.downloadRestart) {
-				FS_Restart(clc.checksumFeed);
-				clc.downloadRestart = qfalse;
-			}
-			clc.cURLDisconnected = qfalse;
-			CL_Reconnect_f();
-			return;
-		}
-	}
-#endif
 
 	// if we downloaded files we need to restart the file system
 	if ( clc.downloadRestart ) {
@@ -1581,36 +1059,6 @@ void CL_NextDownload( void ) {
 
 		}
 
-#ifdef USE_CURL
-		if(!(cl_allowDownload->integer & DLF_NO_REDIRECT)) {
-			if(clc.sv_allowDownload & DLF_NO_REDIRECT) {
-				Com_Printf("WARNING: server does not "
-					"allow download redirection "
-					"(sv_allowDownload is %d)\n",
-					clc.sv_allowDownload);
-			}
-			else if(!*clc.sv_dlURL) {
-				Com_Printf("WARNING: server allows "
-					"download redirection, but does not "
-					"have sv_dlURL set\n");
-			}
-			else if(!CL_cURL_Init()) {
-				Com_Printf("WARNING: could not load "
-					"cURL library\n");
-			}
-			else {
-				CL_cURL_BeginDownload(localName, va("%s/%s",
-					clc.sv_dlURL, remoteName));
-				useCURL = qtrue;
-			}
-		}
-		else if(!(clc.sv_allowDownload & DLF_NO_REDIRECT)) {
-			Com_Printf("WARNING: server allows download "
-				"redirection, but it disabled by client "
-				"configuration (cl_allowDownload is %d)\n",
-				cl_allowDownload->integer);
-		}
-#endif /* USE_CURL */
 		if(!useCURL) {
 			if((cl_allowDownload->integer & DLF_NO_UDP)) {
 				Com_Error(ERR_DROP, "UDP Downloads are "
@@ -1705,10 +1153,6 @@ void CL_CheckForResend( void ) {
 	case CA_CONNECTING:
 		// requesting a challenge .. IPv6 users always get in as authorize server supports no ipv6.
 #ifndef STANDALONE
-#ifdef USE_AUTHORIZE_SERVER
-		if (!com_standalone->integer && clc.serverAddress.type == NA_IP && !Sys_IsLANAddress( clc.serverAddress ) )
-			CL_RequestAuthorization();
-#endif
 #endif
 
 		// The challenge request shall be followed by a client challenge so no malicious server can hijack this connection.
@@ -1725,14 +1169,6 @@ void CL_CheckForResend( void ) {
 
 		Q_strncpyz( info, Cvar_InfoString( CVAR_USERINFO ), sizeof( info ) );
 
-#ifdef LEGACY_PROTOCOL
-		if(com_legacyprotocol->integer == com_protocol->integer)
-			clc.compat = qtrue;
-
-		if(clc.compat)
-			Info_SetValueForKey(info, "protocol", va("%i", com_legacyprotocol->integer));
-		else
-#endif
 		Info_SetValueForKey( info, "protocol", va("%i", com_protocol->integer ) );
 		Info_SetValueForKey( info, "qport", va( "%i", port ) );
 		Info_SetValueForKey( info, "challenge", va( "%i", clc.challenge ) );
@@ -1756,28 +1192,6 @@ CL_MotdPacket
 ===================
 */
 void CL_MotdPacket( netadr_t from ) {
-#ifdef UPDATE_SERVER_NAME
-	char	*challenge;
-	char	*info;
-
-	// if not from our server, ignore it
-	if ( !NET_CompareAdr( from, cls.updateServer ) ) {
-		return;
-	}
-
-	info = Cmd_Argv( 1 );
-
-	// check challenge
-	challenge = Info_ValueForKey( info, "challenge" );
-	if ( strcmp( challenge, cls.updateChallenge ) ) {
-		return;
-	}
-
-	challenge = Info_ValueForKey( info, "motd" );
-
-	Q_strncpyz( cls.updateInfoString, info, sizeof( cls.updateInfoString ) );
-	Cvar_Set( "cl_motdString", challenge );
-#endif
 }
 
 /*
@@ -1826,46 +1240,12 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 
 			if(ver != com_protocol->integer)
 			{
-#ifdef LEGACY_PROTOCOL
-				if(com_legacyprotocol->integer > 0)
-				{
-					// Server is ioq3 but has a different protocol than we do.
-					// Fall back to idq3 protocol.
-					clc.compat = qtrue;
-
-					Com_Printf(S_COLOR_YELLOW "Warning: Server reports protocol version %d, "
-						   "we have %d. Trying legacy protocol %d.\n",
-						   ver, com_protocol->integer, com_legacyprotocol->integer);
-				}
-				else
-#endif
 				{
 					Com_Printf(S_COLOR_YELLOW "Warning: Server reports protocol version %d, we have %d. "
 						   "Trying anyways.\n", ver, com_protocol->integer);
 				}
 			}
 		}
-#ifdef LEGACY_PROTOCOL
-		else
-			clc.compat = qtrue;
-
-		if(clc.compat)
-		{
-			if(!NET_CompareAdr(from, clc.serverAddress))
-			{
-				// This challenge response is not coming from the expected address.
-				// Check whether we have a matching client challenge to prevent
-				// connection hi-jacking.
-
-				if(!*c || challenge != clc.challenge)
-				{
-					Com_DPrintf("Challenge response received from unexpected source. Ignored.\n");
-					return;
-				}
-			}
-		}
-		else
-#endif
 		{
 			if(!*c || challenge != clc.challenge)
 			{
@@ -1902,9 +1282,6 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 			return;
 		}
 
-#ifdef LEGACY_PROTOCOL
-		if(!clc.compat)
-#endif
 		{
 			c = Cmd_Argv(1);
 
@@ -1923,13 +1300,8 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 			}
 		}
 
-#ifdef LEGACY_PROTOCOL
-		Netchan_Setup(NS_CLIENT, &clc.netchan, from, Cvar_VariableValue("net_qport"),
-			      clc.challenge, clc.compat);
-#else
 		Netchan_Setup(NS_CLIENT, &clc.netchan, from, Cvar_VariableValue("net_qport"),
 			      clc.challenge, qfalse);
-#endif
 
 		clc.state = CA_CONNECTED;
 		clc.lastPacketSentTime = -9999;	// send first packet immediately
@@ -2109,24 +1481,6 @@ void CL_Frame( int msec ) {
 		return;
 	}
 
-#ifdef USE_CURL
-	if(clc.downloadCURLM) {
-		CL_cURL_PerformDownload();
-		// we can't process frames normally when in disconnected
-		// download mode since the ui vm expects clc.state to be
-		// CA_CONNECTED
-		if(clc.cURLDisconnected) {
-			cls.realFrametime = msec;
-			cls.frametime = msec;
-			cls.realtime += cls.frametime;
-			SCR_UpdateScreen();
-			S_Update();
-			Con_RunConsole();
-			cls.framecount++;
-			return;
-		}
-	}
-#endif
 
 	if ( cls.cddialog ) {
 		// bring up the cd error dialog if needed
@@ -2176,13 +1530,7 @@ void CL_Frame( int msec ) {
 	// update audio
 	S_Update();
 
-#ifdef USE_VOIP
-	CL_CaptureVoip();
-#endif
 
-#ifdef USE_MUMBLE
-	CL_UpdateMumble();
-#endif
 
 	// advance local effects for next frame
 	SCR_RunCinematic();
@@ -2708,9 +2056,6 @@ void CL_Init( void ) {
 	// register our variables
 	//
 	cl_noprint = Cvar_Get( "cl_noprint", "0", 0 );
-#ifdef UPDATE_SERVER_NAME
-	cl_motd = Cvar_Get( "cl_motd", "1", 0 );
-#endif
 
 	cl_timeout = Cvar_Get( "cl_timeout", "200", 0 );
 
@@ -2816,24 +2161,7 @@ void CL_Init( void ) {
 	Cvar_Get( "password", "", CVAR_USERINFO );
 	Cvar_Get( "cg_predictItems", "1", CVAR_USERINFO | CVAR_ARCHIVE );
 
-#ifdef USE_MUMBLE
-	cl_useMumble = Cvar_Get ("cl_useMumble", "0", CVAR_ARCHIVE | CVAR_LATCH);
-	cl_mumbleScale = Cvar_Get ("cl_mumbleScale", "0.0254", CVAR_ARCHIVE);
-#endif
 
-#ifdef USE_VOIP
-	cl_voipSend = Cvar_Get ("cl_voipSend", "0", 0);
-	cl_voipSendTarget = Cvar_Get ("cl_voipSendTarget", "spatial", 0);
-	cl_voipGainDuringCapture = Cvar_Get ("cl_voipGainDuringCapture", "0.2", CVAR_ARCHIVE);
-	cl_voipCaptureMult = Cvar_Get ("cl_voipCaptureMult", "2.0", CVAR_ARCHIVE);
-	cl_voipUseVAD = Cvar_Get ("cl_voipUseVAD", "0", CVAR_ARCHIVE);
-	cl_voipVADThreshold = Cvar_Get ("cl_voipVADThreshold", "0.25", CVAR_ARCHIVE);
-	cl_voipShowMeter = Cvar_Get ("cl_voipShowMeter", "1", CVAR_ARCHIVE);
-
-	cl_voip = Cvar_Get ("cl_voip", "1", CVAR_ARCHIVE);
-	Cvar_CheckRange( cl_voip, 0, 1, qtrue );
-	cl_voipProtocol = Cvar_Get ("cl_voipProtocol", cl_voip->integer ? "opus" : "", CVAR_USERINFO | CVAR_ROM);
-#endif
 
 //----(SA) added
 	Cvar_Get( "cg_autoactivate", "1", CVAR_USERINFO | CVAR_ARCHIVE );

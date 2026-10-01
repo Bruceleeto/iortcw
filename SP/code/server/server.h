@@ -40,20 +40,6 @@ If you have questions concerning this license or the applicable additional terms
 
 #define MAX_ENT_CLUSTERS    16
 
-#ifdef USE_VOIP
-#define VOIP_QUEUE_LENGTH 64
-
-typedef struct voipServerPacket_s
-{
-	int generation;
-	int sequence;
-	int frames;
-	int len;
-	int sender;
-	int flags;
-	byte data[4000];
-} voipServerPacket_t;
-#endif
 
 typedef struct svEntity_s {
 	struct worldSector_s *worldSector;
@@ -143,9 +129,6 @@ typedef struct {
 typedef struct netchan_buffer_s {
 	msg_t           msg;
 	byte            msgBuffer[MAX_MSGLEN];
-#ifdef LEGACY_PROTOCOL
-	char		clientCommandString[MAX_STRING_CHARS];	// valid command string for SV_Netchan_Encode
-#endif
 	struct netchan_buffer_s *next;
 } netchan_buffer_t;
 
@@ -203,21 +186,10 @@ typedef struct client_s {
 	netchan_buffer_t *netchan_start_queue;
 	netchan_buffer_t **netchan_end_queue;
 
-#ifdef USE_VOIP
-	qboolean hasVoip;
-	qboolean muteAllVoip;
-	qboolean ignoreVoipFromClient[MAX_CLIENTS];
-	voipServerPacket_t *voipPacket[VOIP_QUEUE_LENGTH];
-	int queuedVoipPackets;
-	int queuedVoipIndex;
-#endif
 
 	int				oldServerTime;
 	qboolean		csUpdated[MAX_CONFIGSTRINGS];	
 	
-#ifdef LEGACY_PROTOCOL
-	qboolean		compat;
-#endif
 } client_t;
 
 //=============================================================================
@@ -302,10 +274,6 @@ extern cvar_t  *sv_lanForceRate;
 extern cvar_t  *sv_allowAnonymous;
 
 
-#ifdef USE_VOIP
-extern	cvar_t	*sv_voip;
-extern	cvar_t	*sv_voipProtocol;
-#endif
 
 // Rafael gameskill
 extern cvar_t  *sv_gameskill;

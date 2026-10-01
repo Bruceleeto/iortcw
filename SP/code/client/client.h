@@ -37,19 +37,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "../cgame/cg_public.h"
 #include "../game/bg_public.h"
 
-#ifdef USE_CURL
-#include "cl_curl.h"
-#endif /* USE_CURL */
 
-#ifdef USE_VOIP
-#ifdef USE_LOCAL_HEADERS
-  #include "../opus-1.2.1/include/opus.h"
-  #include "../opusfile-0.9/include/opusfile.h"
-#else
-  #include <opus/opus.h>
-  #include <opus/opusfile.h>
-#endif
-#endif
 
 // file full of random crap that gets used to create cl_guid
 #define QKEY_FILE "wkey"
@@ -221,14 +209,6 @@ typedef struct {
 	fileHandle_t download;
 	char downloadTempName[MAX_OSPATH];
 	char downloadName[MAX_OSPATH];
-#ifdef USE_CURL
-	qboolean	cURLEnabled;
-	qboolean	cURLUsed;
-	qboolean	cURLDisconnected;
-	char		downloadURL[MAX_OSPATH];
-	CURL		*downloadCURL;
-	CURLM		*downloadCURLM;
-#endif /* USE_CURL */
 	int		sv_allowDownload;
 	char		sv_dlURL[MAX_CVAR_VALUE_STRING];
 	int downloadNumber;
@@ -239,36 +219,7 @@ typedef struct {
 	qboolean downloadRestart;       // if true, we need to do another FS_Restart because we downloaded a pak
 
 
-#ifdef USE_VOIP
-	qboolean voipEnabled;
-	qboolean voipCodecInitialized;
 
-	// incoming data...
-	// !!! FIXME: convert from parallel arrays to array of a struct.
-	OpusDecoder *opusDecoder[MAX_CLIENTS];
-	byte voipIncomingGeneration[MAX_CLIENTS];
-	int voipIncomingSequence[MAX_CLIENTS];
-	float voipGain[MAX_CLIENTS];
-	qboolean voipIgnore[MAX_CLIENTS];
-	qboolean voipMuteAll;
-
-	// outgoing data...
-	// if voipTargets[i / 8] & (1 << (i % 8)),
-	// then we are sending to clientnum i.
-	uint8_t voipTargets[(MAX_CLIENTS + 7) / 8];
-	uint8_t voipFlags;
-	OpusEncoder *opusEncoder;
-	int voipOutgoingDataSize;
-	int voipOutgoingDataFrames;
-	int voipOutgoingSequence;
-	byte voipOutgoingGeneration;
-	byte voipOutgoingData[1024];
-	float voipPower;
-#endif
-
-#ifdef LEGACY_PROTOCOL
-	qboolean compat;
-#endif
 
 	// big stuff at end of structure so most offsets are 15 bits or less
 	netchan_t netchan;
@@ -391,31 +342,7 @@ extern	cvar_t	*cl_lanForcePackets;
 
 extern	cvar_t	*cl_consoleKeys;
 
-#ifdef USE_MUMBLE
-extern	cvar_t	*cl_useMumble;
-extern	cvar_t	*cl_mumbleScale;
-#endif
 
-#ifdef USE_VOIP
-// cl_voipSendTarget is a string: "all" to broadcast to everyone, "none" to
-//  send to no one, or a comma-separated list of client numbers:
-//  "0,7,2,23" ... an empty string is treated like "all".
-extern	cvar_t	*cl_voipUseVAD;
-extern	cvar_t	*cl_voipVADThreshold;
-extern	cvar_t	*cl_voipSend;
-extern	cvar_t	*cl_voipSendTarget;
-extern	cvar_t	*cl_voipGainDuringCapture;
-extern	cvar_t	*cl_voipCaptureMult;
-extern	cvar_t	*cl_voipShowMeter;
-extern	cvar_t	*cl_voip;
-
-// 20ms at 48k
-#define VOIP_MAX_FRAME_SAMPLES		( 20 * 48 )
-
-// 3 frame is 60ms of audio, the max opus will encode at once
-#define VOIP_MAX_PACKET_FRAMES		3
-#define VOIP_MAX_PACKET_SAMPLES		( VOIP_MAX_FRAME_SAMPLES * VOIP_MAX_PACKET_FRAMES )
-#endif
 
 extern cvar_t  *cl_missionStats;
 extern cvar_t  *cl_waitForFire;
@@ -528,9 +455,6 @@ char *Key_KeynumToString( int keynum, qboolean bTranslate );
 extern int cl_connectedToPureServer;
 extern int cl_connectedToCheatServer;
 
-#ifdef USE_VOIP
-void CL_Voip_f( void );
-#endif
 
 void CL_SystemInfoChanged( void );
 void CL_ParseServerMessage( msg_t *msg );

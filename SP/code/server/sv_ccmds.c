@@ -714,11 +714,6 @@ static void SV_KickNum_f( void ) {
 }
 
 #ifndef STANDALONE
-#ifdef USE_AUTHORIZE_SERVER
-// these functions require the auth server which of course is not available anymore for stand-alone games.
-
-
-#endif
 #endif
 
 
@@ -1005,11 +1000,6 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand( "heartbeat", SV_Heartbeat_f );
 	Cmd_AddCommand( "kick", SV_Kick_f );
 #ifndef STANDALONE
-#ifdef USE_AUTHORIZE_SERVER
-	if(!com_standalone->integer)
-	{
-	}
-#endif
 #endif
 	Cmd_AddCommand ("kickbots", SV_KickBots_f);
 	Cmd_AddCommand ("kickall", SV_KickAll_f);

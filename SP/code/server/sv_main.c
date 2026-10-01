@@ -29,10 +29,6 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "server.h"
 
-#ifdef USE_VOIP
-cvar_t *sv_voip;
-cvar_t *sv_voipProtocol;
-#endif
 
 serverStatic_t svs;                 // persistant server info
 server_t sv;                        // local server
@@ -483,10 +479,6 @@ static void SV_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	} else if ( !Q_stricmp( c,"connect" ) ) {
 		SV_DirectConnect( from );
 #ifndef STANDALONE
-#ifdef USE_AUTHORIZE_SERVER
-	} else if ( !Q_stricmp( c,"ipAuthorize" ) ) {
-		SV_AuthorizeIpPacket( from );
-#endif
 #endif
 	} else if ( !Q_stricmp( c, "rcon" ) ) {
 		SVC_RemoteCommand( from, msg );

@@ -159,13 +159,6 @@ typedef struct
 	void (*ClearSoundBuffer)( void );
 	void (*SoundInfo)( void );
 	void (*SoundList)( void );
-#ifdef USE_VOIP
-	void (*StartCapture)( void );
-	int (*AvailableCaptureSamples)( void );
-	void (*Capture)( int samples, byte *data );
-	void (*StopCapture)( void );
-	void (*MasterGain)( float gain );
-#endif
 } soundInterface_t;
 
 
@@ -190,13 +183,6 @@ void	SNDDMA_BeginPainting (void);
 
 void	SNDDMA_Submit(void);
 
-#ifdef USE_VOIP
-void SNDDMA_StartCapture(void);
-int SNDDMA_AvailableCaptureSamples(void);
-void SNDDMA_Capture(int samples, byte *data);
-void SNDDMA_StopCapture(void);
-void SNDDMA_MasterGain(float val);
-#endif
 
 
 //====================================================================

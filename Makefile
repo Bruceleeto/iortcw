@@ -30,8 +30,6 @@
 #   MAP=<name>         start straight into this map when no + commands are
 #                      given; pvr builds default to escape1, MAP= goes to
 #                      the menu as normal
-#   USE_VOIP=0         drop VoIP (and opus with it); default 1
-#   USE_MUMBLE=1       Mumble positional audio link; default 0
 #   DEBUG=1            debug build (-O0 -g)
 #   BASEDIR=<dir>      default fs_basepath (default: <repo>/assets)
 #   V=1                show full command lines
@@ -44,8 +42,6 @@ DEBUG    ?= 0
 AUDIO    ?= 1
 TEXTURES ?= 1
 VIDEO    ?= 1
-USE_VOIP ?= 1
-USE_MUMBLE ?= 0
 
 ifeq ($(PLATFORM),dc)
   ifndef KOS_BASE
@@ -55,13 +51,9 @@ ifeq ($(PLATFORM),dc)
   override RENDERER = pvr
   override AUDIO = 0
   override VIDEO = 0
-  override USE_MUMBLE = 0
   BASEDIR ?= /cd
 else ifneq ($(PLATFORM),linux)
   $(error PLATFORM must be linux or dc)
-endif
-ifeq ($(AUDIO),0)
-  override USE_VOIP = 0
 endif
 
 BUILD_DIR ?= build
@@ -270,9 +262,6 @@ BASE_CFLAGS = $(ARCH_FLAGS) -pipe -Wall -fno-strict-aliasing -MMD \
 # engine + renderer
 CLIENT_CFLAGS = $(BASE_CFLAGS) $(FAST_MATH) $(SDL_CFLAGS) -I$(CODE)/SDL2/include \
   -DUSE_STATIC_VM -DUSE_BLOOM
-ifeq ($(USE_MUMBLE),1)
-  CLIENT_CFLAGS += -DUSE_MUMBLE
-endif
 ifeq ($(TEXTURES),0)
   CLIENT_CFLAGS += -DNO_TEXTURES
 endif
@@ -292,9 +281,6 @@ else
     -I$(OPUSDIR)/include -I$(OPUSDIR)/celt -I$(OPUSDIR)/silk -I$(OPUSDIR)/silk/float \
     -I$(OPUSFILEDIR)/include \
     -DUSE_CODEC_VORBIS -I$(VORBISDIR)/include -I$(VORBISDIR)/lib -I$(OGGDIR)/include
-endif
-ifeq ($(USE_VOIP),1)
-  CLIENT_CFLAGS += -DUSE_VOIP
 endif
 
 # game modules: hidden visibility so only dllEntry/vmMain stay global
@@ -323,7 +309,7 @@ CODEC_SRC = \
   $(filter-out %/wincerts.c,$(call rel,opusfile-0.9/src/*.c))
 
 ENGINE_SRC = \
-  $(filter-out client/snd_% client/libmumblelink.c,$(call rel,client/*.c)) \
+  $(filter-out client/snd_%,$(call rel,client/*.c)) \
   $(filter-out server/sv_wallhack.c,$(call rel,server/*.c)) \
   $(filter-out qcommon/vm_armv7l.c qcommon/vm_none.c qcommon/vm_powerpc.c \
     qcommon/vm_powerpc_asm.c qcommon/vm_sparc.c qcommon/vm_x86.c qcommon/net_ip.c,$(call rel,qcommon/*.c)) \
@@ -336,9 +322,6 @@ ifeq ($(AUDIO),0)
   ENGINE_SRC += client/snd_main.c
 else
   ENGINE_SRC += $(SOUND_SRC) $(CODEC_SRC)
-endif
-ifeq ($(USE_MUMBLE),1)
-  ENGINE_SRC += client/libmumblelink.c
 endif
 
 ifeq ($(PLATFORM),dc)

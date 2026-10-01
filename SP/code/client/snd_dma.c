@@ -125,37 +125,6 @@ void S_Base_SoundInfo(void) {
 }
 
 
-#ifdef USE_VOIP
-static
-void S_Base_StartCapture( void )
-{
-	SNDDMA_StartCapture();
-}
-
-static
-int S_Base_AvailableCaptureSamples( void )
-{
-	return SNDDMA_AvailableCaptureSamples();
-}
-
-static
-void S_Base_Capture( int samples, byte *data )
-{
-	SNDDMA_Capture(samples, data);
-}
-
-static
-void S_Base_StopCapture( void )
-{
-	SNDDMA_StopCapture();
-}
-
-static
-void S_Base_MasterGain( float val )
-{
-	SNDDMA_MasterGain(val);
-}
-#endif
 
 
 
@@ -1890,13 +1859,6 @@ qboolean S_Base_Init( soundInterface_t *si ) {
 	si->SoundInfo = S_Base_SoundInfo;
 	si->SoundList = S_Base_SoundList;
 
-#ifdef USE_VOIP
-	si->StartCapture = S_Base_StartCapture;
-	si->AvailableCaptureSamples = S_Base_AvailableCaptureSamples;
-	si->Capture = S_Base_Capture;
-	si->StopCapture = S_Base_StopCapture;
-	si->MasterGain = S_Base_MasterGain;
-#endif
 
 	return qtrue;
 }

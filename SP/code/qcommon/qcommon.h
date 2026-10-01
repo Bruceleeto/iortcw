@@ -248,9 +248,6 @@ typedef struct {
 	int		lastSentTime;
 	int		lastSentSize;
 
-#ifdef LEGACY_PROTOCOL
-	qboolean	compat;
-#endif
 } netchan_t;
 
 void Netchan_Init( int qport );
@@ -283,23 +280,12 @@ PROTOCOL
 //#define MASTER_SERVER_NAME	"master.quake3arena.com"
 //#define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
 //----(SA)	yes, these are bogus addresses.  I'm guessing these will be set to a machine at Activision or id eventually
-#if !defined UPDATE_SERVER_NAME && !defined STANDALONE
-#define UPDATE_SERVER_NAME      "update.gmistudios.com"
-#endif
 // override on command line, config files etc.
 #ifndef MASTER_SERVER_NAME
  #define MASTER_SERVER_NAME      "master.gmistudios.com"
 #endif
 
 #ifndef STANDALONE
-#ifdef USE_AUTHORIZE_SERVER
-  #ifndef AUTHORIZE_SERVER_NAME
-    #define	AUTHORIZE_SERVER_NAME	"authorize.gmistudios.com"
-  #endif
-  #ifndef PORT_AUTHORIZE
-    #define	PORT_AUTHORIZE		27952
-  #endif
-#endif
 #endif
 
 #define PORT_MASTER         27950
@@ -916,9 +902,6 @@ extern	cvar_t	*sv_packetdelay;
 
 extern	cvar_t	*com_gamename;
 extern	cvar_t	*com_protocol;
-#ifdef LEGACY_PROTOCOL
-extern	cvar_t	*com_legacyprotocol;
-#endif
 #ifndef DEDICATED
 extern  cvar_t  *con_autochat;
 #endif
