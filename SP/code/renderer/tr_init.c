@@ -569,6 +569,7 @@ void RB_TakeScreenshot(int x, int y, int width, int height, char *fileName)
 +RB_TakeScreenshotJPEG
 +==================
 */
+#ifndef NO_JPEG
 void RB_TakeScreenshotJPEG(int x, int y, int width, int height, char *fileName)
 {
 	byte *buffer;
@@ -585,6 +586,7 @@ void RB_TakeScreenshotJPEG(int x, int y, int width, int height, char *fileName)
 	RE_SaveJPG(fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen);
 	ri.Hunk_FreeTempMemory(buffer);
 }
+#endif
 
 /*
 ==================
@@ -596,9 +598,11 @@ const void *RB_TakeScreenshotCmd( const void *data ) {
 	
 	cmd = (const screenshotCommand_t *)data;
 	
+#ifndef NO_JPEG
 	if (cmd->jpeg)
 		RB_TakeScreenshotJPEG( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
 	else
+#endif
 		RB_TakeScreenshot( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
 	
 	return (const void *)(cmd + 1);

@@ -1271,8 +1271,10 @@ typedef struct
 static imageExtToLoaderMap_t imageLoaders[ ] =
 {
 	{ "tga",  R_LoadTGA },
+#ifndef NO_JPEG
 	{ "jpg",  R_LoadJPG },
 	{ "jpeg", R_LoadJPG },
+#endif
 	{ "png",  R_LoadPNG },
 	{ "pcx",  R_LoadPCX },
 	{ "bmp",  R_LoadBMP }

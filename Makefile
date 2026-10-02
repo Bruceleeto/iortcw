@@ -325,6 +325,12 @@ else
   FAST_MATH = -ffast-math
 endif
 
+# the Dreamcast build is small but for the renderer (renderer/, pvr/, mdsc/),
+# which stays -O3: SIZE_OPT comes after OPT, and the renderer's objects clear it
+ifeq ($(PLATFORM)$(DEBUG),dc0)
+  SIZE_OPT = -Os
+endif
+
 # shared by every object (engine, renderer and game modules)
 BASE_CFLAGS = $(ARCH_FLAGS) -pipe -Wall -fno-strict-aliasing -MMD \
   -DARCH_STRING=\"$(ARCH_STRING)\" -DPRODUCT_VERSION=\"$(PRODUCT_VERSION)\" \
@@ -450,8 +456,10 @@ ifeq ($(RENDERER),pvr)
   ifeq ($(filter x86 sh4,$(ARCH)),)
     $(error RENDERER=pvr needs ARCH=x86: gpu_pvr keeps host pointers in 32 bits)
   endif
-  # the opengl1 renderer front end on pvr/pvr_gl.c instead of SDL + OpenGL
-  RENDERER_SRC += $(call rel,jpeg-8c/*.c)
+  # the opengl1 renderer front end on pvr/pvr_gl.c instead of SDL + OpenGL;
+  # every image is a .dt, so no JPEG decoder (a missing one gets the default)
+  RENDERER_SRC := $(filter-out renderer/tr_image_jpg.c,$(RENDERER_SRC))
+  CLIENT_CFLAGS += -DNO_JPEG
   PVR_OBJ = $(B)/pvr/pvr_gl.c.o $(B)/pvr/pvr_glimp.c.o
   ifeq ($(PLATFORM),dc)
     RENDERER_LIBS =
@@ -480,6 +488,7 @@ obj = $(patsubst %,$(B)/$(1)/%.o,$(2))
 ENGINE_OBJ   = $(call obj,engine,$(ENGINE_SRC))
 BOTLIB_OBJ   = $(call obj,botlib,$(BOTLIB_SRC))
 RENDERER_OBJ = $(call obj,engine,$(RENDERER_SRC))
+$(RENDERER_OBJ): SIZE_OPT =
 # MDSC models (make assets); the opengl1 renderer reads them, rend2 doesn't
 ifneq ($(RENDERER),rend2)
   MDSC_OBJ   = $(B)/mdsc/mdsc.c.o
@@ -526,7 +535,7 @@ $(B)/mdsc/%.c.o: mdsc/%.c
 $(B)/dc/%.c.o: dc/%.c
 	$(echo_cmd) "DC_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/client -I$(CODE)/qcommon -c $< -o $@
+	$(Q)$(CC) $(CLIENT_CFLAGS) $(SIZE_OPT) -I$(CODE)/client -I$(CODE)/qcommon -c $< -o $@
 
 # Combine a module's objects, make every hidden symbol local so modules
 # can't collide with each other or the engine, then rename the entry points.
@@ -546,12 +555,12 @@ $(eval $(call link_module,ui,UI))
 $(B)/engine/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(CLIENT_CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
+	$(Q)$(CC) $(CLIENT_CFLAGS) $(SIZE_OPT) $(EXTRA_CFLAGS) -c $< -o $@
 
 $(B)/engine/%.cpp.o: $(CODE)/%.cpp
 	$(echo_cmd) "CXX $<"
 	@mkdir -p $(@D)
-	$(Q)$(CXX) $(CLIENT_CFLAGS) -c $< -o $@
+	$(Q)$(CXX) $(CLIENT_CFLAGS) $(SIZE_OPT) -c $< -o $@
 
 $(B)/engine/%.s.o: $(CODE)/%.s
 	$(echo_cmd) "AS $<"
@@ -583,32 +592,32 @@ endif
 $(B)/botlib/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "BOT_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(BASE_CFLAGS) $(FAST_MATH) -DBOTLIB -c $< -o $@
+	$(Q)$(CC) $(BASE_CFLAGS) $(FAST_MATH) $(SIZE_OPT) -DBOTLIB -c $< -o $@
 
 $(B)/qagame/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "GAME_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(MOD_CFLAGS) -DGAMEDLL -DQAGAME -c $< -o $@
+	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -DGAMEDLL -DQAGAME -c $< -o $@
 
 $(B)/cgame/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "CGAME_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(MOD_CFLAGS) -DCGAMEDLL -DCGAME -c $< -o $@
+	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -DCGAMEDLL -DCGAME -c $< -o $@
 
 $(B)/cgame/ui_shared_hud.c.o: $(CODE)/ui/ui_shared.c
 	$(echo_cmd) "CGAME_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(MOD_CFLAGS) -DUI -DUI_HUD_ONLY -c $< -o $@
+	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -DUI -DUI_HUD_ONLY -c $< -o $@
 
 $(B)/ui/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "UI_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(MOD_CFLAGS) -DUI -c $< -o $@
+	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -DUI -c $< -o $@
 
 $(B)/modcommon/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "MOD_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(MOD_CFLAGS) -c $< -o $@
+	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -c $< -o $@
 
 $(STRINGIFY): $(CODE)/tools/stringify.c
 	@mkdir -p $(@D)
@@ -627,7 +636,7 @@ $(B)/glsl/%.glsl.o: $(B)/glsl/%.glsl.c
 # one build dir per game/arch: changing any option (RENDERER, AUDIO, VIDEO,
 # TEXTURES, ...) rebuilds everything in it
 FLAGS_STAMP = $(B)/.cflags
-FLAGS_NOW := $(RENDERER) $(CC) $(CXX) $(CLIENT_CFLAGS) $(MOD_CFLAGS)
+FLAGS_NOW := $(RENDERER) $(CC) $(CXX) $(CLIENT_CFLAGS) $(MOD_CFLAGS) $(SIZE_OPT)
 ifneq ($(FLAGS_NOW),$(shell cat $(FLAGS_STAMP) 2>/dev/null))
   $(shell mkdir -p $(B) && printf '%s\n' '$(subst ','\'',$(FLAGS_NOW))' > $(FLAGS_STAMP))
 endif
