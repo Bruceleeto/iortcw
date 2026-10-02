@@ -426,6 +426,7 @@ intptr_t SV_GameSystemCalls( intptr_t *args ) {
 		s = COM_Parse( &sv.entityParsePoint );
 		Q_strncpyz( VMA( 1 ), s, args[2] );
 		if ( !sv.entityParsePoint && !s[0] ) {
+			sv.entityParsePoint = CM_EntityString();    // read again from the start
 			return qfalse;
 		} else {
 			return qtrue;

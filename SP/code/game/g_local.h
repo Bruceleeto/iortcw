@@ -608,6 +608,7 @@ typedef struct {
 	struct gentity_s    *gentities;
 	int gentitySize;
 	int num_entities;               // MAX_CLIENTS <= num_entities <= ENTITYNUM_MAX_NORMAL
+	int numMarkers;                 // AI markers, g_entities from MAX_GENTITIES (G_SpawnMarker)
 
 	int warmupTime;                 // restart match at this time
 
@@ -1065,7 +1066,8 @@ void Props_Chair_Skyboxtouch( gentity_t *ent );
 
 
 extern level_locals_t level;
-extern gentity_t g_entities[MAX_GENTITIES];
+extern gentity_t *g_entities;
+int G_CountMarkers( void );
 extern gentity_t       *g_camEnt;
 
 #define	FOFS(x) ((size_t)&(((gentity_t *)0)->x))

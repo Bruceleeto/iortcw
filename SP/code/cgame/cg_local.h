@@ -1972,6 +1972,8 @@ void CG_PainEvent( centity_t *cent, int health, qboolean crouching );
 //
 void CG_SetEntitySoundPosition( centity_t *cent );
 void CG_AddPacketEntities( void );
+void CG_ParseStaticEntities( void );
+void CG_AddStaticEntities( void );
 void CG_Beam( centity_t *cent );
 void CG_AdjustPositionForMover( const vec3_t in, int moverNum, int fromTime, int toTime, vec3_t out, vec3_t angles_in, vec3_t angles_out, vec3_t outDeltaAngles );
 

@@ -375,7 +375,7 @@ void AICast_ScriptLoad( void ) {
 		return;
 	}
 
-	level.scriptAI = G_Alloc( len );
+	level.scriptAI = G_Alloc( len + 1 );   // G_Alloc zeroes: the text ends with a 0
 	trap_FS_Read( level.scriptAI, len, f );
 
 	trap_FS_FCloseFile( f );

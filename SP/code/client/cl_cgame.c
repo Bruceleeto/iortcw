@@ -364,6 +364,42 @@ CL_CgameSystemCalls
 The cgame module is making a system call
 ====================
 */
+/*
+====================
+CL_inPVS
+
+Whether the server would send an entity at p2 (with no size) to a client
+viewing from p1: as SV_LinkEntity and SV_AddEntitiesVisibleFromPoint, p2's
+leaves are a box a unit about it, with an area joined to p1's and a cluster in
+p1's PVS
+====================
+*/
+static qboolean CL_inPVS( const vec3_t p1, const vec3_t p2 ) {
+	int leafs[16], num, lastLeaf, i, area, cluster, area1;
+	qboolean areaOk = qfalse, clusterOk = qfalse;
+	byte *mask;
+	vec3_t mins, maxs;
+
+	num = CM_PointLeafnum( p1 );
+	area1 = CM_LeafArea( num );
+	mask = CM_ClusterPVS( CM_LeafCluster( num ) );
+
+	VectorSet( mins, p2[0] - 1, p2[1] - 1, p2[2] - 1 );
+	VectorSet( maxs, p2[0] + 1, p2[1] + 1, p2[2] + 1 );
+	num = CM_BoxLeafnums( mins, maxs, leafs, ARRAY_LEN( leafs ), &lastLeaf );
+	for ( i = 0; i < num; i++ ) {
+		area = CM_LeafArea( leafs[i] );
+		if ( area != -1 && CM_AreasConnected( area1, area ) ) {
+			areaOk = qtrue;
+		}
+		cluster = CM_LeafCluster( leafs[i] );
+		if ( cluster != -1 && ( !mask || ( mask[cluster >> 3] & ( 1 << ( cluster & 7 ) ) ) ) ) {
+			clusterOk = qtrue;
+		}
+	}
+	return areaOk && clusterOk;
+}
+
 intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	switch ( args[0] ) {
 	case CG_PRINT:
@@ -784,6 +820,8 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	// New in IORTCW
 	case CG_ALLOC:
 		return VM_Alloc( args[1] );
+	case CG_R_INPVS:
+		return CL_inPVS( VMA( 1 ), VMA( 2 ) );
 
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );

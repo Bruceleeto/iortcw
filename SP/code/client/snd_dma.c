@@ -90,7 +90,7 @@ cvar_t		*s_mixPreStep;
 cvar_t      *s_mute;        // (SA) for DM so he can 'toggle' sound on/off without disturbing volume levels
 cvar_t      *s_wavonly;
 
-static loopSound_t		loopSounds[MAX_GENTITIES];
+static loopSound_t		loopSounds[MAX_LOOPSOUNDS];
 static	channel_t		*freelist = NULL;
 
 int	s_rawend[MAX_RAW_STREAMS];
@@ -830,7 +830,7 @@ void S_Base_ClearSoundBuffer( void ) {
 		return;
 
 	// stop looping sounds
-	Com_Memset(loopSounds, 0, MAX_GENTITIES*sizeof(loopSound_t));
+	Com_Memset(loopSounds, 0, sizeof(loopSounds));
 	Com_Memset(loop_channels, 0, MAX_CHANNELS*sizeof(channel_t));
 	numLoopChannels = 0;
 
@@ -896,7 +896,7 @@ S_ClearLoopingSounds
 */
 void S_Base_ClearLoopingSounds( qboolean killall ) {
 	int i;
-	for ( i = 0 ; i < MAX_GENTITIES ; i++) {
+	for ( i = 0 ; i < MAX_LOOPSOUNDS ; i++) {
 		if (killall || loopSounds[i].kill == qtrue || (loopSounds[i].sfx && loopSounds[i].sfx->soundLength == 0)) {
 			S_Base_StopLoopingSound(i);
 		}
@@ -931,7 +931,7 @@ void S_Base_AddLoopingSound( int entityNum, const vec3_t origin, const vec3_t ve
 		return;
 	}
 
-	if ( entityNum < 0 || entityNum >= MAX_GENTITIES )
+	if ( entityNum < 0 || entityNum >= MAX_LOOPSOUNDS )
 		return;
 
 	sfx = &s_knownSfx[ sfxHandle ];
@@ -1013,7 +1013,7 @@ void S_Base_AddRealLoopingSound( int entityNum, const vec3_t origin, const vec3_
 		return;
 	}
 
-	if ( entityNum < 0 || entityNum >= MAX_GENTITIES )
+	if ( entityNum < 0 || entityNum >= MAX_LOOPSOUNDS )
 		return;
 
 	sfx = &s_knownSfx[ sfxHandle ];
@@ -1062,7 +1062,7 @@ void S_AddLoopSounds (void) {
 	time = Com_Milliseconds();
 
 	loopFrame++;
-	for ( i = 0 ; i < MAX_GENTITIES ; i++) {
+	for ( i = 0 ; i < MAX_LOOPSOUNDS ; i++) {
 		loop = &loopSounds[i];
 		if ( !loop->active || loop->mergeFrame == loopFrame ) {
 			continue;	// already merged into an earlier sound
@@ -1080,7 +1080,7 @@ void S_AddLoopSounds (void) {
 
 		loop->sfx->lastTimeUsed = time;
 
-		for (j=(i+1); j< MAX_GENTITIES ; j++) {
+		for (j=(i+1); j< MAX_LOOPSOUNDS ; j++) {
 			loop2 = &loopSounds[j];
 			if ( !loop2->active || loop2->doppler || loop2->sfx != loop->sfx) {
 				continue;

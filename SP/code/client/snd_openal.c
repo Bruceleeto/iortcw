@@ -607,7 +607,7 @@ typedef struct sentity_s
 	qboolean				startLoopingSound;
 } sentity_t;
 
-static sentity_t entityList[MAX_GENTITIES];
+static sentity_t entityList[MAX_LOOPSOUNDS];
 
 /*
 =================
@@ -1237,7 +1237,7 @@ Necessary for i.g. Western Quake3 mod which is buggy.
 */
 static qboolean S_AL_CheckInput(int entityNum, sfxHandle_t sfx)
 {
-	if (entityNum < 0 || entityNum >= MAX_GENTITIES)
+	if (entityNum < 0 || entityNum >= MAX_LOOPSOUNDS)
 		Com_Error(ERR_DROP, "ERROR: S_AL_CheckInput: bad entitynum %i", entityNum);
 
 	if (sfx < 0 || sfx >= numSfx)
@@ -1406,7 +1406,7 @@ static void S_AL_SrcLoop( alSrcPriority_t priority, sfxHandle_t sfx,
 	src_t		*curSource;
 	vec3_t		sorigin, svelocity;
 
-	if( entityNum < 0 || entityNum >= MAX_GENTITIES )
+	if( entityNum < 0 || entityNum >= MAX_LOOPSOUNDS )
 		return;
 
 	if(S_AL_CheckInput(entityNum, sfx))

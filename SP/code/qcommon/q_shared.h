@@ -1241,6 +1241,11 @@ typedef enum {
 #define ENTITYNUM_WORLD     ( MAX_GENTITIES - 2 )
 #define ENTITYNUM_MAX_NORMAL    ( MAX_GENTITIES - 2 )
 
+// looping sounds cgame plays with no entity (static speakers, see CG_AddStaticEntities)
+// are numbered from MAX_GENTITIES, this many heard at once
+#define MAX_STATIC_LOOPS    64
+#define MAX_LOOPSOUNDS      ( MAX_GENTITIES + MAX_STATIC_LOOPS )
+
 
 #define MAX_MODELS          256     // these are sent over the net as 8 bits
 #define MAX_SOUNDS          256     // so they cannot be blindly increased

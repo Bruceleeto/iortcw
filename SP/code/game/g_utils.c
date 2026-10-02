@@ -176,8 +176,14 @@ gentity_t *G_Find( gentity_t *from, int fieldofs, const char *match ) {
 		from++;
 	}
 
-	for ( ; from < &g_entities[level.num_entities] ; from++ )
+	for ( ; ; from++ )
 	{
+		if ( from == &g_entities[level.num_entities] ) {
+			from = &g_entities[MAX_GENTITIES];  // then the AI markers
+		}
+		if ( from >= &g_entities[MAX_GENTITIES + level.numMarkers] ) {
+			break;
+		}
 		if ( !from->inuse ) {
 			continue;
 		}
@@ -497,7 +503,9 @@ Marks the entity as free
 =================
 */
 void G_FreeEntity( gentity_t *ed ) {
-	trap_UnlinkEntity( ed );     // unlink from world
+	if ( ed - g_entities < MAX_GENTITIES ) {    // an AI marker is never linked
+		trap_UnlinkEntity( ed );     // unlink from world
+	}
 
 	if ( ed->neverFree ) {
 		return;

@@ -1574,6 +1574,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 	// build the render lists
 	if ( !cg.hyperspace ) {
 		CG_AddPacketEntities();         // adter calcViewValues, so predicted player state is correct
+		CG_AddStaticEntities();
 		CG_AddMarks();
 
 		DEBUGTIME

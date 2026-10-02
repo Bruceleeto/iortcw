@@ -1,0 +1,5 @@
+# Map edits for the Dreamcast, made by rtcwconv -e (see ReadEdits in main.cpp)
+#	<map> drop <shader prefix>    surfaces with such a shader left out
+
+# the pine trees outside, hardly ever seen
+escape1 drop textures/tree/

@@ -3070,7 +3070,7 @@ static void BuildShaderChecksumLookup( void ) {
 
 		if ( !Q_stricmp( token, "{" ) ) {
 			// skip braced section
-			SkipBracedSection( &p, 0 );
+			SkipBracedSection( &p, 1 );   // its { read: the whole definition
 			continue;
 		}
 

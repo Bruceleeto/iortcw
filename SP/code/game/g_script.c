@@ -271,7 +271,7 @@ void G_Script_ScriptLoad( void ) {
 		return;
 	}
 
-	level.scriptEntity = G_Alloc( len );
+	level.scriptEntity = G_Alloc( len + 1 );   // G_Alloc zeroes: the text ends with a 0
 	trap_FS_Read( level.scriptEntity, len, f );
 
 	trap_FS_FCloseFile( f );

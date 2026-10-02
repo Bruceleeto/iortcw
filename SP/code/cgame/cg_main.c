@@ -2414,6 +2414,8 @@ void CG_Init( int serverMessageNum, int serverCommandSequence ) {
 
 	cg.loading = qfalse;    // future players will be deferred
 
+	CG_ParseStaticEntities();
+
 	CG_InitLocalEntities();
 
 	CG_InitMarkPolys();

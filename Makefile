@@ -233,14 +233,14 @@ $(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_COBJ) $(RTCWCONV_HDR)
 
 # 1 = sp, 2 = its pk3s in load order
 define assets_pk3
-$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2)
+$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2) tools/rtcwconv/mapedits.txt
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' \
 	  '*.shader' '*.skin' '*.menu' '*.txt' '*.cfg' '*.script' '*.ai' '*.camera' '*.sounds' '*.md3' '*.dat' '*.h' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
-	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef

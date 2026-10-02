@@ -65,6 +65,46 @@ static bool WriteFile( const fs::path &p, const std::vector<uint8_t> &data ) {
 	return ok;
 }
 
+/*
+Map edits, a line each, # for a comment:
+	<map> drop <shader prefix>    the map's surfaces with such a shader left out
+*/
+struct MapEdits {
+	std::vector<std::string> drop;
+};
+
+static bool ReadEdits( const char *file, std::map<std::string, MapEdits> &edits ) {
+	FILE *f = fopen( file, "r" );
+	char line[512];
+	int n = 0;
+
+	if ( !f ) {
+		fprintf( stderr, "%s: %s\n", file, strerror( errno ) );
+		return false;
+	}
+	while ( fgets( line, sizeof( line ), f ) ) {
+		char map[128], what[32], arg[256];
+		n++;
+		char *hash = strchr( line, '#' );
+		if ( hash ) {
+			*hash = 0;
+		}
+		int got = sscanf( line, "%127s %31s %255s", map, what, arg );
+		if ( got <= 0 ) {
+			continue;
+		}
+		if ( got == 3 && !strcmp( what, "drop" ) ) {
+			edits[map].drop.push_back( arg );
+		} else {
+			fprintf( stderr, "%s:%d: not an edit\n", file, n );
+			fclose( f );
+			return false;
+		}
+	}
+	fclose( f );
+	return true;
+}
+
 static void Usage( void ) {
 	fprintf( stderr,
 		"usage: rtcwconv [options] <in dir> <out dir>\n"
@@ -76,6 +116,7 @@ static void Usage( void ) {
 		"  -j <n>   pvrtex runs at once (default: one per core)\n"
 		"  -c <f>   curve subdivisions, as r_subdivisions (default 12)\n"
 		"  -n <d>   more files that name shaders (the game's source), for dc.shaders\n"
+		"  -e <f>   map edits (see ReadEdits)\n"
 		"  -v       a line per file\n" );
 	exit( 1 );
 }
@@ -86,6 +127,7 @@ int main( int argc, char **argv ) {
 	bool verbose = false;
 	float subdivisions = 12;
 	std::vector<std::string> nameDirs;
+	std::map<std::string, MapEdits> edits;
 	int i;
 
 	for ( i = 1; i < argc && argv[i][0] == '-'; i++ ) {
@@ -107,6 +149,10 @@ int main( int argc, char **argv ) {
 			subdivisions = atof( argv[++i] );
 		} else if ( i + 1 < argc && !strcmp( argv[i], "-n" ) ) {
 			nameDirs.push_back( argv[++i] );
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-e" ) ) {
+			if ( !ReadEdits( argv[++i], edits ) ) {
+				return 1;
+			}
 		} else {
 			Usage();
 		}
@@ -236,7 +282,7 @@ int main( int argc, char **argv ) {
 				}
 			}
 			if ( in.empty() || !ConvertCol( in, out, col, rel.c_str() ) || !WriteFile( colPath, out ) ||
-				 !ConvertWld( in, wldOut, wld, rel.c_str(), subdivisions ) || !WriteFile( wldPath, wldOut ) ) {
+				 !ConvertWld( in, wldOut, wld, rel.c_str(), subdivisions, edits[e.path().stem().string()].drop ) || !WriteFile( wldPath, wldOut ) ) {
 				failed++;
 			} else if ( !texOpt.pvrtex.empty() && !BspLightmapJobs( in, e.path().stem().string(), outDir, lightmaps ) ) {
 				failed++;
@@ -310,6 +356,9 @@ int main( int argc, char **argv ) {
 		printf( "wld: %d files, %.1f MB of bsp -> %.1f MB; %ld surfaces -> %ld; %ld vertexes, %ld triangles; light grids %.1f MB -> %.1f MB\n",
 				wld.files, wld.bytesIn / 1048576.0, wld.bytesOut / 1048576.0, wld.surfacesIn, wld.surfacesOut,
 				wld.verts, wld.triangles, wld.gridIn / 1048576.0, wld.gridOut / 1048576.0 );
+		if ( wld.dropped ) {
+			printf( "wld: %ld surfaces left out by map edits\n", wld.dropped );
+		}
 	}
 	if ( aas.files ) {
 		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces kept; %d maps with no big characters, their second world left out\n",

@@ -43,7 +43,7 @@ typedef struct {
 	qboolean teamShader;      // track and if changed, update shader state
 } cvarTable_t;
 
-gentity_t g_entities[MAX_GENTITIES];
+gentity_t *g_entities;          // MAX_GENTITIES, then the map's AI markers
 gclient_t *g_clients;   // level.maxclients of them, from G_Alloc
 
 gentity_t       *g_camEnt = NULL;   //----(SA)	script camera
@@ -1251,7 +1251,8 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	G_InitWorldSession();
 
-	// initialize all entities for this game
+	// initialize all entities for this game, the AI markers after the rest
+	g_entities = G_Alloc( ( MAX_GENTITIES + G_CountMarkers() ) * sizeof( g_entities[0] ) );
 	memset( g_entities, 0, MAX_GENTITIES * sizeof( g_entities[0] ) );
 	level.gentities = g_entities;
 

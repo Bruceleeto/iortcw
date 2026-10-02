@@ -823,12 +823,72 @@ Spawn an entity and fill in all of the level fields from
 level.spawnVars[], then call the class specfic spawn function
 ===================
 */
+/*
+===================
+G_CountMarkers
+
+The map's AI markers, given room in g_entities after MAX_GENTITIES: the
+server and clients never see them, so they take none of its entity slots
+===================
+*/
+static int g_maxMarkers;
+
+static qboolean G_IsMarker( const char *classname ) {
+	return g_gametype.integer == GT_SINGLE_PLAYER && !Q_stricmp( classname, "ai_marker" );
+}
+
+int G_CountMarkers( void ) {
+	char key[MAX_TOKEN_CHARS], value[MAX_TOKEN_CHARS];
+
+	g_maxMarkers = 0;
+	while ( trap_GetEntityToken( key, sizeof( key ) ) ) {
+		if ( !strcmp( key, "{" ) || !strcmp( key, "}" ) ) {
+			continue;
+		}
+		if ( !trap_GetEntityToken( value, sizeof( value ) ) ) {
+			break;
+		}
+		if ( !Q_stricmp( key, "classname" ) && G_IsMarker( value ) ) {
+			g_maxMarkers++;
+		}
+	}
+	return g_maxMarkers;
+}
+
 void G_SpawnGEntityFromSpawnVars( void ) {
 	int i;
 	gentity_t   *ent;
+	char        *classname, *targetname, *scriptname, *noise;
+	float random;
+
+	// a static corona or speaker is cgame's alone, its sound named for cgame to find
+	G_SpawnString( "classname", "", &classname );
+	G_SpawnString( "targetname", "", &targetname );
+	G_SpawnString( "scriptname", "", &scriptname );
+	G_SpawnString( "noise", "", &noise );
+	G_SpawnInt( "spawnflags", "0", &i );
+	G_SpawnFloat( "random", "0", &random );
+	switch ( BG_StaticEntity( classname, targetname, scriptname, i, noise, random ) ) {
+	case 1:
+		if ( noise[0] ) {
+			G_SoundIndex( noise );
+		}
+		return;
+	case 2:
+		return;
+	}
+
 
 	// get the next free entity
-	ent = G_Spawn();
+	if ( G_IsMarker( classname ) ) {
+		if ( level.numMarkers == g_maxMarkers ) {
+			G_Error( "G_SpawnGEntityFromSpawnVars: more AI markers than counted" );
+		}
+		ent = &g_entities[MAX_GENTITIES + level.numMarkers++];
+		G_InitGentity( ent );
+	} else {
+		ent = G_Spawn();
+	}
 
 	for ( i = 0 ; i < level.numSpawnVars ; i++ ) {
 		G_ParseField( level.spawnVars[i][0], level.spawnVars[i][1], ent );

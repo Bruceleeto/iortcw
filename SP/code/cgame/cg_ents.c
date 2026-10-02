@@ -1551,10 +1551,9 @@ static void CG_Trap( centity_t *cent ) {
 CG_Corona
 ==============
 */
-static void CG_Corona( centity_t *cent ) {
+static void CG_AddCorona( const vec3_t origin, int dli, int density, int id ) {
 	trace_t tr;
 	int r, g, b;
-	int dli;
 	int flags = 0;
 	qboolean behind = qfalse,
 			 toofar = qfalse;
@@ -1566,14 +1565,13 @@ static void CG_Corona( centity_t *cent ) {
 		return;
 	}
 
-	dli = cent->currentState.dl_intensity;
 	r = dli & 255;
 	g = ( dli >> 8 ) & 255;
 	b = ( dli >> 16 ) & 255;
 
 	// only coronas that are in your PVS are being added
 
-	VectorSubtract( cg.refdef.vieworg, cent->lerpOrigin, dir );
+	VectorSubtract( cg.refdef.vieworg, origin, dir );
 
 	dist = VectorNormalize2( dir, dir );
 	if ( dist > cg_coronafardist.integer ) {   // performance variable cg_coronafardist will keep down super long traces
@@ -1595,14 +1593,18 @@ static void CG_Corona( centity_t *cent ) {
 
 
 	if ( !behind && !toofar ) {
-		CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, cent->lerpOrigin, -1, MASK_SOLID | CONTENTS_BODY ); // added blockage by players.  not sure how this is going to be since this is their bb, not their model (too much blockage)
+		CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, origin, -1, MASK_SOLID | CONTENTS_BODY ); // added blockage by players.  not sure how this is going to be since this is their bb, not their model (too much blockage)
 
 		if ( tr.fraction == 1 ) {
 			flags = 1;
 		}
 
-		trap_R_AddCoronaToScene( cent->lerpOrigin, (float)r / 255.0f, (float)g / 255.0f, (float)b / 255.0f, (float)cent->currentState.density / 255.0f, cent->currentState.number, flags );
+		trap_R_AddCoronaToScene( origin, (float)r / 255.0f, (float)g / 255.0f, (float)b / 255.0f, (float)density / 255.0f, id, flags );
 	}
+}
+
+static void CG_Corona( centity_t *cent ) {
+	CG_AddCorona( cent->lerpOrigin, cent->currentState.dl_intensity, cent->currentState.density, cent->currentState.number );
 }
 
 
@@ -2592,6 +2594,183 @@ static void CG_AddEntityToTag( centity_t *cent ) {
 
 	// call the appropriate function which will add this entity to the view accordingly
 	CG_ProcessEntity( cent );
+}
+
+/*
+===============================================================================
+
+STATIC CORONAS AND SPEAKERS
+
+Ones nothing can name, which the game gives no entity (BG_StaticEntity): read
+from the map here, and shown and played as CG_Corona, CG_EntityEffects and
+CG_Speaker would, whenever the server would have sent the entity
+
+===============================================================================
+*/
+
+typedef struct {
+	vec3_t origin;
+	int sound;              // CS_SOUNDS index; 0 for a corona
+	int dli, density;       // corona: as its entity's dl_intensity and density
+	int range;              // speaker: as its entity's dmgFlags, frame and clientNum
+	int wait, random;
+	int nextTime;
+	qboolean loop;          // LOOPED_ON
+	qboolean always;        // GLOBAL or NO_PVS: heard out of the PVS
+} staticEnt_t;
+
+static staticEnt_t *cg_staticEnts;
+static int cg_numStaticEnts;
+
+/*
+==================
+CG_ParseStaticEntity
+
+One map entity, its opening brace read: whether it is a static corona or
+speaker, read into out when out is not NULL
+==================
+*/
+static qboolean CG_ParseStaticEntity( staticEnt_t *out ) {
+	char key[MAX_TOKEN_CHARS], value[MAX_TOKEN_CHARS];
+	char classname[64] = "", noise[MAX_QPATH] = "";
+	qboolean named = qfalse, skip = qfalse;
+	int spawnflags = 0, radius = 0, i;
+	float wait = 0, random = 0, scale = 1;
+	vec3_t origin = { 0, 0, 0 }, color = { 0, 0, 0 };
+
+	while ( 1 ) {
+		if ( !trap_GetEntityToken( key, sizeof( key ) ) || !strcmp( key, "{" ) ) {
+			CG_Error( "CG_ParseStaticEntity: no closing brace" );
+		}
+		if ( !strcmp( key, "}" ) ) {
+			break;
+		}
+		if ( !trap_GetEntityToken( value, sizeof( value ) ) ) {
+			CG_Error( "CG_ParseStaticEntity: no closing brace" );
+		}
+		if ( !Q_stricmp( key, "classname" ) ) {
+			Q_strncpyz( classname, value, sizeof( classname ) );
+		} else if ( !Q_stricmp( key, "targetname" ) || !Q_stricmp( key, "scriptname" ) ) {
+			named |= value[0] != 0;
+		} else if ( !Q_stricmp( key, "noise" ) ) {
+			Q_strncpyz( noise, value, sizeof( noise ) );
+		} else if ( !Q_stricmp( key, "spawnflags" ) ) {
+			spawnflags = atoi( value );
+		} else if ( !Q_stricmp( key, "wait" ) ) {
+			wait = atof( value );
+		} else if ( !Q_stricmp( key, "random" ) ) {
+			random = atof( value );
+		} else if ( !Q_stricmp( key, "radius" ) ) {
+			radius = atoi( value );
+		} else if ( !Q_stricmp( key, "scale" ) ) {
+			scale = atof( value );
+		} else if ( !Q_stricmp( key, "origin" ) ) {
+			sscanf( value, "%f %f %f", &origin[0], &origin[1], &origin[2] );
+		} else if ( !Q_stricmp( key, "_color" ) || !Q_stricmp( key, "color" ) ) {
+			sscanf( value, "%f %f %f", &color[0], &color[1], &color[2] );
+		} else if ( !Q_stricmp( key, "notsingle" ) || !Q_stricmp( key, "notfree" ) ) {
+			skip |= atoi( value ) != 0;     // left out by the game anyway
+		}
+	}
+
+	if ( skip || BG_StaticEntity( classname, named ? "-" : "", "", spawnflags, noise, random ) != 1 ) {
+		return qfalse;
+	}
+	if ( !out ) {
+		return qtrue;
+	}
+
+	memset( out, 0, sizeof( *out ) );
+	VectorCopy( origin, out->origin );
+	if ( !Q_stricmp( classname, "corona" ) ) {
+		// as SP_corona
+		if ( color[0] <= 0 && color[1] <= 0 && color[2] <= 0 ) {
+			VectorSet( color, 1, 1, 1 );
+		}
+		out->dli = (int)( color[0] * 255 ) | ( (int)( color[1] * 255 ) << 8 ) | ( (int)( color[2] * 255 ) << 16 );
+		out->density = (int)( scale * 255 );
+		return qtrue;
+	}
+
+	// as SP_target_speaker, its sound one the game named
+	for ( i = 1; i < MAX_SOUNDS; i++ ) {
+		if ( !strcmp( CG_ConfigString( CS_SOUNDS + i ), noise ) ) {
+			break;
+		}
+	}
+	if ( i == MAX_SOUNDS ) {
+		CG_Error( "CG_ParseStaticEntity: sound %s not named by the game", noise );
+	}
+	out->sound = i;
+	out->range = radius;
+	out->wait = wait * 10;
+	out->random = random * 10;
+	out->loop = spawnflags & 1;
+	out->always = ( spawnflags & ( 4 | 32 ) ) != 0;
+	return qtrue;
+}
+
+/*
+==================
+CG_ParseStaticEntities
+
+The map's static coronas and speakers: counted, then read
+==================
+*/
+void CG_ParseStaticEntities( void ) {
+	char token[MAX_TOKEN_CHARS];
+	int pass;
+
+	cg_staticEnts = NULL;
+	for ( pass = 0; pass < 2; pass++ ) {
+		cg_numStaticEnts = 0;
+		while ( trap_GetEntityToken( token, sizeof( token ) ) ) {
+			if ( strcmp( token, "{" ) ) {
+				CG_Error( "CG_ParseStaticEntities: found %s when expecting {", token );
+			}
+			if ( CG_ParseStaticEntity( cg_staticEnts ? &cg_staticEnts[cg_numStaticEnts] : NULL ) ) {
+				cg_numStaticEnts++;
+			}
+		}
+		if ( !cg_numStaticEnts ) {
+			return;
+		}
+		if ( !pass ) {
+			cg_staticEnts = trap_Alloc( cg_numStaticEnts * sizeof( *cg_staticEnts ) );
+		}
+	}
+}
+
+/*
+==================
+CG_AddStaticEntities
+==================
+*/
+void CG_AddStaticEntities( void ) {
+	staticEnt_t *se;
+	int i, loops = 0;
+
+	for ( i = 0, se = cg_staticEnts; i < cg_numStaticEnts; i++, se++ ) {
+		if ( !se->always && !trap_R_inPVS( cg.refdef.vieworg, se->origin ) ) {
+			continue;
+		}
+		if ( !se->sound ) {
+			CG_AddCorona( se->origin, se->dli, se->density, MAX_GENTITIES + i );
+			continue;
+		}
+		if ( se->loop && loops < MAX_STATIC_LOOPS ) {
+			if ( se->range ) {
+				CG_S_AddRangedLoopingSound( MAX_GENTITIES + loops, se->origin, vec3_origin, cgs.gameSounds[se->sound], se->range );
+			} else {
+				CG_S_AddLoopingSound( MAX_GENTITIES + loops, se->origin, vec3_origin, cgs.gameSounds[se->sound], 255 );
+			}
+			loops++;
+		}
+		if ( se->random && cg.time >= se->nextTime ) {
+			trap_S_StartSound( se->origin, ENTITYNUM_WORLD, CHAN_AUTO, cgs.gameSounds[se->sound] );
+			se->nextTime = cg.time + se->wait * 100 + se->random * 100 * crandom();
+		}
+	}
 }
 
 /*

@@ -328,7 +328,7 @@ void WriteField1( saveField_t *field, byte *base ) {
 		} else {
 			index = *(gentity_t **)p - g_entities;
 		}
-		if ( index >= MAX_GENTITIES || index < -1 ) {
+		if ( index >= MAX_GENTITIES + level.numMarkers || index < -1 ) {
 			G_Error( "WriteField1: entity out of range (%i)", index );
 		}
 		*(int *)p = index;
@@ -429,7 +429,7 @@ void ReadField( fileHandle_t f, saveField_t *field, byte *base ) {
 		break;
 	case F_ENTITY:
 		index = *(int *)p;
-		if ( index >= MAX_GENTITIES || index < -1 ) {
+		if ( index >= MAX_GENTITIES + level.numMarkers || index < -1 ) {
 			G_Error( "ReadField: entity out of range (%i)", index );
 		}
 		if ( index == -1 ) {

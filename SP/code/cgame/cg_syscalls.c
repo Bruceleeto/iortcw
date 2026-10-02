@@ -538,3 +538,7 @@ qboolean trap_GetModelInfo( int clientNum, char *modelName, animModelInfo_t **mo
 void *trap_Alloc( int size ) {
 	return (void*)syscall( CG_ALLOC, size );
 }
+
+qboolean trap_R_inPVS( const vec3_t p1, const vec3_t p2 ) {
+	return syscall( CG_R_INPVS, p1, p2 );
+}

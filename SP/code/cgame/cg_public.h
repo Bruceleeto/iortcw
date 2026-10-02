@@ -219,7 +219,8 @@ typedef enum {
 	CG_GETMODELINFO,
 
 	// New in IORTCW
-	CG_ALLOC = 900
+	CG_ALLOC = 900,
+	CG_R_INPVS              // the server's PVS test, for things cgame shows with no entity
 
 } cgameImport_t;
 

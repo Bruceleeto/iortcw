@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <tuple>
 #include <unordered_map>
 
@@ -285,7 +286,17 @@ static bool CopyLump( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out
 	return true;
 }
 
-bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, WldStats &st, const char *name, float subdivisions ) {
+static bool Dropped( const char *shader, const std::vector<std::string> &drop ) {
+	for ( const std::string &d : drop ) {
+		if ( !strncasecmp( shader, d.c_str(), d.size() ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, WldStats &st, const char *name, float subdivisions,
+				 const std::vector<std::string> &drop ) {
 	int32_t ident, version;
 	if ( bsp.size() < 8 + BSP_LUMPS * sizeof( BspLump ) ) {
 		fprintf( stderr, "%s: not a bsp\n", name );
@@ -333,6 +344,10 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 		}
 		Piece &p = pieces[i];
 		p.hasPlane = false;
+		if ( Dropped( shaders[s.shaderNum].name, drop ) ) {
+			st.dropped++;
+			continue;
+		}
 		switch ( s.surfaceType ) {
 		case MST_PLANAR:
 		case MST_TRIANGLE_SOUP:

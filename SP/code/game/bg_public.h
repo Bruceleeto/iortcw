@@ -1748,5 +1748,7 @@ void QDECL BG_AnimParseError( const char *msg, ... ) __attribute__ ((format (pri
 void BG_UpdateConditionValueStrings( int client, char *conditionStr, char *valueStr );
 float BG_AnimGetFootstepGap( playerState_t *ps, float xyspeed );
 
+int BG_StaticEntity( const char *classname, const char *targetname, const char *scriptname, int spawnflags, const char *noise, float random );
+
 extern animStringItem_t animStateStr[];
 extern animStringItem_t animBodyPartsStr[];

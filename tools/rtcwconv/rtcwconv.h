@@ -121,11 +121,14 @@ struct WldStats {
 	size_t bytesIn, bytesOut;
 	long surfacesIn, surfacesOut, verts, triangles;
 	size_t gridIn, gridOut;
+	long dropped;                   /* surfaces left out by a map edit */
 };
 
 /* .bsp -> .wld: the surfaces ready to draw, curves cut at r_subdivisions
- * subdivisions. False (with a message) if it isn't a bsp. */
-bool ConvertWld(const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, WldStats &st, const char *name, float subdivisions);
+ * subdivisions, but for those whose shader begins with one of drop. False
+ * (with a message) if it isn't a bsp. */
+bool ConvertWld(const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, WldStats &st, const char *name, float subdivisions,
+				const std::vector<std::string> &drop);
 
 /* ---- bsp.cpp ---- */
 

@@ -4564,3 +4564,37 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 	s->teamNum = ps->teamNum;
 	s->aiState = ps->aiState;
 }
+
+/*
+================
+BG_StaticEntity
+
+A corona or target_speaker nothing can name (no targetname or scriptname) can
+never be switched, played or moved, so it needs no entity: the game leaves it
+out (G_SpawnGEntityFromSpawnVars) and cgame shows it itself
+(CG_ParseStaticEntities). Returns 0 for one the game spawns, 1 for one cgame
+shows, 2 for one nothing would ever show or play.
+================
+*/
+int BG_StaticEntity( const char *classname, const char *targetname, const char *scriptname, int spawnflags, const char *noise, float random ) {
+	if ( targetname[0] || scriptname[0] ) {
+		return 0;
+	}
+	if ( !Q_stricmp( classname, "corona" ) ) {
+		return ( spawnflags & 1 ) ? 2 : 1;          // START_OFF
+	}
+	if ( !Q_stricmp( classname, "target_speaker" ) ) {
+		if ( ( spawnflags & 16 ) || noise[0] == '*' ) {
+			return 0;                               // VIS_MULTIPLE, or played on the activator
+		}
+		if ( spawnflags & 1 ) {
+			return 1;                               // LOOPED_ON
+		}
+		if ( !( spawnflags & 2 ) && (int)( random * 10 ) ) {
+			return 1;                               // auto triggering, as CG_Speaker does it
+		}
+		return 2;
+	}
+	return 0;
+}
+

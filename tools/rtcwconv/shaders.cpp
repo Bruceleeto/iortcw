@@ -7,15 +7,17 @@
  * A shader is kept when its name is a word in the maps (entities and
  * shader lump), models, scripts, skins, menus and the like, or in the game's
  * own source; a source string with a % in it (a name made at run time, like
- * "gfx/2d/numbers/%s", or "textures/%s" with a map's key) keeps the shaders
+ * "gfx/2d/numbers/%s", "blood_dot%i", or "textures/%s" with a map's key) keeps the shaders
  * it begins whose rest is named somewhere too, or is short (a number); not
  * when it goes on to a path or a file (models/players/%s/head.md3 names no
- * shader).
+ * shader). One that begins with a %s ("%s_select", an item's icon with
+ * _select on) keeps the shaders it ends whose start is named somewhere too.
  *
  * Names are matched with \ as / (some, models\mapobjects\flag\flag1a, are
  * written so in the .shader and the model both), as the renderer finds them.
  */
 #include <algorithm>
+#include <ctype.h>
 #include <map>
 #include <set>
 #include <stdio.h>
@@ -30,7 +32,7 @@ struct Shader {
 };
 
 std::set<std::string> words;
-std::vector<std::string> prefixes;
+std::vector<std::string> prefixes, suffixes;
 std::map<std::string, std::vector<Shader>> files;   /* by file name, as the renderer lists them */
 
 bool WordChar( char c ) {
@@ -56,7 +58,14 @@ std::string Compress( const std::string &in ) {
 	};
 	while ( i < in.size() ) {
 		char c = in[i];
-		if ( c == '/' && i + 1 < in.size() && in[i + 1] == '/' ) {
+		if ( c == '/' && i + 1 < in.size() && in[i + 1] == '/' && i > 0 && isalnum( (unsigned char)in[i - 1] )
+			&& i + 2 < in.size() && isalpha( (unsigned char)in[i + 2] ) ) {
+			/* a // inside a path (terrain.shader's textures//rock/roc_m01aa.tga),
+			 * not a comment: as one / */
+			word();
+			out += c;
+			i += 2;
+		} else if ( c == '/' && i + 1 < in.size() && in[i + 1] == '/' ) {
 			while ( i < in.size() && in[i] != '\n' ) {
 				i++;
 			}
@@ -99,8 +108,10 @@ void ShaderNames( const uint8_t *data, size_t size ) {
 		if ( w.size() >= 4 ) {
 			size_t pct = w.find( '%' );
 			if ( pct != std::string::npos ) {
-				if ( pct >= 4 && w.find( '/' ) < pct && w.find_first_of( "/.", pct ) == std::string::npos ) {
+				if ( pct >= 4 && w.find_first_of( "/.", pct ) == std::string::npos ) {
 					prefixes.push_back( w.substr( 0, pct ) );
+				} else if ( !w.compare( 0, 2, "%s" ) && w.size() >= 6 && w.find_first_of( "%/.", 2 ) == std::string::npos ) {
+					suffixes.push_back( w.substr( 2 ) );
 				}
 			} else {
 				words.insert( w );
@@ -183,6 +194,11 @@ void WriteShaders( std::vector<uint8_t> &data, ShaderStats &st ) {
 					std::string rest = s.name.substr( pre.size() );
 					used = rest.size() < 4 || words.count( rest ) > 0;
 				}
+			}
+			for ( size_t p = 0; !used && p < suffixes.size(); p++ ) {
+				const std::string &suf = suffixes[p];
+				used = s.name.size() > suf.size() && !s.name.compare( s.name.size() - suf.size(), suf.size(), suf )
+					&& words.count( s.name.substr( 0, s.name.size() - suf.size() ) ) > 0;
 			}
 			if ( used ) {
 				st.kept++;
