@@ -304,6 +304,8 @@ int Export_BotLibLoadMap( const char *mapname ) {
 	//initialize the items in the level
 	BotInitLevelItems();        //be_ai_goal.h
 	BotSetBrushModelTypes();    //be_ai_move.h
+	// the map's entities are read only above
+	AAS_FreeBSPEntities();
 	//
 	botimport.Print( PRT_MESSAGE, "-------------------------------------\n" );
 #ifdef DEBUG

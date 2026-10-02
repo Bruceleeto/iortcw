@@ -427,7 +427,7 @@ void CMod_LoadBrushSides( bspLump_t *l ) {
 	cbrushside_t    *out;
 	dbrushside_t    *in;
 	int count;
-	int num;
+	int num, shaderNum;
 
 	in = l->data;
 	if ( l->len % sizeof( *in ) ) {
@@ -443,11 +443,11 @@ void CMod_LoadBrushSides( bspLump_t *l ) {
 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
 		num = LittleLong( in->planeNum );
 		out->plane = &cm.planes[num];
-		out->shaderNum = LittleLong( in->shaderNum );
-		if ( out->shaderNum < 0 || out->shaderNum >= cm.numShaders ) {
-			Com_Error( ERR_DROP, "CMod_LoadBrushSides: bad shaderNum: %i", out->shaderNum );
+		shaderNum = LittleLong( in->shaderNum );
+		if ( shaderNum < 0 || shaderNum >= cm.numShaders ) {
+			Com_Error( ERR_DROP, "CMod_LoadBrushSides: bad shaderNum: %i", shaderNum );
 		}
-		out->surfaceFlags = cm.shaders[out->shaderNum].surfaceFlags;
+		out->surfaceFlags = cm.shaders[shaderNum].surfaceFlags;
 	}
 }
 
@@ -455,12 +455,29 @@ void CMod_LoadBrushSides( bspLump_t *l ) {
 /*
 =================
 CMod_LoadEntityString
+
+Read only while a level loads, so freed after (CM_FreeEntityString) and read
+again from the file if wanted again (CM_EntityString)
 =================
 */
-void CMod_LoadEntityString( fileHandle_t f, const lump_t *l ) {
-	cm.entityString = Hunk_Alloc( l->filelen + 1, h_high );
+void CMod_LoadEntityString( fileHandle_t f, const char *fileName, const lump_t *l ) {
+	Q_strncpyz( cm.entityFile, fileName, sizeof( cm.entityFile ) );
+	cm.entityLump = *l;
+	cm.entityString = Z_Malloc( l->filelen + 1 );
 	cm.numEntityChars = l->filelen;
 	CM_ReadLumpInto( f, l, cm.entityString );
+}
+
+/*
+=================
+CM_FreeEntityString
+=================
+*/
+void CM_FreeEntityString( void ) {
+	if ( cm.entityString ) {
+		Z_Free( cm.entityString );
+		cm.entityString = NULL;
+	}
 }
 
 /*
@@ -488,6 +505,48 @@ void CMod_LoadVisibility( fileHandle_t f, const lump_t *l ) {
 	cm.clusterBytes = LittleLong( header[1] );
 	cm.visibility = Hunk_Alloc( len - VIS_HEADER, h_high );
 	FS_Read( cm.visibility, len - VIS_HEADER, f );
+}
+
+/*
+=================
+CMod_LoadColVisibility
+
+A .col's, compressed (colfile.h)
+=================
+*/
+static void CMod_LoadColVisibility( fileHandle_t f, const lump_t *l ) {
+	int header[2], i;
+
+	if ( !l->filelen ) {
+		CMod_LoadVisibility( f, l );
+		return;
+	}
+	FS_Seek( f, l->fileofs, FS_SEEK_SET );
+	if ( l->filelen < sizeof( header ) || FS_Read( header, sizeof( header ), f ) != sizeof( header ) ) {
+		Com_Error( ERR_DROP, "CMod_LoadColVisibility: bad vis" );
+	}
+	cm.numClusters = LittleLong( header[0] );
+	cm.clusterBytes = LittleLong( header[1] );
+	if ( cm.numClusters <= 0 || cm.clusterBytes <= 0 || cm.clusterBytes * 8 < cm.numClusters ||
+		 l->filelen < sizeof( header ) + cm.numClusters * 4 ) {
+		Com_Error( ERR_DROP, "CMod_LoadColVisibility: bad vis" );
+	}
+	cm.vised = qtrue;
+	cm.visOffsets = Hunk_Alloc( cm.numClusters * 4, h_high );
+	FS_Read( cm.visOffsets, cm.numClusters * 4, f );
+	cm.visLen = l->filelen - sizeof( header ) - cm.numClusters * 4;
+	cm.visibility = Hunk_Alloc( cm.visLen, h_high );
+	FS_Read( cm.visibility, cm.visLen, f );
+	for ( i = 0 ; i < cm.numClusters ; i++ ) {
+		cm.visOffsets[i] = LittleLong( cm.visOffsets[i] );
+		if ( cm.visOffsets[i] < 0 || cm.visOffsets[i] >= cm.visLen ) {
+			Com_Error( ERR_DROP, "CMod_LoadColVisibility: bad vis" );
+		}
+	}
+	cm.pvsRows = Hunk_Alloc( PVS_ROWS * cm.clusterBytes, h_high );
+	for ( i = 0 ; i < PVS_ROWS ; i++ ) {
+		cm.pvsRowCluster[i] = -1;
+	}
 }
 
 //==================================================================
@@ -768,8 +827,8 @@ static qboolean CM_LoadCol( const char *name ) {
 	CMod_LoadColLump( f, &header, COL_LUMP_BRUSHES, CMod_LoadBrushes );
 	CMod_LoadColLump( f, &header, COL_LUMP_MODELS, CMod_LoadSubmodels );
 	CMod_LoadColLump( f, &header, COL_LUMP_NODES, CMod_LoadNodes );
-	CMod_LoadEntityString( f, (const lump_t *)&header.lumps[COL_LUMP_ENTITIES] );
-	CMod_LoadVisibility( f, (const lump_t *)&header.lumps[COL_LUMP_VISIBILITY] );
+	CMod_LoadEntityString( f, colName, (const lump_t *)&header.lumps[COL_LUMP_ENTITIES] );
+	CMod_LoadColVisibility( f, (const lump_t *)&header.lumps[COL_LUMP_VISIBILITY] );
 
 	CM_ReadLump( f, (const lump_t *)&header.lumps[COL_LUMP_PATCHES], &patches );
 	CMod_LoadColPatches( &patches );
@@ -829,6 +888,7 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	}
 
 	// free old stuff
+	CM_FreeEntityString();
 	Com_Memset( &cm, 0, sizeof( cm ) );
 	CM_ClearLevelPatches();
 
@@ -859,7 +919,7 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	CMod_LoadLump( f, &header, LUMP_BRUSHES, CMod_LoadBrushes );
 	CMod_LoadLump( f, &header, LUMP_MODELS, CMod_LoadSubmodels );
 	CMod_LoadLump( f, &header, LUMP_NODES, CMod_LoadNodes );
-	CMod_LoadEntityString( f, &header.lumps[LUMP_ENTITIES] );
+	CMod_LoadEntityString( f, name, &header.lumps[LUMP_ENTITIES] );
 	CMod_LoadVisibility( f, &header.lumps[LUMP_VISIBILITY] );
 
 	CM_ReadLump( f, &header.lumps[LUMP_DRAWVERTS], &verts );
@@ -887,6 +947,7 @@ CM_ClearMap
 ==================
 */
 void CM_ClearMap( void ) {
+	CM_FreeEntityString();
 	Com_Memset( &cm, 0, sizeof( cm ) );
 	CM_ClearLevelPatches();
 }
@@ -937,6 +998,17 @@ int     CM_NumInlineModels( void ) {
 }
 
 char    *CM_EntityString( void ) {
+	fileHandle_t f;
+
+	if ( !cm.entityString && cm.entityFile[0] ) {
+		// freed once the level loaded: from the file again
+		if ( FS_FOpenFileRead( cm.entityFile, &f, qtrue ) <= 0 || !f ) {
+			Com_Error( ERR_DROP, "CM_EntityString: can't open %s", cm.entityFile );
+		}
+		cm.entityString = Z_Malloc( cm.entityLump.filelen + 1 );
+		CM_ReadLumpInto( f, &cm.entityLump, cm.entityString );
+		FS_FCloseFile( f );
+	}
 	return cm.entityString;
 }
 
@@ -1075,11 +1147,11 @@ cplane_t *CM_WorldPlanes( int *numPlanes ) {
 ==================
 CM_WorldVis
 
-The renderer's vis too: NULL if the map has none
+The renderer's vis too (CM_ClusterPVS): qfalse if the map has none
 ==================
 */
-byte *CM_WorldVis( int *numClusters, int *clusterBytes ) {
+qboolean CM_WorldVis( int *numClusters, int *clusterBytes ) {
 	*numClusters = cm.numClusters;
 	*clusterBytes = cm.clusterBytes;
-	return cm.vised ? cm.visibility : NULL;
+	return cm.vised;
 }

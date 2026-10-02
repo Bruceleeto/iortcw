@@ -322,11 +322,50 @@ PVS
 */
 
 byte    *CM_ClusterPVS( int cluster ) {
+	const byte *in, *end;
+	byte *row, *out, *outEnd;
+	int i, run;
+
 	if ( cluster < 0 || cluster >= cm.numClusters || !cm.vised ) {
-		return cm.visibility;
+		if ( !cm.visOffsets ) {
+			return cm.visibility;
+		}
+		cluster = 0;    // as the first row, as when not compressed
+	}
+	if ( !cm.visOffsets ) {
+		return cm.visibility + cluster * cm.clusterBytes;
 	}
 
-	return cm.visibility + cluster * cm.clusterBytes;
+	// compressed (colfile.h): unpacked, kept a while
+	for ( i = 0 ; i < PVS_ROWS ; i++ ) {
+		if ( cm.pvsRowCluster[i] == cluster ) {
+			return cm.pvsRows + i * cm.clusterBytes;
+		}
+	}
+	i = cm.pvsNextRow;
+	cm.pvsNextRow = ( i + 1 ) % PVS_ROWS;
+	cm.pvsRowCluster[i] = cluster;
+	row = out = cm.pvsRows + i * cm.clusterBytes;
+	outEnd = row + cm.clusterBytes;
+	in = cm.visibility + cm.visOffsets[cluster];
+	end = cm.visibility + cm.visLen;
+	while ( out < outEnd && in < end ) {
+		if ( *in ) {
+			*out++ = *in++;
+			continue;
+		}
+		run = in + 1 < end ? in[1] : 0;
+		in += 2;
+		if ( run > outEnd - out ) {
+			run = outEnd - out;
+		}
+		Com_Memset( out, 0, run );
+		out += run;
+	}
+	if ( out < outEnd ) {
+		Com_Memset( out, 0, outEnd - out );
+	}
+	return row;
 }
 
 

@@ -1253,6 +1253,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// initialize all entities for this game, the AI markers after the rest
 	g_entities = G_Alloc( ( MAX_GENTITIES + G_CountMarkers() ) * sizeof( g_entities[0] ) );
+	g_camEnt = NULL;    // was in the last map's g_entities
 	memset( g_entities, 0, MAX_GENTITIES * sizeof( g_entities[0] ) );
 	level.gentities = g_entities;
 

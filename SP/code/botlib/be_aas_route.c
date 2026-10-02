@@ -1266,8 +1266,8 @@ void AAS_InitRouting( void ) {
 	routingcachesize = 0;
 #if defined( _arch_dreamcast ) || defined( DCSIM )
 	// a cache (least recently used goes): on the Dreamcast 4MB is more than
-	// there is to spare
-	max_routingcachesize = 1024 * (int) LibVarValue( "max_routingcache", "1024" );
+	// there is to spare: 384K, the rest remade when wanted
+	max_routingcachesize = 1024 * (int) LibVarValue( "max_routingcache", "384" );
 #else
 	max_routingcachesize = 1024 * (int) LibVarValue( "max_routingcache", "4096" );
 #endif

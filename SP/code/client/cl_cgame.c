@@ -965,6 +965,9 @@ void CL_InitCGame( void ) {
 	// otherwise server commands sent just before a gamestate are dropped
 	VM_Call( cgvm, CG_INIT, clc.serverMessageSequence, clc.lastExecutedServerCommand, clc.clientNum );
 
+	// the game, bots, renderer and cgame have all read the map's entities
+	CM_FreeEntityString();
+
 	// reset any CVAR_CHEAT cvars registered by cgame
 	if ( !cl_connectedToCheatServer )
 		Cvar_SetCheatState();

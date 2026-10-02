@@ -1,6 +1,7 @@
 /*
  * .bsp -> .col: the collision lumps as they are, plus the curve collision
- * made here instead of at load (see SP/code/qcommon/colfile.h).
+ * made here instead of at load, and the vis compressed (see
+ * SP/code/qcommon/colfile.h).
  */
 #include <stdio.h>
 #include <string.h>
@@ -18,6 +19,47 @@ static const int colFromBsp[COL_LUMP_PATCHES] = {
 
 static void PutInt( std::vector<uint8_t> &out, int32_t v ) {
 	out.insert( out.end(), (uint8_t *)&v, (uint8_t *)&v + 4 );
+}
+
+/* the .bsp's vis (int numClusters, clusterBytes, then a row of clusterBytes
+ * a cluster) with each row's runs of 0 bytes as a 0 and how many */
+static bool CompressVis( const uint8_t *in, size_t len, std::vector<uint8_t> &out ) {
+	int32_t numClusters, clusterBytes;
+	if ( !len ) {
+		out.clear();
+		return true;
+	}
+	if ( len < 8 ) {
+		return false;
+	}
+	memcpy( &numClusters, in, 4 );
+	memcpy( &clusterBytes, in + 4, 4 );
+	if ( numClusters < 0 || clusterBytes < 0 || 8 + (size_t)numClusters * clusterBytes > len ) {
+		return false;
+	}
+	std::vector<uint8_t> rows;
+	out.clear();
+	PutInt( out, numClusters );
+	PutInt( out, clusterBytes );
+	for ( int c = 0; c < numClusters; c++ ) {
+		const uint8_t *row = in + 8 + (size_t)c * clusterBytes;
+		PutInt( out, rows.size() );
+		for ( int i = 0; i < clusterBytes; ) {
+			if ( row[i] ) {
+				rows.push_back( row[i++] );
+				continue;
+			}
+			int run = 0;
+			while ( i < clusterBytes && !row[i] && run < 255 ) {
+				i++;
+				run++;
+			}
+			rows.push_back( 0 );
+			rows.push_back( run );
+		}
+	}
+	out.insert( out.end(), rows.begin(), rows.end() );
+	return true;
 }
 
 bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, ColStats &st, const char *name ) {
@@ -81,6 +123,16 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 	}
 	memcpy( patches.data() + 4, &numPatches, 4 );
 
+	std::vector<uint8_t> vis;
+	{
+		const BspLump &l = lumps[BSP_VISIBILITY];
+		if ( l.ofs < 0 || l.len < 0 || (size_t)l.ofs + l.len > bsp.size() ||
+			 !CompressVis( bsp.data() + l.ofs, l.len, vis ) ) {
+			fprintf( stderr, "%s: bad vis\n", name );
+			return false;
+		}
+	}
+
 	/* the header, then the lumps */
 	colHeader_t h = {};
 	h.ident = COL_IDENT;
@@ -92,6 +144,9 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 		if ( n == COL_LUMP_PATCHES ) {
 			p = patches.data();
 			len = patches.size();
+		} else if ( n == COL_LUMP_VISIBILITY ) {
+			p = vis.data();
+			len = vis.size();
 		} else {
 			const BspLump &l = lumps[colFromBsp[n]];
 			if ( l.ofs < 0 || l.len < 0 || (size_t)l.ofs + l.len > bsp.size() ) {

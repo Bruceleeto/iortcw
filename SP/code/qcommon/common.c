@@ -31,6 +31,9 @@ If you have questions concerning this license or the applicable additional terms
 #include "q_shared.h"
 #include "qcommon.h"
 #include <setjmp.h>
+#ifdef DCSIM
+#include <execinfo.h>
+#endif
 #ifndef _WIN32
 #include <netinet/in.h>
 #include <sys/stat.h> // umask
@@ -292,6 +295,20 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		Sys_Error("recursive error after: %s", com_errorMessage);
 
 	com_errorEntered = qtrue;
+
+#ifdef DCSIM
+	// who erred: addr2line -f -e iowolfsp.x86 on these
+	{
+		void *frames[16];
+		int i, n = backtrace( frames, 16 );
+
+		Com_Printf( "ERROR backtrace:" );
+		for ( i = 1; i < n; i++ ) {
+			Com_Printf( " %p", frames[i] );
+		}
+		Com_Printf( "\n" );
+	}
+#endif
 
 	Cvar_Set("com_errorCode", va("%i", code));
 

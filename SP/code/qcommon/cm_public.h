@@ -38,7 +38,7 @@ void        CM_ReadLump( fileHandle_t f, const lump_t *l, bspLump_t *out );
 void        CM_ReadLumpInto( fileHandle_t f, const lump_t *l, void *dest );
 void        CM_FreeLump( bspLump_t *l );
 cplane_t    *CM_WorldPlanes( int *numPlanes );
-byte        *CM_WorldVis( int *numClusters, int *clusterBytes );
+qboolean    CM_WorldVis( int *numClusters, int *clusterBytes );
 void        CM_ClearMap( void );
 
 clipHandle_t CM_InlineModel( int index );       // 0 = world, 1 + are bmodels
@@ -49,6 +49,7 @@ void        CM_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int         CM_NumClusters( void );
 int         CM_NumInlineModels( void );
 char        *CM_EntityString( void );
+void        CM_FreeEntityString( void );
 
 // returns an ORed contents mask
 int         CM_PointContents( const vec3_t p, clipHandle_t model );

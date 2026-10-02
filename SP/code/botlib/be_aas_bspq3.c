@@ -370,6 +370,7 @@ void AAS_FreeBSPEntities( void ) {
 */
 	if ( bspworld.ebuffer ) {
 		FreeMemory( bspworld.ebuffer );
+		bspworld.ebuffer = NULL;
 	}
 	bspworld.numentities = 0;
 } //end of the function AAS_FreeBSPEntities
@@ -440,7 +441,7 @@ void AAS_ParseBSPEntities( void ) {
 	} //end while
 	FreeScript( script );
 
-	buffer = (byte *)GetClearedHunkMemory( bufsize );
+	buffer = (byte *)GetClearedMemory( bufsize );     // not the hunk: freed once read (Export_BotLibLoadMap)
 	buftrav = buffer;
 	bspworld.ebuffer = buffer;
 

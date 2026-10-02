@@ -64,8 +64,7 @@ typedef struct cmodel_s {
 
 typedef struct {
 	cplane_t    *plane;
-	int surfaceFlags;
-	int shaderNum;
+	int surfaceFlags;           // its shader's
 } cbrushside_t;
 
 typedef struct {
@@ -90,6 +89,10 @@ typedef struct {
 	int floodnum;
 	int floodvalid;
 } cArea_t;
+
+// rows of a compressed vis kept unpacked: a caller's row stays good while
+// fewer than this others are asked for
+#define PVS_ROWS        8
 
 typedef struct {
 	char name[MAX_QPATH];
@@ -125,9 +128,16 @@ typedef struct {
 	int clusterBytes;
 	byte        *visibility;
 	qboolean vised;             // if false, visibility is just a single cluster of ffs
+	int         *visOffsets;    // a .col's: each row's in visibility, compressed (colfile.h)
+	int visLen;
+	byte        *pvsRows;       // the last PVS_ROWS rows unpacked (CM_ClusterPVS)
+	int pvsRowCluster[PVS_ROWS];
+	int pvsNextRow;
 
 	int numEntityChars;
-	char        *entityString;
+	char        *entityString;  // NULL once freed (CM_FreeEntityString)
+	char entityFile[MAX_QPATH];
+	lump_t entityLump;
 
 	int numAreas;
 	cArea_t     *areas;

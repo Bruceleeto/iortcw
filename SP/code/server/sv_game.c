@@ -423,11 +423,13 @@ intptr_t SV_GameSystemCalls( intptr_t *args ) {
 	{
 		const char  *s;
 
+		if ( !sv.entityParsePoint ) {
+			sv.entityParsePoint = CM_EntityString();    // from the start
+		}
 		s = COM_Parse( &sv.entityParsePoint );
 		Q_strncpyz( VMA( 1 ), s, args[2] );
 		if ( !sv.entityParsePoint && !s[0] ) {
-			sv.entityParsePoint = CM_EntityString();    // read again from the start
-			return qfalse;
+			return qfalse;      // and from the start again next time
 		} else {
 			return qtrue;
 		}
@@ -923,7 +925,7 @@ static void SV_InitGameVM( qboolean restart ) {
 	int i;
 
 	// start the entity parsing at the beginning
-	sv.entityParsePoint = CM_EntityString();
+	sv.entityParsePoint = NULL;     // from the start (G_GET_ENTITY_TOKEN)
 
 	// clear all gentity pointers that might still be set from
 	// a previous level

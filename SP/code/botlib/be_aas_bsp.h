@@ -35,6 +35,9 @@ If you have questions concerning this license or the applicable additional terms
  *
  *****************************************************************************/
 
+//frees the map's entities, once the bots have read them
+void AAS_FreeBSPEntities( void );
+
 #ifdef AASINTERN
 //loads the given BSP file
 int AAS_LoadBSPFile( void );

@@ -267,7 +267,7 @@ static void R_LoadVisibility( void ) {
 	memset( s_worldData.novis, 0xff, len );
 
 	// the collision map's: CM_LoadMap has always loaded this map first
-	s_worldData.vis = ri.CM_WorldVis( &s_worldData.numClusters, &s_worldData.clusterBytes );
+	s_worldData.vised = ri.CM_WorldVis( &s_worldData.numClusters, &s_worldData.clusterBytes );
 }
 
 //===============================================================================
@@ -1226,9 +1226,8 @@ void R_LoadEntities( void ) {
 	w->lightGridSize[2] = 128;
 
 	// the collision map's, also for the cgame
-	w->entityString = ri.CM_EntityString();
-	w->entityParsePoint = w->entityString;
-	p = w->entityString;
+	w->entityParsePoint = NULL;     // from the start (R_GetEntityToken)
+	p = ri.CM_EntityString();
 
 	token = COM_ParseExt( &p, qtrue );
 	if ( !*token || *token != '{' ) {
@@ -1295,11 +1294,13 @@ R_GetEntityToken
 qboolean R_GetEntityToken( char *buffer, int size ) {
 	const char  *s;
 
+	if ( !s_worldData.entityParsePoint ) {
+		s_worldData.entityParsePoint = ri.CM_EntityString();    // from the start
+	}
 	s = COM_Parse( &s_worldData.entityParsePoint );
 	Q_strncpyz( buffer, s, size );
 	if ( !s_worldData.entityParsePoint && !s[0] ) {
-		s_worldData.entityParsePoint = s_worldData.entityString;
-		return qfalse;
+		return qfalse;      // and from the start again next time
 	} else {
 		return qtrue;
 	}
