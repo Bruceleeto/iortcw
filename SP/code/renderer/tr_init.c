@@ -1311,6 +1311,9 @@ void R_Register( void ) {
 	// removed in R_Shutdown
 	ri.Cmd_AddCommand( "imagelist", R_ImageList_f );
 	ri.Cmd_AddCommand( "shaderlist", R_ShaderList_f );
+#ifndef _arch_dreamcast
+	ri.Cmd_AddCommand( "shadercheck", R_CheckedShaders_f );
+#endif
 	ri.Cmd_AddCommand( "skinlist", R_SkinList_f );
 	ri.Cmd_AddCommand( "modellist", R_Modellist_f );
 	ri.Cmd_AddCommand( "modelist", R_ModeList_f );
@@ -1442,6 +1445,9 @@ void RE_Shutdown( qboolean destroyWindow ) {
 
 	ri.Cmd_RemoveCommand( "imagelist" );
 	ri.Cmd_RemoveCommand( "shaderlist" );
+#ifndef _arch_dreamcast
+	ri.Cmd_RemoveCommand( "shadercheck" );
+#endif
 	ri.Cmd_RemoveCommand( "skinlist" );
 	ri.Cmd_RemoveCommand( "modellist" );
 	ri.Cmd_RemoveCommand( "modelist" );

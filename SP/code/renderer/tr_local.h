@@ -1488,6 +1488,7 @@ shader_t    *R_GetShaderByState( int index, long *cycleTime );
 shader_t *R_FindShaderByName( const char *name );
 void        R_InitShaders( void );
 void        R_ShaderList_f( void );
+void        R_CheckedShaders_f( void );
 void    R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );
 
 /*

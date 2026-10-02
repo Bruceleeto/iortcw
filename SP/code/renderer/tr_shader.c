@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 // tr_shader.c -- this file deals with the parsing and definition of shaders
 
 static char *s_shaderText;
+static char *shTextStart;       // FindShaderInShaderText's shader: where its name is
 
 // the shader is parsed into these global variables, then copied into
 // dynamically allocated memory if it is valid.
@@ -53,6 +54,167 @@ typedef struct shaderStringPointer_s
 //
 shaderStringPointer_t shaderChecksumLookup[FILE_HASH_SIZE];
 // done.
+
+/*
+Baked shaders (scripts/dc.shaderbin, R_BakeShaders): each shader as parsed,
+with what the parse did besides (the images it looked for, the fog, sun and
+such it set) in the order it did them, so a shader's made with no text kept
+or parsed. A bake is made by the sim from scripts/dc.shaders with the parse
+below, and checked against it (R_CheckBakedShaders, r_checkShaders)
+*/
+typedef enum {
+	SHEV_IMAGE,         // name, type, flags, characterMip: no image, the text's parsed after all
+	SHEV_SKYIMAGE,      // as SHEV_IMAGE, with no image the default image
+	SHEV_SUN,           // tr.sunLight, tr.sunDirection
+	SHEV_SKYFOG,        // R_SetFog( FOG_SKY, 0, 5, r, g, b, density )
+	SHEV_SUNSHADER,
+	SHEV_GRIDAMB,       // tr.lightGridMulAmbient
+	SHEV_GRIDDIR,       // tr.lightGridMulDirected
+	SHEV_WATERFOG,      // r_waterFogColor
+	SHEV_MAPFOG,        // r_mapFogColor
+	SHEV_COMPRESS,      // tr.allowCompress
+	SHEV_SKYCOORDS,     // R_InitSkyTexCoords( cloudHeight )
+	SHEV_END
+} shaderEvent_t;
+
+#define SH_MAX_IMAGES   64      // images a shader can look for: 8 stages of up to 16, and a sky's 12, is more than any does
+
+static image_t *shImages[SH_MAX_IMAGES];   // a baked shader's images, as it looks for them
+static int shNumImages;
+
+// a bake's names, each once; an image's without a .tga or .jpg, so it's
+// often its shader's
+static const char *shStrings;
+static const char *shExts[] = { "", ".tga", ".jpg" };
+#define SH_NUM_EXTS     3
+
+#ifndef _arch_dreamcast
+// baking: the images are stand-ins, the parse's events go in shBake
+static qboolean shFake;
+static qboolean shRecord;
+static image_t shFakeImages[SH_MAX_IMAGES];   // the n'th image looked for: shFakeImages[n]
+static int shNumFake;
+static image_t shFakeLightmap, *shFakeLightmaps[1] = { &shFakeLightmap };
+static byte *shBake;
+static int shBakeLen, shBakeMax;
+static qboolean shBakeFailed;
+
+static void ShaderBakeBytes( const void *data, int len ) {
+	if ( shBakeLen + len > shBakeMax ) {
+		shBakeMax = ( shBakeLen + len ) * 2 + 4096;
+		shBake = realloc( shBake, shBakeMax );
+	}
+	memcpy( shBake + shBakeLen, data, len );
+	shBakeLen += len;
+}
+
+static void ShaderBakeVarint( unsigned v ) {
+	byte b;
+
+	do {
+		b = v & 127;
+		v >>= 7;
+		if ( v ) {
+			b |= 128;
+		}
+		ShaderBakeBytes( &b, 1 );
+	} while ( v );
+}
+
+static void ShaderBakeFloat( float f ) {
+	unsigned u;
+	byte b[4];
+
+	memcpy( &u, &f, 4 );
+	b[0] = u; b[1] = u >> 8; b[2] = u >> 16; b[3] = u >> 24;
+	ShaderBakeBytes( b, 4 );
+}
+
+static void ShaderBakeString( const char *str ) {
+	ShaderBakeBytes( str, strlen( str ) + 1 );
+}
+
+static char *shBakeStrings;
+static int shBakeStringsLen, shBakeStringsMax;
+
+// str's offset in shBakeStrings
+static unsigned ShaderBakeStringRef( const char *str, int len ) {
+	int i, l;
+
+	for ( i = 0; i < shBakeStringsLen; i += l + 1 ) {
+		l = strlen( shBakeStrings + i );
+		if ( l == len && !memcmp( shBakeStrings + i, str, len ) ) {
+			return i;
+		}
+	}
+	if ( shBakeStringsLen + len + 1 > shBakeStringsMax ) {
+		shBakeStringsMax = ( shBakeStringsLen + len + 1 ) * 2 + 4096;
+		shBakeStrings = realloc( shBakeStrings, shBakeStringsMax );
+	}
+	memcpy( shBakeStrings + shBakeStringsLen, str, len );
+	shBakeStrings[shBakeStringsLen + len] = '\0';
+	shBakeStringsLen += len + 1;
+	shStrings = shBakeStrings;
+	return i;
+}
+
+// an image's name: its string, and extension
+static void ShaderBakeImageName( const char *name ) {
+	int len = strlen( name ), e;
+
+	for ( e = 1; e < SH_NUM_EXTS; e++ ) {
+		if ( len > 4 && !strcmp( name + len - 4, shExts[e] ) ) {
+			break;
+		}
+	}
+	if ( e == SH_NUM_EXTS ) {
+		e = 0;
+	}
+	ShaderBakeVarint( ShaderBakeStringRef( name, len - strlen( shExts[e] ) ) );
+	ShaderBakeVarint( e );
+}
+
+// a parse's event, with its floats and string
+static void ShaderEvent( shaderEvent_t ev, const float *f, int numFloats, const char *str ) {
+	int i;
+
+	if ( !shRecord ) {
+		return;
+	}
+	ShaderBakeVarint( ev );
+	for ( i = 0; i < numFloats; i++ ) {
+		ShaderBakeFloat( f[i] );
+	}
+	if ( str ) {
+		ShaderBakeString( str );
+	}
+}
+#else
+#define ShaderEvent( ev, f, numFloats, str ) ( (void)( f ) )
+#endif
+
+// the parse's R_FindImageFileExt
+static image_t *ShaderImage( const char *name, imgType_t type, imgFlags_t flags, qboolean characterMip, qboolean sky ) {
+#ifndef _arch_dreamcast
+	if ( shFake ) {
+		image_t *image;
+
+		if ( shNumFake >= SH_MAX_IMAGES ) {
+			shBakeFailed = qtrue;
+			return NULL;
+		}
+		if ( shRecord ) {
+			ShaderBakeVarint( sky ? SHEV_SKYIMAGE : SHEV_IMAGE );
+			ShaderBakeImageName( name );
+			ShaderBakeVarint( ( flags << 3 ) | ( type << 1 ) | !!characterMip );
+		}
+		image = &shFakeImages[shNumFake++];
+		Q_strncpyz( image->imgName, name, sizeof( image->imgName ) );
+		return image;
+	}
+#endif
+	return R_FindImageFileExt( name, type, flags, characterMip );
+}
 
 /*
 ================
@@ -634,7 +796,7 @@ static qboolean ParseStage( shaderStage_t *stage, char **text ) {
 				if (!shader.noPicMip)
 					flags |= IMGFLAG_PICMIP;
 
-				stage->bundle[0].image[0] = R_FindImageFileExt( token, type, flags, shader.characterMip );
+				stage->bundle[0].image[0] = ShaderImage( token, type, flags, shader.characterMip, qfalse );
 				if ( !stage->bundle[0].image[0] ) {
 					ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFileExt could not find '%s' in shader '%s'\n", token, shader.name );
 					return qfalse;
@@ -660,7 +822,7 @@ static qboolean ParseStage( shaderStage_t *stage, char **text ) {
 			if (!shader.noPicMip)
 				flags |= IMGFLAG_PICMIP;
 
-			stage->bundle[0].image[0] = R_FindImageFileExt( token, type, flags, shader.characterMip );
+			stage->bundle[0].image[0] = ShaderImage( token, type, flags, shader.characterMip, qfalse );
 			if ( !stage->bundle[0].image[0] ) {
 				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFileExt could not find '%s' in shader '%s'\n", token, shader.name );
 				return qfalse;
@@ -697,7 +859,7 @@ static qboolean ParseStage( shaderStage_t *stage, char **text ) {
 					if (!shader.noPicMip)
 						flags |= IMGFLAG_PICMIP;
 
-					stage->bundle[0].image[num] = R_FindImageFileExt( token, IMGTYPE_COLORALPHA, flags, shader.characterMip );
+					stage->bundle[0].image[num] = ShaderImage( token, IMGTYPE_COLORALPHA, flags, shader.characterMip, qfalse );
 					if ( !stage->bundle[0].image[num] ) {
 						ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFileExt could not find '%s' in shader '%s'\n", token, shader.name );
 						return qfalse;
@@ -1206,7 +1368,7 @@ static void ParseSkyParms( char **text ) {
 		for ( i = 0 ; i < 6 ; i++ ) {
 			Com_sprintf( pathname, sizeof( pathname ), "%s_%s.tga"
 						 , token, suf[i] );
-			shader.sky.outerbox[i] = R_FindImageFile( ( char * ) pathname, IMGTYPE_COLORALPHA, imgFlags | IMGFLAG_CLAMPTOEDGE );
+			shader.sky.outerbox[i] = ShaderImage( pathname, IMGTYPE_COLORALPHA, imgFlags | IMGFLAG_CLAMPTOEDGE, qfalse, qtrue );
 			if ( !shader.sky.outerbox[i] ) {
 				shader.sky.outerbox[i] = tr.defaultImage;
 			}
@@ -1224,6 +1386,7 @@ static void ParseSkyParms( char **text ) {
 		shader.sky.cloudHeight = 512;
 	}
 	R_InitSkyTexCoords( shader.sky.cloudHeight );
+	ShaderEvent( SHEV_SKYCOORDS, &shader.sky.cloudHeight, 1, NULL );
 
 
 	// innerbox
@@ -1236,7 +1399,7 @@ static void ParseSkyParms( char **text ) {
 		for ( i = 0 ; i < 6 ; i++ ) {
 			Com_sprintf( pathname, sizeof( pathname ), "%s_%s.tga"
 						 , token, suf[i] );
-			shader.sky.innerbox[i] = R_FindImageFile( ( char * ) pathname, IMGTYPE_COLORALPHA, imgFlags );
+			shader.sky.innerbox[i] = ShaderImage( pathname, IMGTYPE_COLORALPHA, imgFlags, qfalse, qtrue );
 			if ( !shader.sky.innerbox[i] ) {
 				shader.sky.innerbox[i] = tr.defaultImage;
 			}
@@ -1481,6 +1644,10 @@ static qboolean ParseShader( char **text ) {
 			tr.sunDirection[0] = cos( a ) * cos( b );
 			tr.sunDirection[1] = sin( a ) * cos( b );
 			tr.sunDirection[2] = sin( b );
+			{
+				float sun[6] = { tr.sunLight[0], tr.sunLight[1], tr.sunLight[2], tr.sunDirection[0], tr.sunDirection[1], tr.sunDirection[2] };
+				ShaderEvent( SHEV_SUN, sun, 6, NULL );
+			}
 
 			SkipRestOfLine( text );
 			continue;
@@ -1602,6 +1769,10 @@ static qboolean ParseShader( char **text ) {
 			}
 
 			R_SetFog( FOG_SKY, 0, 5, fogColor[0], fogColor[1], fogColor[2], atof( token ) );
+			{
+				float fog[4] = { fogColor[0], fogColor[1], fogColor[2], atof( token ) };
+				ShaderEvent( SHEV_SKYFOG, fog, 4, NULL );
+			}
 			continue;
 		} else if ( !Q_stricmp( token, "sunshader" ) )        {
 			token = COM_ParseExt( text, qfalse );
@@ -1611,6 +1782,7 @@ static qboolean ParseShader( char **text ) {
 			}
 //			tr.sunShaderName = CopyString( token );
 			tr.sunShaderName = "sun";
+			ShaderEvent( SHEV_SUNSHADER, NULL, 0, NULL );
 		}
 //----(SA)	added
 		else if ( !Q_stricmp( token, "lightgridmulamb" ) ) { // ambient multiplier for lightgrid
@@ -1621,6 +1793,7 @@ static qboolean ParseShader( char **text ) {
 			}
 			if ( atof( token ) > 0 ) {
 				tr.lightGridMulAmbient = atof( token );
+				ShaderEvent( SHEV_GRIDAMB, &tr.lightGridMulAmbient, 1, NULL );
 			}
 		} else if ( !Q_stricmp( token, "lightgridmuldir" ) )        { // directional multiplier for lightgrid
 			token = COM_ParseExt( text, qfalse );
@@ -1630,6 +1803,7 @@ static qboolean ParseShader( char **text ) {
 			}
 			if ( atof( token ) > 0 ) {
 				tr.lightGridMulDirected = atof( token );
+				ShaderEvent( SHEV_GRIDDIR, &tr.lightGridMulDirected, 1, NULL );
 			}
 		}
 //----(SA)	end
@@ -1670,6 +1844,7 @@ static qboolean ParseShader( char **text ) {
 //		r,g,b
 //		time to complete
 			ri.Cvar_Set( "r_waterFogColor", fogString );
+			ShaderEvent( SHEV_WATERFOG, NULL, 0, fogString );
 
 			continue;
 		}
@@ -1702,6 +1877,7 @@ static qboolean ParseShader( char **text ) {
 
 //			R_SetFog(FOG_MAP, 0, fogFar, fogColor[0], fogColor[1], fogColor[2], fogDensity);
 			ri.Cvar_Set( "r_mapFogColor", va( "0 %d %f %f %f %f 0", fogFar, fogDensity, fogColor[0], fogColor[1], fogColor[2] ) );
+			ShaderEvent( SHEV_MAPFOG, NULL, 0, va( "0 %d %f %f %f %f 0", fogFar, fogDensity, fogColor[0], fogColor[1], fogColor[2] ) );
 //			R_SetFog(FOG_CMD_SWITCHFOG, FOG_MAP, 50, 0, 0, 0, 0);
 
 			continue;
@@ -1716,9 +1892,17 @@ static qboolean ParseShader( char **text ) {
 		// RF, allow each shader to permit compression if available
 		else if ( !Q_stricmp( token, "allowcompress" ) ) {
 			tr.allowCompress = qtrue;
+			{
+				float c = 1;
+				ShaderEvent( SHEV_COMPRESS, &c, 1, NULL );
+			}
 			continue;
 		} else if ( !Q_stricmp( token, "nocompress" ) )   {
 			tr.allowCompress = -1;
+			{
+				float c = -1;
+				ShaderEvent( SHEV_COMPRESS, &c, 1, NULL );
+			}
 			continue;
 		}
 		// done.
@@ -2262,6 +2446,7 @@ static void InitShader( const char *name, int lightmapIndex ) {
 	// clear the global shader
 	Com_Memset( &shader, 0, sizeof( shader ) );
 	Com_Memset( &stages, 0, sizeof( stages ) );
+	Com_Memset( &texMods, 0, sizeof( texMods ) );   // not what the last shader left in what its tcMods didn't set
 
 	Q_strncpyz( shader.name, name, sizeof( shader.name ) );
 	shader.lightmapIndex = lightmapIndex;
@@ -2500,6 +2685,7 @@ static char *FindShaderInShaderText( const char *shadername ) {
 			token = COM_ParseExt( &p, qtrue );
 
 			if ( ( token[0] != 0 ) && !Q_stricmp( token, shadername ) ) {
+				shTextStart = pShaderString->pStr;
 				return p;
 			}
 
@@ -2532,6 +2718,863 @@ static char *FindShaderInShaderText( const char *shadername ) {
 
 	return NULL;
 }
+
+/*
+========================================================================================
+
+BAKED SHADERS
+
+========================================================================================
+*/
+
+#define SHBIN_IDENT     ( ( 'N' << 24 ) + ( 'B' << 16 ) + ( 'H' << 8 ) + 'S' )
+#define SHBIN_VERSION   1
+#define SHBIN_TEXT      0xffffffffu     // a shader that's parsed from its text: no bake of it
+
+// what the parse depends on besides its text: a bake's for these only
+typedef struct {
+	int ident, version;
+	int colorBits, textureCompression, compressedTextures;
+	float greyscale;
+	int shaderTextLen;      // scripts/dc.shaders' it's from
+	int numShaders;
+	int strings;            // the names' offset; a name's is from there
+} shBinHeader_t;
+
+// sorted by name (Q_stricmp)
+typedef struct {
+	unsigned name;                  // in the names; the rest the file's offsets
+	unsigned record, recordLen;     // SHBIN_TEXT: none
+	unsigned text, textLen;         // in scripts/dc.shaders: its name, to the end of its braces
+} shBinShader_t;
+
+static byte *shBin;                 // the bake, else NULL
+static const shBinShader_t *shBinShaders;
+static int shBinNumShaders;
+
+// the parse's results, a field at a time: all of shader, stages and texMods
+// but what InitShader sets (name, lightmapIndex, the texMods pointers) and
+// FinishShader (index, sortedIndex, stages, optimalStageIteratorFunc,
+// remappedShader, next). Written as runs of zero fields and the values
+// between
+typedef enum { SF_KINT, SF_KFLOAT, SF_KDOUBLE, SF_KBYTE, SF_KIMAGE } shFieldKind_t;
+
+typedef struct {
+	qboolean write;
+	const byte *in, *end;
+	int zeros;          // writing: zero fields not yet written; reading: zero fields to come, -1: a count's next
+	qboolean bad;
+} shFields_t;
+
+static unsigned ShaderReadVarint( shFields_t *f ) {
+	unsigned v = 0;
+	int shift = 0;
+	byte b;
+
+	do {
+		if ( f->in >= f->end || shift > 28 ) {
+			f->bad = qtrue;
+			return 0;
+		}
+		b = *f->in++;
+		v |= ( b & 127 ) << shift;
+		shift += 7;
+	} while ( b & 128 );
+	return v;
+}
+
+static void ShaderReadBytes( shFields_t *f, void *out, int len ) {
+	if ( f->end - f->in < len ) {
+		f->bad = qtrue;
+		memset( out, 0, len );
+		return;
+	}
+	memcpy( out, f->in, len );
+	f->in += len;
+}
+
+static float ShaderReadFloat( shFields_t *f ) {
+	byte b[4];
+	unsigned u;
+	float v;
+
+	ShaderReadBytes( f, b, 4 );
+	u = b[0] | ( b[1] << 8 ) | ( b[2] << 16 ) | ( (unsigned)b[3] << 24 );
+	memcpy( &v, &u, 4 );
+	return v;
+}
+
+static const char *ShaderReadString( shFields_t *f ) {
+	const char *str = (const char *)f->in;
+
+	while ( f->in < f->end && *f->in ) {
+		f->in++;
+	}
+	if ( f->in >= f->end ) {
+		f->bad = qtrue;
+		return "";
+	}
+	f->in++;
+	return str;
+}
+
+// an image field: 0 none, 1 white, 2 dlight, 3 the default, 4 the lightmap
+// (as for $lightmap), 5 + n the n'th image the shader looked for
+static image_t *ShaderImageForCode( shFields_t *f, unsigned code ) {
+	switch ( code ) {
+	case 0: return NULL;
+	case 1: return tr.whiteImage;
+	case 2: return tr.dlightImage;
+	case 3: return tr.defaultImage;
+	case 4: return ( shader.lightmapIndex < 0 || !tr.lightmaps ) ? tr.whiteImage : tr.lightmaps[shader.lightmapIndex];
+	}
+	if ( code - 5 >= (unsigned)shNumImages ) {
+		f->bad = qtrue;
+		return NULL;
+	}
+	return shImages[code - 5];
+}
+
+static void ShaderField( shFields_t *f, shFieldKind_t kind, void *p ) {
+	static const int sizes[] = { 4, 4, sizeof( double ), 1, sizeof( image_t * ) };
+
+#ifndef _arch_dreamcast
+	if ( f->write ) {
+		static const byte zero[8];
+		unsigned code;
+		int i;
+
+		if ( !memcmp( p, zero, sizes[kind] ) ) {
+			f->zeros++;
+			return;
+		}
+		ShaderBakeVarint( f->zeros );
+		f->zeros = 0;
+		switch ( kind ) {
+		case SF_KINT:
+			i = *(int *)p;
+			ShaderBakeVarint( ( (unsigned)i << 1 ) ^ ( i >> 31 ) );
+			break;
+		case SF_KFLOAT:
+			ShaderBakeFloat( *(float *)p );
+			break;
+		case SF_KDOUBLE:
+			ShaderBakeFloat( *(double *)p );    // (a float on the Dreamcast)
+			break;
+		case SF_KBYTE:
+			ShaderBakeVarint( *(byte *)p );
+			break;
+		case SF_KIMAGE:
+			code = 0;
+			if ( *(image_t **)p == tr.whiteImage ) {
+				code = 1;
+			} else if ( *(image_t **)p == tr.dlightImage ) {
+				code = 2;
+			} else if ( *(image_t **)p == tr.defaultImage ) {
+				code = 3;
+			} else if ( *(image_t **)p == &shFakeLightmap ) {
+				code = 4;
+			} else if ( *(image_t **)p >= shFakeImages && *(image_t **)p < shFakeImages + shNumFake ) {
+				code = 5 + ( *(image_t **)p - shFakeImages );
+			} else {
+				shBakeFailed = qtrue;   // (a video's)
+			}
+			ShaderBakeVarint( code );
+			break;
+		}
+		return;
+	}
+#endif
+	if ( f->zeros < 0 ) {
+		f->zeros = ShaderReadVarint( f );
+	}
+	if ( f->zeros > 0 ) {
+		memset( p, 0, sizes[kind] );
+		f->zeros--;
+		return;
+	}
+	f->zeros = -1;
+	switch ( kind ) {
+	case SF_KINT:
+		{
+			unsigned u = ShaderReadVarint( f );
+			*(int *)p = (int)( u >> 1 ) ^ -(int)( u & 1 );
+		}
+		break;
+	case SF_KFLOAT:
+		*(float *)p = ShaderReadFloat( f );
+		break;
+	case SF_KDOUBLE:
+		*(double *)p = ShaderReadFloat( f );
+		break;
+	case SF_KBYTE:
+		*(byte *)p = ShaderReadVarint( f );
+		break;
+	case SF_KIMAGE:
+		*(image_t **)p = ShaderImageForCode( f, ShaderReadVarint( f ) );
+		break;
+	}
+}
+
+#define SF_INT( x )     ShaderField( f, SF_KINT, (void *)&( x ) )
+#define SF_FLOAT( x )   ShaderField( f, SF_KFLOAT, &( x ) )
+#define SF_DOUBLE( x )  ShaderField( f, SF_KDOUBLE, &( x ) )
+#define SF_BYTE( x )    ShaderField( f, SF_KBYTE, &( x ) )
+#define SF_IMAGE( x )   ShaderField( f, SF_KIMAGE, &( x ) )
+
+static void ShaderWaveFields( shFields_t *f, waveForm_t *w ) {
+	SF_INT( w->func );
+	SF_FLOAT( w->base );
+	SF_FLOAT( w->amplitude );
+	SF_FLOAT( w->phase );
+	SF_FLOAT( w->frequency );
+}
+
+static void ShaderFields( shFields_t *f ) {
+	int i, j, k;
+
+	SF_FLOAT( shader.sort );
+	SF_INT( shader.defaultShader );
+	SF_INT( shader.explicitlyDefined );
+	SF_INT( shader.surfaceFlags );
+	SF_INT( shader.contentFlags );
+	SF_INT( shader.entityMergable );
+	SF_INT( shader.isSky );
+	SF_FLOAT( shader.sky.cloudHeight );
+	for ( i = 0; i < 6; i++ ) {
+		SF_IMAGE( shader.sky.outerbox[i] );
+		SF_IMAGE( shader.sky.innerbox[i] );
+	}
+	for ( i = 0; i < 3; i++ ) {
+		SF_FLOAT( shader.fogParms.color[i] );
+	}
+	SF_FLOAT( shader.fogParms.depthForOpaque );
+	SF_FLOAT( shader.portalRange );
+	SF_INT( shader.multitextureEnv );
+	SF_INT( shader.cullType );
+	SF_INT( shader.polygonOffset );
+	SF_INT( shader.noMipMaps );
+	SF_INT( shader.noPicMip );
+	SF_INT( shader.characterMip );
+	SF_INT( shader.fogPass );
+	SF_INT( shader.needsNormal );
+	SF_INT( shader.needsST1 );
+	SF_INT( shader.needsST2 );
+	SF_INT( shader.needsColor );
+	SF_INT( shader.noFog );
+	SF_INT( shader.numDeforms );
+	for ( i = 0; i < MAX_SHADER_DEFORMS; i++ ) {
+		deformStage_t *d = &shader.deforms[i];
+
+		SF_INT( d->deformation );
+		for ( j = 0; j < 3; j++ ) {
+			SF_FLOAT( d->moveVector[j] );
+		}
+		ShaderWaveFields( f, &d->deformationWave );
+		SF_FLOAT( d->deformationSpread );
+		SF_FLOAT( d->bulgeWidth );
+		SF_FLOAT( d->bulgeHeight );
+		SF_FLOAT( d->bulgeSpeed );
+	}
+	SF_INT( shader.numUnfoggedPasses );
+	SF_DOUBLE( shader.clampTime );
+	SF_DOUBLE( shader.timeOffset );
+
+	for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
+		shaderStage_t *st = &stages[i];
+
+		SF_INT( st->active );
+		for ( j = 0; j < NUM_TEXTURE_BUNDLES; j++ ) {
+			textureBundle_t *b = &st->bundle[j];
+
+			for ( k = 0; k < MAX_IMAGE_ANIMATIONS; k++ ) {
+				SF_IMAGE( b->image[k] );
+			}
+			SF_INT( b->numImageAnimations );
+			SF_FLOAT( b->imageAnimationSpeed );
+			SF_INT( b->tcGen );
+			for ( k = 0; k < 6; k++ ) {
+				SF_FLOAT( b->tcGenVectors[k / 3][k % 3] );
+			}
+			SF_INT( b->numTexMods );
+			SF_INT( b->videoMapHandle );
+			SF_INT( b->isLightmap );
+			SF_INT( b->isVideoMap );
+		}
+		ShaderWaveFields( f, &st->rgbWave );
+		SF_INT( st->rgbGen );
+		ShaderWaveFields( f, &st->alphaWave );
+		SF_INT( st->alphaGen );
+		for ( j = 0; j < 4; j++ ) {
+			SF_BYTE( st->constantColor[j] );
+		}
+		SF_INT( st->stateBits );
+		SF_INT( st->adjustColorsForFog );
+		SF_FLOAT( st->zFadeBounds[0] );
+		SF_FLOAT( st->zFadeBounds[1] );
+		SF_INT( st->isDetail );
+		SF_INT( st->isFogged );
+	}
+
+	for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
+		for ( j = 0; j < TR_MAX_TEXMODS; j++ ) {
+			texModInfo_t *t = &texMods[i][j];
+
+			SF_INT( t->type );
+			ShaderWaveFields( f, &t->wave );
+			for ( k = 0; k < 4; k++ ) {
+				SF_FLOAT( t->matrix[k / 2][k % 2] );
+			}
+			SF_FLOAT( t->translate[0] );
+			SF_FLOAT( t->translate[1] );
+			SF_FLOAT( t->scale[0] );
+			SF_FLOAT( t->scale[1] );
+			SF_FLOAT( t->scroll[0] );
+			SF_FLOAT( t->scroll[1] );
+			SF_FLOAT( t->rotateSpeed );
+		}
+	}
+}
+
+// as R_FindShader starts a shader
+static void StartShader( const char *name, int lightmapIndex ) {
+	InitShader( name, lightmapIndex );
+
+	// FIXME: set these "need" values apropriately
+	shader.needsNormal = qtrue;
+	shader.needsST1 = qtrue;
+	shader.needsST2 = qtrue;
+	shader.needsColor = qtrue;
+}
+
+/*
+=================
+UnbakeShader
+
+The shader InitShader started, from its bake: 1 made, 0 made but its
+parse failed (it's a default shader), -1 its text's to be parsed after all
+(an image it wants isn't there)
+=================
+*/
+static int UnbakeShader( const byte *record, const byte *end ) {
+	shFields_t f;
+	shaderEvent_t ev;
+	float v[6];
+	int ok;
+
+	memset( &f, 0, sizeof( f ) );
+	f.in = record;
+	f.end = end;
+	shNumImages = 0;
+	while ( !f.bad && ( ev = ShaderReadVarint( &f ) ) != SHEV_END ) {
+		switch ( ev ) {
+		case SHEV_IMAGE:
+		case SHEV_SKYIMAGE:
+			{
+				char imageName[MAX_QPATH];
+				unsigned str, ext, v;
+				image_t *image;
+
+				str = ShaderReadVarint( &f );
+				ext = ShaderReadVarint( &f );
+				v = ShaderReadVarint( &f );
+				if ( f.bad || shNumImages >= SH_MAX_IMAGES || ext >= SH_NUM_EXTS ) {
+					f.bad = qtrue;
+					break;
+				}
+				Com_sprintf( imageName, sizeof( imageName ), "%s%s", shStrings + str, shExts[ext] );
+				image = ShaderImage( imageName, ( v >> 1 ) & 3, v >> 3, v & 1, ev == SHEV_SKYIMAGE );
+				if ( !image ) {
+					if ( ev == SHEV_IMAGE ) {
+						return -1;  // as the parse would, it stops there
+					}
+					image = tr.defaultImage;
+				}
+				shImages[shNumImages++] = image;
+			}
+			break;
+		case SHEV_SUN:
+			for ( ok = 0; ok < 6; ok++ ) {
+				v[ok] = ShaderReadFloat( &f );
+			}
+			VectorCopy( v, tr.sunLight );
+			VectorCopy( v + 3, tr.sunDirection );
+			break;
+		case SHEV_SKYFOG:
+			for ( ok = 0; ok < 4; ok++ ) {
+				v[ok] = ShaderReadFloat( &f );
+			}
+			R_SetFog( FOG_SKY, 0, 5, v[0], v[1], v[2], v[3] );
+			break;
+		case SHEV_SUNSHADER:
+			tr.sunShaderName = "sun";
+			break;
+		case SHEV_GRIDAMB:
+			tr.lightGridMulAmbient = ShaderReadFloat( &f );
+			break;
+		case SHEV_GRIDDIR:
+			tr.lightGridMulDirected = ShaderReadFloat( &f );
+			break;
+		case SHEV_WATERFOG:
+			ri.Cvar_Set( "r_waterFogColor", ShaderReadString( &f ) );
+			break;
+		case SHEV_MAPFOG:
+			ri.Cvar_Set( "r_mapFogColor", ShaderReadString( &f ) );
+			break;
+		case SHEV_COMPRESS:
+			tr.allowCompress = ShaderReadFloat( &f );
+			break;
+		case SHEV_SKYCOORDS:
+			R_InitSkyTexCoords( ShaderReadFloat( &f ) );
+			break;
+		default:
+			f.bad = qtrue;
+			break;
+		}
+	}
+	ok = ShaderReadVarint( &f );
+	f.zeros = -1;
+	ShaderFields( &f );
+	if ( f.bad ) {
+		ri.Printf( PRINT_WARNING, "WARNING: the bake of shader %s is bad\n", shader.name );
+		StartShader( shader.name, shader.lightmapIndex );
+		return -1;
+	}
+	return ok;
+}
+
+static const shBinShader_t *FindBakedShader( const char *name ) {
+	int lo = 0, hi = shBinNumShaders - 1;
+
+	while ( lo <= hi ) {
+		int mid = ( lo + hi ) / 2;
+		int c = Q_stricmp( name, shStrings + shBinShaders[mid].name );
+
+		if ( !c ) {
+			return &shBinShaders[mid];
+		}
+		if ( c < 0 ) {
+			hi = mid - 1;
+		} else {
+			lo = mid + 1;
+		}
+	}
+	return NULL;
+}
+
+// a shader's text read from scripts/dc.shaders (temp memory, *base to
+// free), just after its name; NULL if it isn't there
+static char *ReadShaderText( const shBinShader_t *s, char **base ) {
+	fileHandle_t fh;
+	char *text, *p;
+	int len;
+
+	*base = NULL;
+	if ( !s->textLen || ri.FS_FOpenFileRead( "scripts/dc.shaders", &fh, qtrue ) < 0 || !fh ) {
+		return NULL;
+	}
+	text = ri.Hunk_AllocateTempMemory( s->textLen + 1 );
+	ri.FS_Seek( fh, s->text, FS_SEEK_SET );
+	len = ri.FS_Read( text, s->textLen, fh );
+	ri.FS_FCloseFile( fh );
+	text[len > 0 ? len : 0] = '\0';
+	p = text;
+	if ( Q_stricmp( COM_ParseExt( &p, qtrue ), shStrings + s->name ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: shader %s isn't where its bake has it in scripts/dc.shaders\n", shStrings + s->name );
+		ri.Hunk_FreeTempMemory( text );
+		return NULL;
+	}
+	*base = text;
+	return p;
+}
+
+#ifndef _arch_dreamcast
+static cvar_t *r_checkShaders, *r_bakeShaders;
+
+// the state a parse leaves besides shader, stages and texMods
+typedef struct {
+	vec3_t sunLight, sunDirection;
+	char *sunShaderName;
+	float lightGridMulAmbient, lightGridMulDirected;
+	int allowCompress;
+	char waterFog[256], mapFog[256];
+} shSideEffects_t;
+
+static void GetSideEffects( shSideEffects_t *s ) {
+	memset( s, 0, sizeof( *s ) );
+	VectorCopy( tr.sunLight, s->sunLight );
+	VectorCopy( tr.sunDirection, s->sunDirection );
+	s->sunShaderName = tr.sunShaderName;
+	s->lightGridMulAmbient = tr.lightGridMulAmbient;
+	s->lightGridMulDirected = tr.lightGridMulDirected;
+	s->allowCompress = tr.allowCompress;
+	Q_strncpyz( s->waterFog, ri.Cvar_Get( "r_waterFogColor", "0", 0 )->string, sizeof( s->waterFog ) );
+	Q_strncpyz( s->mapFog, ri.Cvar_Get( "r_mapFogColor", "0", 0 )->string, sizeof( s->mapFog ) );
+}
+
+static void SetSideEffects( const shSideEffects_t *s ) {
+	VectorCopy( s->sunLight, tr.sunLight );
+	VectorCopy( s->sunDirection, tr.sunDirection );
+	tr.sunShaderName = s->sunShaderName;
+	tr.lightGridMulAmbient = s->lightGridMulAmbient;
+	tr.lightGridMulDirected = s->lightGridMulDirected;
+	tr.allowCompress = s->allowCompress;
+	ri.Cvar_Set( "r_waterFogColor", s->waterFog );
+	ri.Cvar_Set( "r_mapFogColor", s->mapFog );
+}
+
+static shader_t savedShader;
+static shaderStage_t savedStages[MAX_SHADER_STAGES];
+static texModInfo_t savedTexMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS];
+
+static void SaveShader( void ) {
+	savedShader = shader;
+	memcpy( savedStages, stages, sizeof( stages ) );
+	memcpy( savedTexMods, texMods, sizeof( texMods ) );
+}
+
+static void RestoreShader( void ) {
+	shader = savedShader;
+	memcpy( stages, savedStages, sizeof( stages ) );
+	memcpy( texMods, savedTexMods, sizeof( texMods ) );
+}
+
+static qboolean SameAsSaved( void ) {
+	return !memcmp( &shader, &savedShader, sizeof( shader ) ) && !memcmp( stages, savedStages, sizeof( stages ) ) &&
+		   !memcmp( texMods, savedTexMods, sizeof( texMods ) );
+}
+
+static int shChecked, shCheckBad, shCheckText;
+
+/*
+=================
+CheckBakedShader
+
+The shader started, from its text (as the PC makes it) and from its bake
+(as the Dreamcast does, and its text when the bake has it so): they're
+to be the same. Leaves it as from the bake; what ShaderFromBake returns
+=================
+*/
+static int CheckBakedShader( const shBinShader_t *s, char *text ) {
+	shSideEffects_t before, parsed, baked;
+	int parsedOk, ok;
+	char *base, *bakedText;
+
+	int textBefore = shCheckText;
+
+	GetSideEffects( &before );
+	parsedOk = ParseShader( &text );
+	GetSideEffects( &parsed );
+	SaveShader();
+
+	SetSideEffects( &before );
+	StartShader( savedShader.name, savedShader.lightmapIndex );
+	ok = s->record == SHBIN_TEXT ? -1 : UnbakeShader( shBin + s->record, shBin + s->record + s->recordLen );
+	if ( ok < 0 ) {
+		bakedText = ReadShaderText( s, &base );
+		if ( !bakedText ) {
+			ri.Printf( PRINT_WARNING, "WARNING: shader %s isn't in its bake's scripts/dc.shaders\n", shader.name );
+			shCheckBad++;
+			SetSideEffects( &parsed );
+			RestoreShader();
+			return parsedOk;
+		}
+		ok = ParseShader( &bakedText );
+		ri.Hunk_FreeTempMemory( base );
+		shCheckText++;
+	}
+	shChecked++;
+	GetSideEffects( &baked );
+	if ( ok != parsedOk || !SameAsSaved() || memcmp( &baked, &parsed, sizeof( baked ) ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: shader %s from its bake isn't as parsed\n", shader.name );
+		shCheckBad++;
+	}
+	if ( r_checkShaders->integer > 1 ) {
+		ri.Printf( PRINT_ALL, "shader check: %s %s\n", shader.name, s->record == SHBIN_TEXT || shCheckText > textBefore ? "from its text" : "baked" );
+	}
+	return ok;
+}
+
+void R_CheckedShaders_f( void ) {
+	ri.Printf( PRINT_ALL, "shader check: %i checked, %i from their text, %i not as parsed\n", shChecked, shCheckText, shCheckBad );
+}
+#endif
+
+/*
+=================
+ShaderFromBake
+
+The shader R_FindShader's started, from its bake: 1 made, 0 made but its
+parse failed (it's a default shader); -1 not made, its text's to be parsed:
+*text (read for it: *base to free), NULL if it has none
+=================
+*/
+static int ShaderFromBake( const char *name, char **base, char **text ) {
+	const shBinShader_t *s;
+	int ok;
+
+	*base = *text = NULL;
+	if ( !shBin ) {
+		*text = FindShaderInShaderText( name );
+		return -1;
+	}
+	if ( !( s = FindBakedShader( name ) ) ) {
+		return -1;  // none: from an image
+	}
+#ifndef _arch_dreamcast
+	if ( r_checkShaders->integer ) {
+		char *parse = FindShaderInShaderText( name );
+
+		if ( parse ) {
+			return CheckBakedShader( s, parse );
+		}
+		ri.Printf( PRINT_WARNING, "WARNING: shader %s is baked but not in scripts/dc.shaders\n", name );
+		shCheckBad++;
+	}
+#endif
+	if ( s->record != SHBIN_TEXT ) {
+		ok = UnbakeShader( shBin + s->record, shBin + s->record + s->recordLen );
+		if ( ok >= 0 ) {
+			return ok;
+		}
+	}
+	*text = ReadShaderText( s, base );
+	return -1;
+}
+
+/*
+=================
+LoadBakedShaders
+
+scripts/dc.shaderbin if there's one for scripts/dc.shaders and this parse
+=================
+*/
+static qboolean LoadBakedShaders( void ) {
+	fileHandle_t fh;
+	shBinHeader_t h;
+	long len, textLen;
+
+	shBin = NULL;
+	shBinNumShaders = 0;
+	textLen = ri.FS_FOpenFileRead( "scripts/dc.shaders", &fh, qtrue );
+	if ( textLen < 0 || !fh ) {
+		return qfalse;
+	}
+	ri.FS_FCloseFile( fh );
+	len = ri.FS_FOpenFileRead( "scripts/dc.shaderbin", &fh, qtrue );
+	if ( len < 0 || !fh ) {
+		return qfalse;
+	}
+	if ( len < (long)sizeof( h ) || ri.FS_Read( &h, sizeof( h ), fh ) != sizeof( h ) || h.ident != SHBIN_IDENT || h.version != SHBIN_VERSION ||
+		 h.colorBits != glConfig.colorBits || h.textureCompression != glConfig.textureCompression ||
+		 h.compressedTextures != r_ext_compressed_textures->integer || h.greyscale != r_greyscale->value ||
+		 h.shaderTextLen != textLen || h.numShaders < 0 || sizeof( h ) + h.numShaders * sizeof( shBinShader_t ) > (unsigned long)len ||
+		 h.strings < 0 || h.strings > len ) {
+		ri.Printf( PRINT_WARNING, "WARNING: scripts/dc.shaderbin isn't for this scripts/dc.shaders and settings\n" );
+		ri.FS_FCloseFile( fh );
+		return qfalse;
+	}
+	shBin = ri.Hunk_Alloc( len + 1, h_low );
+	memcpy( shBin, &h, sizeof( h ) );
+	if ( ri.FS_Read( shBin + sizeof( h ), len - sizeof( h ), fh ) != len - (long)sizeof( h ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: couldn't read scripts/dc.shaderbin\n" );
+		ri.FS_FCloseFile( fh );
+		shBin = NULL;
+		return qfalse;
+	}
+	ri.FS_FCloseFile( fh );
+	shBin[len] = 0;
+	shBinShaders = (const shBinShader_t *)( shBin + sizeof( h ) );
+	shBinNumShaders = h.numShaders;
+	shStrings = (const char *)shBin + h.strings;
+	return qtrue;
+}
+
+#ifndef _arch_dreamcast
+static int ShaderNameCompare( const void *a, const void *b ) {
+	return Q_stricmp( *(const char **)a, *(const char **)b );
+}
+
+/*
+=================
+R_BakeShaders
+
+Bakes scripts/dc.shaders into scripts/dc.shaderbin (r_bakeShaders 1), and
+checks it gives the same shaders
+=================
+*/
+static void R_BakeShaders( void ) {
+	char **names, *p, *token;
+	int numNames, maxNames, i, n, bad;
+	byte *blob;
+	int blobLen;
+	shBinHeader_t h;
+	shBinShader_t *index;
+	image_t **lightmaps;
+	shFields_t f;
+	fileHandle_t fh;
+	char *base = s_shaderText;
+
+	if ( !s_shaderText ) {
+		ri.Printf( PRINT_WARNING, "WARNING: no scripts/dc.shaders to bake\n" );
+		return;
+	}
+
+	// every shader's name
+	numNames = maxNames = 0;
+	names = NULL;
+	p = s_shaderText;
+	while ( 1 ) {
+		token = COM_ParseExt( &p, qtrue );
+		if ( !token[0] ) {
+			break;
+		}
+		if ( !Q_stricmp( token, "{" ) ) {
+			SkipBracedSection( &p, 1 );
+			continue;
+		}
+		if ( numNames == maxNames ) {
+			maxNames = maxNames * 2 + 1024;
+			names = realloc( names, maxNames * sizeof( *names ) );
+		}
+		names[numNames++] = strdup( token );
+	}
+	qsort( names, numNames, sizeof( *names ), ShaderNameCompare );
+	for ( i = n = 0; i < numNames; i++ ) {
+		if ( n && !Q_stricmp( names[n - 1], names[i] ) ) {
+			free( names[i] );
+			continue;
+		}
+		names[n++] = names[i];
+	}
+	numNames = n;
+
+	index = calloc( numNames, sizeof( *index ) );
+	free( shBake );
+	shBake = NULL;
+	shBakeLen = shBakeMax = 0;
+	free( shBakeStrings );
+	shBakeStrings = NULL;
+	shBakeStringsLen = shBakeStringsMax = 0;
+	lightmaps = tr.lightmaps;
+	tr.lightmaps = shFakeLightmaps;
+	shFake = qtrue;
+	bad = 0;
+	for ( i = 0; i < numNames; i++ ) {
+		char *text, *end, *copy, *q;
+		int ok, start, ok2;
+
+		index[i].name = ShaderBakeStringRef( names[i], strlen( names[i] ) );
+
+		text = FindShaderInShaderText( names[i] );
+		if ( !text ) {
+			ri.Printf( PRINT_WARNING, "WARNING: bake: shader %s isn't found\n", names[i] );
+			index[i].record = SHBIN_TEXT;
+			bad++;
+			continue;
+		}
+		// its text: the name, to the end of its braces
+		end = text;
+		COM_ParseExt( &end, qtrue );
+		SkipBracedSection( &end, 1 );
+		index[i].text = shTextStart - base;
+		index[i].textLen = end - shTextStart;
+
+		// the parse, recorded
+		start = shBakeLen;
+		shRecord = qtrue;
+		shNumFake = 0;
+		shBakeFailed = qfalse;
+		StartShader( names[i], 0 );
+		ok = ParseShader( &text );
+		ShaderEvent( SHEV_END, NULL, 0, NULL );
+		ShaderBakeVarint( ok );
+		memset( &f, 0, sizeof( f ) );
+		f.write = qtrue;
+		ShaderFields( &f );
+		ShaderBakeVarint( f.zeros );
+		shRecord = qfalse;
+		SaveShader();
+		if ( shBakeFailed ) {
+			shBakeLen = start;
+			index[i].record = SHBIN_TEXT;
+			ri.Printf( PRINT_ALL, "bake: shader %s is left as text\n", names[i] );
+		} else {
+			index[i].record = start;
+			index[i].recordLen = shBakeLen - start;
+
+			// unbaked, it's the same
+			StartShader( names[i], 0 );
+			shNumFake = 0;
+			ok2 = UnbakeShader( shBake + start, shBake + shBakeLen );
+			if ( ok2 != ok || !SameAsSaved() ) {
+				ri.Printf( PRINT_WARNING, "WARNING: bake: shader %s unbakes wrong\n", names[i] );
+				bad++;
+			}
+		}
+
+		// its text alone parses the same (as read for it when an image isn't there)
+		copy = malloc( index[i].textLen + 1 );
+		memcpy( copy, shTextStart, index[i].textLen );
+		copy[index[i].textLen] = '\0';
+		q = copy;
+		COM_ParseExt( &q, qtrue );
+		StartShader( names[i], 0 );
+		shNumFake = 0;
+		ok2 = ParseShader( &q );
+		free( copy );
+		if ( ok2 != ok || !SameAsSaved() ) {
+			ri.Printf( PRINT_WARNING, "WARNING: bake: shader %s's text alone parses differently\n", names[i] );
+			bad++;
+		}
+	}
+	shFake = qfalse;
+	tr.lightmaps = lightmaps;
+
+	// header, index, then names and records
+	memset( &h, 0, sizeof( h ) );
+	h.ident = SHBIN_IDENT;
+	h.version = SHBIN_VERSION;
+	h.colorBits = glConfig.colorBits;
+	h.textureCompression = glConfig.textureCompression;
+	h.compressedTextures = r_ext_compressed_textures->integer;
+	h.greyscale = r_greyscale->value;
+	h.shaderTextLen = ri.FS_FOpenFileRead( "scripts/dc.shaders", &fh, qtrue );
+	if ( fh ) {
+		ri.FS_FCloseFile( fh );
+	}
+	h.numShaders = numNames;
+	h.strings = sizeof( h ) + numNames * sizeof( *index );
+	n = h.strings + shBakeStringsLen;
+	for ( i = 0; i < numNames; i++ ) {
+		if ( index[i].record != SHBIN_TEXT ) {
+			index[i].record += n;
+		}
+	}
+	blobLen = n + shBakeLen;
+	blob = malloc( blobLen );
+	memcpy( blob, &h, sizeof( h ) );
+	memcpy( blob + sizeof( h ), index, numNames * sizeof( *index ) );
+	memcpy( blob + h.strings, shBakeStrings, shBakeStringsLen );
+	memcpy( blob + n, shBake, shBakeLen );
+	ri.FS_WriteFile( "scripts/dc.shaderbin", blob, blobLen );
+	ri.Printf( PRINT_ALL, "bake: %i shaders, %i bytes in scripts/dc.shaderbin (the text's %i), %i bad\n", numNames, blobLen, h.shaderTextLen, bad );
+
+	free( blob );
+	free( index );
+	free( shBake );
+	shBake = NULL;
+	shBakeLen = shBakeMax = 0;
+	free( shBakeStrings );
+	shBakeStrings = NULL;
+	shBakeStringsLen = shBakeStringsMax = 0;
+	shStrings = NULL;
+	for ( i = 0; i < numNames; i++ ) {
+		free( names[i] );
+	}
+	free( names );
+}
+#endif
 
 /*
 ==================
@@ -2657,20 +3700,30 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 	//
 	// attempt to define shader from an explicit parameter file
 	//
-	shaderText = FindShaderInShaderText( strippedName );
-	if ( shaderText ) {
-		// enable this when building a pak file to get a global list
-		// of all explicit shaders
-		if ( r_printShaders->integer ) {
-			ri.Printf( PRINT_ALL, "*SHADER* %s\n", name );
-		}
+	{
+		char *base;
+		int ok = ShaderFromBake( strippedName, &base, &shaderText );
 
-		if ( !ParseShader( &shaderText ) ) {
-			// had errors, so use default shader
-			shader.defaultShader = qtrue;
+		if ( ok >= 0 || shaderText ) {
+			// enable this when building a pak file to get a global list
+			// of all explicit shaders
+			if ( r_printShaders->integer ) {
+				ri.Printf( PRINT_ALL, "*SHADER* %s\n", name );
+			}
+
+			if ( ok < 0 ) {
+				ok = ParseShader( &shaderText );
+			}
+			if ( base ) {
+				ri.Hunk_FreeTempMemory( base );
+			}
+			if ( !ok ) {
+				// had errors, so use default shader
+				shader.defaultShader = qtrue;
+			}
+			sh = FinishShader();
+			return sh;
 		}
-		sh = FinishShader();
-		return sh;
 	}
 
 
@@ -3120,6 +4173,21 @@ static void ScanAndLoadShaderFiles( void ) {
 
 	long sum = 0, summand;
 
+	s_shaderText = NULL;
+	memset( shaderChecksumLookup, 0, sizeof( shaderChecksumLookup ) );
+
+	// baked, they're made with no text (but r_bakeShaders bakes the text,
+	// and r_checkShaders checks the bake against it)
+#ifdef _arch_dreamcast
+	if ( LoadBakedShaders() ) {
+		return;
+	}
+#else
+	if ( !r_bakeShaders->integer && LoadBakedShaders() && !r_checkShaders->integer ) {
+		return;
+	}
+#endif
+
 	// the shaders anything names, from `make assets` (tools/rtcwconv
 	// shaders.cpp), in place of every shader file's
 	p = NULL;
@@ -3300,7 +4368,19 @@ void R_InitShaders( void ) {
 
 	CreateInternalShaders();
 
+#ifndef _arch_dreamcast
+	r_bakeShaders = ri.Cvar_Get( "r_bakeShaders", "0", 0 );
+	r_checkShaders = ri.Cvar_Get( "r_checkShaders", "0", 0 );
+#endif
+
 	ScanAndLoadShaderFiles();
+
+#ifndef _arch_dreamcast
+	if ( r_bakeShaders->integer ) {
+		R_BakeShaders();
+		ri.Cvar_Set( "r_bakeShaders", "0" );
+	}
+#endif
 
 	CreateExternalShaders();
 }

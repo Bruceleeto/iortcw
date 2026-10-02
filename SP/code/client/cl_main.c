@@ -1198,6 +1198,7 @@ void CL_InitRef( void ) {
 	ri.FS_FOpenFileRead = FS_FOpenFileRead;
 	ri.FS_FCloseFile = FS_FCloseFile;
 	ri.FS_Read = FS_Read;
+	ri.FS_Seek = FS_Seek;
 	ri.CM_DrawDebugSurface = CM_DrawDebugSurface;
 	ri.FS_ReadFile = FS_ReadFile;
 	ri.FS_FreeFile = FS_FreeFile;

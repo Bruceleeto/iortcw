@@ -16,6 +16,9 @@
 #                      made), unpacked, in a selfboot disc image
 #                      -> build/iowolfsp.cdi (needs mkdcdisc; sources KOS's
 #                      environ.sh itself)
+#   make shaderbin     the shaders in sp_dc.pk3 baked by the sim (needs make
+#                      disc first, then make disc again): the game makes
+#                      them from scripts/dc.shaderbin with no text parsed
 #   make sp DCSIM=1    the PC build with just the Dreamcast's heap (its own
 #                      malloc, on the RAM the Dreamcast build leaves free)
 #                      -> build/sp-x86-dcsim/iowolfsp.x86; needs the
@@ -145,7 +148,7 @@ endif
 
 MODULE_LD ?= $(CC) $(ARCH_FLAGS) -r -nostdlib
 
-.PHONY: all sp game clean pvrtest assets disc
+.PHONY: all sp game clean pvrtest assets disc shaderbin
 
 all: sp
 
@@ -276,6 +279,29 @@ disc:
 	$(Q)cd $(DISC_DIR)/main && find . -type f ! -name files.idx | sed 's|^\./||' | LC_ALL=C sort > files.idx
 	$(Q)$(MKDCDISC) -e $(BUILD_DIR)/sp-sh4/iowolfsp.elf -D $(DISC_DIR) -o $(DISC_CDI) \
 	  -n "Return to Castle Wolfenstein" -N
+
+#############################################################################
+# make shaderbin: scripts/dc.shaderbin, the disc's scripts/dc.shaders each
+# parsed as the game would (SP/code/renderer/tr_shader.c R_BakeShaders),
+# added to sp_dc.pk3. The game checks it's for that dc.shaders, else parses
+# the text; it's to be baked again after a change to the shader parse
+# (and SHBIN_VERSION raised). +set r_checkShaders 2 on the sim checks each
+# shader a map loads against its text
+#############################################################################
+
+SHADERBIN_HOME = $(BUILD_DIR)/shaderbin
+
+shaderbin:
+	@test -f $(DISC_DIR)/main/scripts/dc.shaders || { echo "no $(DISC_DIR)/main/scripts/dc.shaders: make assets and make disc first" >&2; exit 1; }
+	@$(MAKE) --no-print-directory sp DCSIM=1 MAP=
+	$(echo_cmd) "SHADERBIN $(ASSETS_DIR)/sp_dc.pk3"
+	$(Q)rm -rf $(SHADERBIN_HOME) && mkdir -p $(SHADERBIN_HOME)
+	$(Q)timeout -s KILL 10 $(BUILD_DIR)/sp-$(ARCH)-dcsim/iowolfsp.x86 +set fs_basepath $(abspath $(DISC_DIR)) \
+	  +set fs_homepath $(abspath $(SHADERBIN_HOME)) +set r_bakeShaders 1 +quit > $(SHADERBIN_HOME)/bake.log 2>&1; true
+	$(Q)grep -a "^bake: .* 0 bad" $(SHADERBIN_HOME)/bake.log || { grep -a "bake" $(SHADERBIN_HOME)/bake.log; echo "the bake failed: $(SHADERBIN_HOME)/bake.log" >&2; exit 1; }
+	$(Q)test -f $(SHADERBIN_HOME)/main/scripts/dc.shaderbin
+	$(Q)cd $(SHADERBIN_HOME)/main && zip -q9 $(abspath $(ASSETS_DIR))/sp_dc.pk3 scripts/dc.shaderbin
+	$(Q)if [ -d $(ASSETS_OUT)/sp/dc/scripts ]; then cp $(SHADERBIN_HOME)/main/scripts/dc.shaderbin $(ASSETS_OUT)/sp/dc/scripts/; fi
 
 ifdef GAME
 
