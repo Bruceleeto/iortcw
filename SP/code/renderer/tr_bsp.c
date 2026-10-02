@@ -1442,7 +1442,7 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 ================
 R_LoadWldLightGrid
 
-Each different point once, and which of them each grid point is
+At most 256 points, and a byte a grid point, which of them it is
 ================
 */
 static void R_LoadWldLightGrid( fileHandle_t f, const lump_t *l ) {
@@ -1459,14 +1459,7 @@ static void R_LoadWldLightGrid( fileHandle_t f, const lump_t *l ) {
 	part.filelen = 4;
 	ri.CM_ReadLumpInto( f, &part, &numPoints );
 	numPoints = LittleLong( numPoints );
-	if ( !numPoints ) {
-		// as they are
-		part.fileofs = l->fileofs + 4;
-		part.filelen = l->filelen - 4;
-		R_LoadLightGrid( f, &part );
-		return;
-	}
-	if ( numPoints < 0 || numPoints > 65536 || l->filelen != 4 + numPoints * 8 + numGridPoints * 2 ) {
+	if ( numPoints < 1 || numPoints > 256 || l->filelen != 4 + numPoints * 8 + numGridPoints ) {
 		ri.Printf( PRINT_WARNING, "WARNING: light grid mismatch\n" );
 		return;
 	}
@@ -1475,9 +1468,9 @@ static void R_LoadWldLightGrid( fileHandle_t f, const lump_t *l ) {
 	part.fileofs = l->fileofs + 4;
 	part.filelen = numPoints * 8;
 	ri.CM_ReadLumpInto( f, &part, w->lightGridData );
-	w->lightGridIndex = ri.Hunk_Alloc( numGridPoints * 2, h_low );
+	w->lightGridIndex = ri.Hunk_Alloc( numGridPoints, h_low );
 	part.fileofs += part.filelen;
-	part.filelen = numGridPoints * 2;
+	part.filelen = numGridPoints;
 	ri.CM_ReadLumpInto( f, &part, w->lightGridIndex );
 
 	for ( i = 0 ; i < numGridPoints ; i++ ) {

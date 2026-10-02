@@ -179,7 +179,7 @@ gentity_t *G_Find( gentity_t *from, int fieldofs, const char *match ) {
 	for ( ; ; from++ )
 	{
 		if ( from == &g_entities[level.num_entities] ) {
-			from = &g_entities[MAX_GENTITIES];  // then the AI markers
+			from = &g_entities[MAX_GENTITIES];  // then the markers
 		}
 		if ( from >= &g_entities[MAX_GENTITIES + level.numMarkers] ) {
 			break;
@@ -452,10 +452,13 @@ gentity_t *G_Spawn( void ) {
 		}
 	}
 	if ( level.num_entities == ENTITYNUM_MAX_NORMAL ) {
-		for ( i = 0; i < MAX_GENTITIES; i++ ) {
-			G_Printf( "%4i: %s\n", i, g_entities[i].classname );
-		}
-		G_Error( "G_Spawn: no free entities" );
+		char mapname[MAX_QPATH];
+#ifdef DCSIM
+		void G_DCSimEntityReport( void );
+		G_DCSimEntityReport();
+#endif
+		trap_Cvar_VariableStringBuffer( "mapname", mapname, sizeof( mapname ) );
+		G_Error( "G_Spawn: %s ran out of its %d entity slots", mapname, MAX_GENTITIES );
 	}
 
 	// open up a new slot
@@ -503,9 +506,7 @@ Marks the entity as free
 =================
 */
 void G_FreeEntity( gentity_t *ed ) {
-	if ( ed - g_entities < MAX_GENTITIES ) {    // an AI marker is never linked
-		trap_UnlinkEntity( ed );     // unlink from world
-	}
+	trap_UnlinkEntity( ed );     // unlink from world
 
 	if ( ed->neverFree ) {
 		return;

@@ -2599,18 +2599,20 @@ static void CG_AddEntityToTag( centity_t *cent ) {
 /*
 ===============================================================================
 
-STATIC CORONAS AND SPEAKERS
+STATIC CORONAS, SPEAKERS AND GAME MODELS
 
 Ones nothing can name, which the game gives no entity (BG_StaticEntity): read
-from the map here, and shown and played as CG_Corona, CG_EntityEffects and
-CG_Speaker would, whenever the server would have sent the entity
+from the map here, and shown and played as CG_Corona, CG_EntityEffects,
+CG_Speaker and CG_General would, whenever the server would have sent the entity
 
 ===============================================================================
 */
 
 typedef struct {
 	vec3_t origin;
-	int sound;              // CS_SOUNDS index; 0 for a corona
+	int sound;              // CS_SOUNDS index; 0 for a corona or model
+	int model;              // CS_MODELS index of a misc_gamemodel; 0 for the others
+	vec3_t axis[3];         // model: as its entity's angles, scaled by its angles2
 	int dli, density;       // corona: as its entity's dl_intensity and density
 	int range;              // speaker: as its entity's dmgFlags, frame and clientNum
 	int wait, random;
@@ -2626,17 +2628,17 @@ static int cg_numStaticEnts;
 ==================
 CG_ParseStaticEntity
 
-One map entity, its opening brace read: whether it is a static corona or
-speaker, read into out when out is not NULL
+One map entity, its opening brace read: whether it is a static corona,
+speaker or game model, read into out when out is not NULL
 ==================
 */
 static qboolean CG_ParseStaticEntity( staticEnt_t *out ) {
 	char key[MAX_TOKEN_CHARS], value[MAX_TOKEN_CHARS];
-	char classname[64] = "", noise[MAX_QPATH] = "";
-	qboolean named = qfalse, skip = qfalse;
-	int spawnflags = 0, radius = 0, i;
+	char classname[64] = "", noise[MAX_QPATH] = "", model[MAX_QPATH] = "";
+	qboolean named = qfalse, skip = qfalse, modelscale_vec = qfalse;
+	int spawnflags = 0, radius = 0, trunk = 0, i;
 	float wait = 0, random = 0, scale = 1;
-	vec3_t origin = { 0, 0, 0 }, color = { 0, 0, 0 };
+	vec3_t origin = { 0, 0, 0 }, color = { 0, 0, 0 }, angles = { 0, 0, 0 }, modelscale = { 1, 1, 1 };
 
 	while ( 1 ) {
 		if ( !trap_GetEntityToken( key, sizeof( key ) ) || !strcmp( key, "{" ) ) {
@@ -2668,12 +2670,27 @@ static qboolean CG_ParseStaticEntity( staticEnt_t *out ) {
 			sscanf( value, "%f %f %f", &origin[0], &origin[1], &origin[2] );
 		} else if ( !Q_stricmp( key, "_color" ) || !Q_stricmp( key, "color" ) ) {
 			sscanf( value, "%f %f %f", &color[0], &color[1], &color[2] );
+		} else if ( !Q_stricmp( key, "model" ) ) {
+			Q_strncpyz( model, value, sizeof( model ) );
+		} else if ( !Q_stricmp( key, "trunk" ) ) {
+			trunk = atoi( value );
+		} else if ( !Q_stricmp( key, "angle" ) ) {
+			VectorSet( angles, 0, atof( value ), 0 );
+		} else if ( !Q_stricmp( key, "angles" ) ) {
+			sscanf( value, "%f %f %f", &angles[0], &angles[1], &angles[2] );
+		} else if ( !Q_stricmp( key, "modelscale" ) ) {
+			if ( !modelscale_vec ) {
+				modelscale[0] = modelscale[1] = modelscale[2] = atof( value );
+			}
+		} else if ( !Q_stricmp( key, "modelscale_vec" ) ) {
+			sscanf( value, "%f %f %f", &modelscale[0], &modelscale[1], &modelscale[2] );
+			modelscale_vec = qtrue;
 		} else if ( !Q_stricmp( key, "notsingle" ) || !Q_stricmp( key, "notfree" ) ) {
 			skip |= atoi( value ) != 0;     // left out by the game anyway
 		}
 	}
 
-	if ( skip || BG_StaticEntity( classname, named ? "-" : "", "", spawnflags, noise, random ) != 1 ) {
+	if ( skip || BG_StaticEntity( classname, named ? "-" : "", "", spawnflags, noise, random, trunk ) != 1 ) {
 		return qfalse;
 	}
 	if ( !out ) {
@@ -2689,6 +2706,24 @@ static qboolean CG_ParseStaticEntity( staticEnt_t *out ) {
 		}
 		out->dli = (int)( color[0] * 255 ) | ( (int)( color[1] * 255 ) << 8 ) | ( (int)( color[2] * 255 ) << 16 );
 		out->density = (int)( scale * 255 );
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( classname, "misc_gamemodel" ) ) {
+		// as SP_misc_gamemodel and CG_General, its model one the game named
+		for ( i = 1; i < MAX_MODELS; i++ ) {
+			if ( !strcmp( CG_ConfigString( CS_MODELS + i ), model ) ) {
+				break;
+			}
+		}
+		if ( i == MAX_MODELS ) {
+			CG_Error( "CG_ParseStaticEntity: model %s not named by the game", model );
+		}
+		out->model = i;
+		AnglesToAxis( angles, out->axis );
+		for ( i = 0; i < 3; i++ ) {
+			VectorScale( out->axis[i], modelscale[i], out->axis[i] );
+		}
 		return qtrue;
 	}
 
@@ -2714,7 +2749,7 @@ static qboolean CG_ParseStaticEntity( staticEnt_t *out ) {
 ==================
 CG_ParseStaticEntities
 
-The map's static coronas and speakers: counted, then read
+The map's static coronas, speakers and game models: counted, then read
 ==================
 */
 void CG_ParseStaticEntities( void ) {
@@ -2752,6 +2787,18 @@ void CG_AddStaticEntities( void ) {
 
 	for ( i = 0, se = cg_staticEnts; i < cg_numStaticEnts; i++, se++ ) {
 		if ( !se->always && !trap_R_inPVS( cg.refdef.vieworg, se->origin ) ) {
+			continue;
+		}
+		if ( se->model ) {
+			refEntity_t ent;
+
+			memset( &ent, 0, sizeof( ent ) );
+			VectorCopy( se->origin, ent.origin );
+			VectorCopy( se->origin, ent.oldorigin );
+			AxisCopy( se->axis, ent.axis );
+			ent.nonNormalizedAxes = qtrue;
+			ent.hModel = cgs.gameModels[se->model];
+			trap_R_AddRefEntityToScene( &ent );
 			continue;
 		}
 		if ( !se->sound ) {

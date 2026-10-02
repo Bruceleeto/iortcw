@@ -625,7 +625,7 @@ void SP_misc_gamemodel( gentity_t *ent ) {
 
 void locateMaster( gentity_t *ent ) {
 	ent->target_ent = G_Find( NULL, FOFS( targetname ), ent->target );
-	if ( ent->target_ent ) {
+	if ( ent->target_ent && ent->target_ent->s.number < MAX_GENTITIES ) {    // a marker is never sent
 		ent->s.otherEntityNum = ent->target_ent->s.number;
 	}
 }

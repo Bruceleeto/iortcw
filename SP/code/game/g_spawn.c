@@ -827,14 +827,30 @@ level.spawnVars[], then call the class specfic spawn function
 ===================
 G_CountMarkers
 
-The map's AI markers, given room in g_entities after MAX_GENTITIES: the
-server and clients never see them, so they take none of its entity slots
+The map's markers, given room in g_entities after MAX_GENTITIES: points and
+logic the game finds by name (G_Find) but never links, so the server and
+clients never see them and they take none of its entity slots. They still
+think and run scripts (G_RunFrame).
 ===================
 */
 static int g_maxMarkers;
 
 static qboolean G_IsMarker( const char *classname ) {
-	return g_gametype.integer == GT_SINGLE_PLAYER && !Q_stricmp( classname, "ai_marker" );
+	static const char *markers[] = {
+		"ai_marker", "path_corner", "info_notnull", "info_notnull_big", "target_position",
+		"target_relay", "target_delay", "target_kill", "target_script_trigger"
+	};
+	int i;
+
+	if ( g_gametype.integer != GT_SINGLE_PLAYER ) {
+		return qfalse;
+	}
+	for ( i = 0; i < ARRAY_LEN( markers ); i++ ) {
+		if ( !Q_stricmp( classname, markers[i] ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
 }
 
 int G_CountMarkers( void ) {
@@ -858,20 +874,26 @@ int G_CountMarkers( void ) {
 void G_SpawnGEntityFromSpawnVars( void ) {
 	int i;
 	gentity_t   *ent;
-	char        *classname, *targetname, *scriptname, *noise;
+	char        *classname, *targetname, *scriptname, *noise, *model;
 	float random;
+	int trunk;
 
-	// a static corona or speaker is cgame's alone, its sound named for cgame to find
+	// a static corona, speaker or game model is cgame's alone, its sound or model named for cgame to find
 	G_SpawnString( "classname", "", &classname );
 	G_SpawnString( "targetname", "", &targetname );
 	G_SpawnString( "scriptname", "", &scriptname );
 	G_SpawnString( "noise", "", &noise );
 	G_SpawnInt( "spawnflags", "0", &i );
 	G_SpawnFloat( "random", "0", &random );
-	switch ( BG_StaticEntity( classname, targetname, scriptname, i, noise, random ) ) {
+	G_SpawnInt( "trunk", "0", &trunk );
+	G_SpawnString( "model", "", &model );
+	switch ( BG_StaticEntity( classname, targetname, scriptname, i, noise, random, trunk ) ) {
 	case 1:
 		if ( noise[0] ) {
 			G_SoundIndex( noise );
+		}
+		if ( !Q_stricmp( classname, "misc_gamemodel" ) && model[0] ) {
+			G_ModelIndex( model );
 		}
 		return;
 	case 2:
@@ -882,7 +904,7 @@ void G_SpawnGEntityFromSpawnVars( void ) {
 	// get the next free entity
 	if ( G_IsMarker( classname ) ) {
 		if ( level.numMarkers == g_maxMarkers ) {
-			G_Error( "G_SpawnGEntityFromSpawnVars: more AI markers than counted" );
+			G_Error( "G_SpawnGEntityFromSpawnVars: more markers than counted" );
 		}
 		ent = &g_entities[MAX_GENTITIES + level.numMarkers++];
 		G_InitGentity( ent );
@@ -1110,5 +1132,13 @@ void G_SpawnEntitiesFromString( void ) {
 	}
 
 	level.spawning = qfalse;            // any future calls to G_Spawn*() will be errors
+
+	// little room left for what play spawns (missiles, drops, events): a map to cut down
+	if ( level.num_entities > MAX_GENTITIES - 40 ) {
+		char mapname[MAX_QPATH];
+
+		trap_Cvar_VariableStringBuffer( "mapname", mapname, sizeof( mapname ) );
+		G_Printf( S_COLOR_YELLOW "WARNING: %s takes %d of its %d entity slots at load\n", mapname, level.num_entities, MAX_GENTITIES );
+	}
 }
 

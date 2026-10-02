@@ -2609,6 +2609,13 @@ void G_RunFrame( int levelTime ) {
 		G_RunThink( ent );
 	}
 
+	// markers (G_CountMarkers) think and run scripts too
+	for ( i = 0, ent = &g_entities[MAX_GENTITIES]; i < level.numMarkers; i++, ent++ ) {
+		if ( ent->inuse ) {
+			G_RunThink( ent );
+		}
+	}
+
 	// Ridah, move the AI
 	AICast_StartServerFrame( level.time );
 

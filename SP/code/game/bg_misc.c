@@ -4569,16 +4569,19 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 ================
 BG_StaticEntity
 
-A corona or target_speaker nothing can name (no targetname or scriptname) can
-never be switched, played or moved, so it needs no entity: the game leaves it
-out (G_SpawnGEntityFromSpawnVars) and cgame shows it itself
+A corona, target_speaker or misc_gamemodel nothing can name (no targetname or
+scriptname) can never be switched, played or moved, so it needs no entity: the
+game leaves it out (G_SpawnGEntityFromSpawnVars) and cgame shows it itself
 (CG_ParseStaticEntities). Returns 0 for one the game spawns, 1 for one cgame
 shows, 2 for one nothing would ever show or play.
 ================
 */
-int BG_StaticEntity( const char *classname, const char *targetname, const char *scriptname, int spawnflags, const char *noise, float random ) {
+int BG_StaticEntity( const char *classname, const char *targetname, const char *scriptname, int spawnflags, const char *noise, float random, int trunk ) {
 	if ( targetname[0] || scriptname[0] ) {
 		return 0;
+	}
+	if ( !Q_stricmp( classname, "misc_gamemodel" ) ) {
+		return trunk ? 0 : 1;                       // a trunk is solid
 	}
 	if ( !Q_stricmp( classname, "corona" ) ) {
 		return ( spawnflags & 1 ) ? 2 : 1;          // START_OFF

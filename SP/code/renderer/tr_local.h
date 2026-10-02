@@ -870,7 +870,7 @@ typedef struct {
 	vec3_t lightGridInverseSize;
 	int lightGridBounds[3];
 	byte        *lightGridData;
-	unsigned short *lightGridIndex; // when set, each point's 8 bytes in lightGridData
+	byte *lightGridIndex;           // when set, each point's 8 bytes in lightGridData
 
 	int numClusters;
 	int clusterBytes;

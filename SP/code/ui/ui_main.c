@@ -5918,27 +5918,41 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 }
 
 /*
-The menus, near 1MB, are let go while a level is played and loaded again
-when one is brought up
+The menus, near 1MB, are let go while a level is loaded and played, the
+loading screen's alone kept while one loads, and loaded again when one is
+brought up
 */
-static qboolean menusUnloaded;
+static enum { MENUS_ALL, MENUS_NONE, MENUS_CONNECT } menusLoaded;
 
 static void UI_UnloadMenus( void ) {
 	String_Init();
 	uiInfo.savegameCount = 0;
 	uiInfo.movieCount = 0;
 	uiInfo.modCount = 0;
-	menusUnloaded = qtrue;
+	menusLoaded = MENUS_NONE;
+}
+
+/* the loading screen's menu alone, so a level loads without the rest */
+static void UI_ConnectMenus( void ) {
+	if ( menusLoaded == MENUS_CONNECT ) {
+		return;
+	}
+	UI_UnloadMenus();
+	UI_ParseMenu( "ui/connect.menu" );
+	menusLoaded = MENUS_CONNECT;
 }
 
 void UI_ReloadMenus( void ) {
 	uiClientState_t cstate;
 	const char *menuSet;
 
-	if ( !menusUnloaded ) {
+	if ( menusLoaded == MENUS_ALL ) {
 		return;
 	}
-	menusUnloaded = qfalse;
+	if ( menusLoaded == MENUS_CONNECT ) {
+		UI_UnloadMenus();
+	}
+	menusLoaded = MENUS_ALL;
 	trap_GetClientState( &cstate );
 	if ( cstate.connState == CA_ACTIVE ) {
 		UI_LoadMenus( "ui/ingame.txt", qtrue );
@@ -5958,7 +5972,7 @@ void UI_ReloadMenus( void ) {
 
 /* asked every frame, outside any menu code: the place to let them go */
 qboolean _UI_IsFullscreen( void ) {
-	if ( !menusUnloaded && !( trap_Key_GetCatcher() & KEYCATCH_UI ) ) {
+	if ( menusLoaded != MENUS_NONE && !( trap_Key_GetCatcher() & KEYCATCH_UI ) ) {
 		uiClientState_t cstate;
 
 		trap_GetClientState( &cstate );
@@ -6095,9 +6109,7 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 
 	menuDef_t *menu;
 
-	if ( !overlay ) {
-		UI_ReloadMenus();
-	}
+	UI_ConnectMenus();
 	menu = Menus_FindByName( "Connect" );
 
 

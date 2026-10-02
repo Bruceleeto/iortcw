@@ -198,6 +198,9 @@ void trap_LinkEntity( gentity_t *ent ) {
 }
 
 void trap_UnlinkEntity( gentity_t *ent ) {
+	if ( ent->s.number >= MAX_GENTITIES ) {
+		return;     // a marker (G_CountMarkers), never linked
+	}
 	syscall( G_UNLINKENTITY, ent );
 }
 

@@ -4,7 +4,10 @@
  * 24 byte vertexes, 16 bit indexes, and the surfaces drawn alike in the same
  * leafs joined into one. The light grid keeps each different point once.
  */
+#include <algorithm>
+#include <array>
 #include <map>
+#include <random>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -284,6 +287,158 @@ static bool CopyLump( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out
 	}
 	PutLump( out, h, n, p, len );
 	return true;
+}
+
+/* the light grid's points (8 bytes: ambient rgb, directed rgb, then the
+ * direction's longitude and latitude, as tr_light.c reads them) as at most
+ * 256, and a byte a grid point: int numPoints, the points, the bytes. A
+ * point with no ambient light (in a wall, which the renderer leaves out)
+ * stays one; the rest, when there are more than fit, are the weighted
+ * k-means of them, by colour and the directed light's direction */
+static void LightGridPalette( const uint8_t *grid, int numGrid, std::vector<uint8_t> &out ) {
+	typedef std::array<float, 9> Feature;
+	auto feature = []( const uint8_t *p ) {
+		const float lng = p[6] * ( 2 * M_PI / 256 ), lat = p[7] * ( 2 * M_PI / 256 );
+		const float d = ( p[3] + p[4] + p[5] ) / 3.0f;
+		return Feature{ (float)p[0], (float)p[1], (float)p[2], (float)p[3], (float)p[4], (float)p[5],
+			d * cosf( lat ) * sinf( lng ), d * sinf( lat ) * sinf( lng ), d * cosf( lng ) };
+	};
+	auto dist = []( const Feature &a, const Feature &b ) {
+		float s = 0;
+		for ( int i = 0; i < 9; i++ ) {
+			s += ( a[i] - b[i] ) * ( a[i] - b[i] );
+		}
+		return s;
+	};
+
+	/* each different point once, and how many grid points are it */
+	std::map<uint64_t, int> which;
+	std::vector<uint64_t> points;
+	std::vector<int> weight, pointOf( numGrid );
+	for ( int i = 0; i < numGrid; i++ ) {
+		uint64_t pt;
+		memcpy( &pt, grid + i * 8, 8 );
+		if ( !( grid[i * 8] | grid[i * 8 + 1] | grid[i * 8 + 2] ) ) {
+			pt = 0;     /* in a wall: only that it is matters */
+		}
+		auto it = which.find( pt );
+		if ( it == which.end() ) {
+			it = which.emplace( pt, points.size() ).first;
+			points.push_back( pt );
+			weight.push_back( 0 );
+		}
+		weight[it->second]++;
+		pointOf[i] = it->second;
+	}
+
+	std::vector<uint64_t> palette;
+	std::vector<int> paletteOf( points.size() );
+	if ( points.size() <= 256 ) {
+		palette = points;
+		for ( size_t p = 0; p < points.size(); p++ ) {
+			paletteOf[p] = p;
+		}
+	} else {
+		/* in a wall: entry 0; the lit ones: the rest */
+		std::vector<int> lit;
+		std::vector<Feature> f;
+		for ( size_t p = 0; p < points.size(); p++ ) {
+			if ( points[p] ) {
+				lit.push_back( p );
+				f.push_back( feature( (const uint8_t *)&points[p] ) );
+			} else {
+				paletteOf[p] = 0;
+			}
+		}
+		const int k = 255;
+		/* k-means++, weighted, seeded alike every time */
+		std::mt19937 rng( 1 );
+		std::vector<Feature> centre;
+		std::vector<float> nearest( lit.size(), 1e30f );
+		size_t first = 0;
+		for ( size_t i = 1; i < lit.size(); i++ ) {
+			if ( weight[lit[i]] > weight[lit[first]] ) {
+				first = i;
+			}
+		}
+		centre.push_back( f[first] );
+		while ( (int)centre.size() < k ) {
+			double total = 0;
+			for ( size_t i = 0; i < lit.size(); i++ ) {
+				nearest[i] = std::min( nearest[i], dist( f[i], centre.back() ) );
+				total += (double)nearest[i] * weight[lit[i]];
+			}
+			if ( total <= 0 ) {
+				break;
+			}
+			double r = std::uniform_real_distribution<double>( 0, total )( rng );
+			size_t i = 0;
+			for ( ; i + 1 < lit.size(); i++ ) {
+				r -= (double)nearest[i] * weight[lit[i]];
+				if ( r <= 0 ) {
+					break;
+				}
+			}
+			centre.push_back( f[i] );
+		}
+		std::vector<int> of( lit.size() );
+		for ( int pass = 0; pass < 10; pass++ ) {
+			for ( size_t i = 0; i < lit.size(); i++ ) {
+				float best = 1e30f;
+				for ( size_t c = 0; c < centre.size(); c++ ) {
+					float d = dist( f[i], centre[c] );
+					if ( d < best ) {
+						best = d;
+						of[i] = c;
+					}
+				}
+			}
+			std::vector<std::array<double, 9>> sum( centre.size(), std::array<double, 9>{} );
+			std::vector<double> w( centre.size(), 0 );
+			for ( size_t i = 0; i < lit.size(); i++ ) {
+				for ( int j = 0; j < 9; j++ ) {
+					sum[of[i]][j] += (double)f[i][j] * weight[lit[i]];
+				}
+				w[of[i]] += weight[lit[i]];
+			}
+			for ( size_t c = 0; c < centre.size(); c++ ) {
+				if ( w[c] > 0 ) {
+					for ( int j = 0; j < 9; j++ ) {
+						centre[c][j] = sum[c][j] / w[c];
+					}
+				}
+			}
+		}
+		/* back to points: entry 0 the wall's, a lit one never all dark */
+		palette.push_back( 0 );
+		for ( const Feature &c : centre ) {
+			uint8_t p[8];
+			for ( int j = 0; j < 6; j++ ) {
+				p[j] = (uint8_t)std::min( 255.0f, std::max( 0.0f, roundf( c[j] ) ) );
+			}
+			if ( !( p[0] | p[1] | p[2] ) ) {
+				p[0] = p[1] = p[2] = 1;
+			}
+			float len = sqrtf( c[6] * c[6] + c[7] * c[7] + c[8] * c[8] );
+			float z = len > 0 ? c[8] / len : 1;
+			p[6] = (uint8_t)lroundf( acosf( std::min( 1.0f, std::max( -1.0f, z ) ) ) * ( 256 / ( 2 * M_PI ) ) );
+			p[7] = (uint8_t)( lroundf( atan2f( c[7], c[6] ) * ( 256 / ( 2 * M_PI ) ) ) & 255 );
+			uint64_t pt;
+			memcpy( &pt, p, 8 );
+			palette.push_back( pt );
+		}
+		for ( size_t i = 0; i < lit.size(); i++ ) {
+			paletteOf[lit[i]] = 1 + of[i];
+		}
+	}
+
+	int32_t n = palette.size();
+	out.assign( 4, 0 );
+	memcpy( out.data(), &n, 4 );
+	out.insert( out.end(), (uint8_t *)palette.data(), (uint8_t *)( palette.data() + n ) );
+	for ( int i = 0; i < numGrid; i++ ) {
+		out.push_back( paletteOf[pointOf[i]] );
+	}
 }
 
 static bool Dropped( const char *shader, const std::vector<std::string> &drop ) {
@@ -611,40 +766,18 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 		}
 	}
 
-	/* each different light grid point once, when that's under 65536 of
-	 * them; else as it is */
+	/* the light grid as at most 256 points and a byte a grid point, which
+	 * of them it is (LightGridPalette) */
 	int gridLen;
 	const uint8_t *grid = BspLumpArray<uint8_t>( bsp, BSP_LIGHTGRID, gridLen );
 	if ( !grid || gridLen % 8 ) {
 		fprintf( stderr, "%s: bad light grid\n", name );
 		return false;
 	}
-	std::vector<uint8_t> outGrid( 4, 0 );
-	{
-		std::map<uint64_t, int> which;
-		std::vector<uint64_t> points;
-		std::vector<uint16_t> index;
-		for ( int i = 0; i < gridLen; i += 8 ) {
-			uint64_t pt;
-			memcpy( &pt, grid + i, 8 );
-			auto it = which.find( pt );
-			if ( it == which.end() ) {
-				it = which.emplace( pt, points.size() ).first;
-				points.push_back( pt );
-			}
-			index.push_back( it->second );
-		}
-		int32_t n = points.size();
-		if ( n <= 65536 && n * 8 + index.size() * 2 < (size_t)gridLen ) {
-			memcpy( outGrid.data(), &n, 4 );
-			outGrid.insert( outGrid.end(), (uint8_t *)points.data(), (uint8_t *)( points.data() + n ) );
-			outGrid.insert( outGrid.end(), (uint8_t *)index.data(), (uint8_t *)( index.data() + index.size() ) );
-		} else {
-			outGrid.insert( outGrid.end(), grid, grid + gridLen );
-		}
-		st.gridIn += gridLen;
-		st.gridOut += outGrid.size();
-	}
+	std::vector<uint8_t> outGrid;
+	LightGridPalette( grid, gridLen / 8, outGrid );
+	st.gridIn += gridLen;
+	st.gridOut += outGrid.size();
 
 	wldHeader_t h = {};
 	h.ident = WLD_IDENT;
