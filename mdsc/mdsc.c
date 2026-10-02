@@ -304,6 +304,23 @@ void MDSC_ChildMatrix( const mdscMatrix_t p, const float q[4], mdscMatrix_t m ) 
 	}
 }
 
+/* n floats a key */
+static void TrackFloats( const unsigned char *animBase, const mdscTrack_t *track, int n, int frame, float *out ) {
+	const unsigned short *keys = (const unsigned short *)( animBase + track->ofsKeys );
+	int k = FindKey( keys, track->numKeys, frame );
+	const float *v = (const float *)( animBase + track->ofsValues ) + k * n;
+	int c;
+
+	if ( keys[k] == frame || k + 1 >= track->numKeys ) {
+		memcpy( out, v, n * 4 );
+	} else {
+		float t = (float)( frame - keys[k] ) / (float)( keys[k + 1] - keys[k] );
+		for ( c = 0; c < n; c++ ) {
+			out[c] = v[c] + ( v[c + n] - v[c] ) * t;
+		}
+	}
+}
+
 void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
 	const unsigned char *base = (const unsigned char *)mds;
 	int numFrames = ReadInt( base + HDR_NUMFRAMES );
@@ -314,8 +331,7 @@ void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
 	float *floats = (float *)out;
 	short *poses = (short *)( floats + MDSC_FRAME_FLOATS );
 	static mdscMatrix_t model[MDSC_MAX_BONES];
-	const unsigned short *keys;
-	int i, j, k, c;
+	int i, j;
 
 	if ( frame < 0 ) {
 		frame = 0;
@@ -323,21 +339,9 @@ void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
 		frame = numFrames - 1;
 	}
 
-	/* bounds and offsets */
-	keys = (const unsigned short *)( animBase + anim->frameTrack.ofsKeys );
-	k = FindKey( keys, anim->frameTrack.numKeys, frame );
-	{
-		const float *v = (const float *)( animBase + anim->frameTrack.ofsValues ) + k * MDSC_FRAME_FLOATS;
-
-		if ( keys[k] == frame || k + 1 >= anim->frameTrack.numKeys ) {
-			memcpy( floats, v, MDSC_FRAME_FLOATS * 4 );
-		} else {
-			float t = (float)( frame - keys[k] ) / (float)( keys[k + 1] - keys[k] );
-			for ( c = 0; c < MDSC_FRAME_FLOATS; c++ ) {
-				floats[c] = v[c] + ( v[c + MDSC_FRAME_FLOATS] - v[c] ) * t;
-			}
-		}
-	}
+	/* bounds, then offsets */
+	TrackFloats( animBase, &anim->cullTrack, MDSC_CULL_FLOATS, frame, floats );
+	TrackFloats( animBase, &anim->frameTrack, MDSC_OFFSET_FLOATS, frame, floats + MDSC_CULL_FLOATS );
 
 	/* bones, parents first */
 	for ( i = 0; i < numBones; i++ ) {

@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #define MDSC_IDENT          ( ( 'C' << 24 ) + ( 'S' << 16 ) + ( 'D' << 8 ) + 'M' )
-#define MDSC_VERSION        1
+#define MDSC_VERSION        2
 
 #define MDSC_MAX_BONES      128     /* MDS_MAX_BONES */
 #define MDSC_FRAME_FLOATS   13      /* bounds[2], localOrigin, radius, parentOffset */
@@ -43,8 +43,15 @@ typedef struct {
 	int ofsValues;                  /* the key values [numKeys] */
 } mdscTrack_t;
 
+/* an mdsFrame_t's floats: bounds[2], localOrigin and radius, for culling
+ * (their own keys, made a little bigger so they still hold the model where
+ * interpolated), then parentOffset */
+#define MDSC_CULL_FLOATS    10
+#define MDSC_OFFSET_FLOATS  3
+
 typedef struct {
-	mdscTrack_t frameTrack;         /* values: float[MDSC_FRAME_FLOATS] (mdsFrame_t's) */
+	mdscTrack_t frameTrack;         /* values: float[MDSC_OFFSET_FLOATS] (parentOffset) */
+	mdscTrack_t cullTrack;          /* values: float[MDSC_CULL_FLOATS] */
 	mdscTrack_t tracks[1];          /* [numBones] rotations: packed quaternions (uint32),
 	                                   then [numBones] directions: short[4] (x, y, z, 0) */
 } mdscAnim_t;                       /* all offsets are from the start of this */

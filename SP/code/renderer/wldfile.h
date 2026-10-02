@@ -20,7 +20,8 @@
  *   INDEXES       unsigned short, 3 a triangle, each surface's from its
  *                 firstIndex, counted from the surface's firstVert
  *   LEAFSURFACES  int, into SURFACES
- *   NODES, LEAFS  the .bsp's, leafs pointing into the LEAFSURFACES here
+ *   NODES, LEAFS  the .bsp's, leafs pointing into the LEAFSURFACES here,
+ *                 nodes into the .col's planes (CM_WorldPlanes)
  *   MODELS        the .bsp's, pointing into the SURFACES here
  *   LIGHTGRID     the .bsp's light grid (8 bytes a point) as at most 256
  *                 points, near ones made one: int numPoints, then numPoints
@@ -30,7 +31,7 @@
 #define WLDFILE_H
 
 #define WLD_IDENT       ( ( 'D' << 24 ) + ( 'L' << 16 ) + ( 'W' << 8 ) + 'R' )   // "RWLD"
-#define WLD_VERSION     4
+#define WLD_VERSION     5
 
 enum {
 	WLD_LUMP_SHADERS,

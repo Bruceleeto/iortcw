@@ -668,6 +668,45 @@ fileHandle_t CM_OpenBsp( const char *name, dheader_t *header ) {
 
 /*
 ==================
+CM_ReadMapEntities
+
+A map's entities, before it is loaded, from its .col or else its .bsp: in
+temp memory, for Hunk_FreeTempMemory
+==================
+*/
+char *CM_ReadMapEntities( const char *name ) {
+	char colName[MAX_QPATH];
+	fileHandle_t f;
+	lump_t l;
+	char *text;
+
+	COM_StripExtension( name, colName, sizeof( colName ) );
+	Q_strcat( colName, sizeof( colName ), ".col" );
+	if ( FS_FOpenFileRead( colName, &f, qtrue ) > 0 && f ) {
+		colHeader_t header;
+
+		if ( FS_Read( &header, sizeof( header ), f ) != sizeof( header ) ||
+			 LittleLong( header.ident ) != COL_IDENT || LittleLong( header.version ) != COL_VERSION ) {
+			FS_FCloseFile( f );
+			Com_Error( ERR_DROP, "%s isn't a version %i .col", colName, COL_VERSION );
+		}
+		l.fileofs = LittleLong( header.lumps[COL_LUMP_ENTITIES].fileofs );
+		l.filelen = LittleLong( header.lumps[COL_LUMP_ENTITIES].filelen );
+	} else {
+		dheader_t header;
+
+		f = CM_OpenBsp( name, &header );
+		l = header.lumps[LUMP_ENTITIES];
+	}
+	text = Hunk_AllocateTempMemory( l.filelen + 1 );
+	CM_ReadLumpInto( f, &l, text );
+	text[l.filelen] = 0;
+	FS_FCloseFile( f );
+	return text;
+}
+
+/*
+==================
 CM_ReadLumpInto
 ==================
 */
@@ -764,19 +803,22 @@ static void CMod_LoadColPatches( bspLump_t *l ) {
 		pc->facets = Hunk_Alloc( pc->numFacets * sizeof( *pc->facets ), h_high );
 		for ( j = 0 ; j < pc->numFacets ; j++ ) {
 			facet_t *f = &pc->facets[j];
-			f->surfacePlane = COL_INT();
-			f->numBorders = COL_INT();
-			if ( f->surfacePlane < 0 || f->surfacePlane >= pc->numPlanes ||
-				 f->numBorders < 0 || f->numBorders > ARRAY_LEN( f->borderPlanes ) ) {
+			int surfacePlane = COL_INT();
+			int numBorders = COL_INT();
+			if ( surfacePlane < 0 || surfacePlane >= pc->numPlanes ||
+				 numBorders < 0 || numBorders > ARRAY_LEN( f->borderPlanes ) ) {
 				Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
 			}
-			for ( k = 0 ; k < f->numBorders ; k++ ) {
-				f->borderPlanes[k] = COL_INT();
-				f->borderInward[k] = COL_INT();
-				f->borderNoAdjust[k] = COL_INT();
-				if ( f->borderPlanes[k] < 0 || f->borderPlanes[k] >= pc->numPlanes ) {
+			f->surfacePlane = surfacePlane;
+			f->numBorders = numBorders;
+			for ( k = 0 ; k < numBorders ; k++ ) {
+				int plane = COL_INT();
+				if ( plane < 0 || plane >= pc->numPlanes ) {
 					Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
 				}
+				f->borderPlanes[k] = plane;
+				f->borderInward[k] = COL_INT() != 0;
+				f->borderNoAdjust[k] = COL_INT() != 0;
 			}
 		}
 	}

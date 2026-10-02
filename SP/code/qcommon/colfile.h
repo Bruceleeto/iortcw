@@ -4,7 +4,9 @@
  * the .bsp when there is one.
  *
  * The lumps before COL_LUMP_VISIBILITY are the .bsp lumps of the same name,
- * copied as they are. COL_LUMP_VISIBILITY is the .bsp's compressed, a row
+ * but for only the planes used (by nodes and brush sides, renumbered; a
+ * .wld's nodes use these) and only the surfaces that are curves that can be
+ * hit (numbered from 0: leafsurfaces, and models' firstSurface/numSurfaces). COL_LUMP_VISIBILITY is the .bsp's compressed, a row
  * unpacked when wanted (CM_ClusterPVS):
  *
  *   int numClusters, clusterBytes
@@ -15,7 +17,7 @@
  * CM_GeneratePatchCollide makes, so the .bsp's vertexes and surfaces are
  * never read. All little endian, all 4 byte fields:
  *
- *   int numSurfaces            (the .bsp's, which leafsurfaces index)
+ *   int numSurfaces            (those kept, which leafsurfaces index)
  *   int numPatches
  *   numPatches times:
  *     int surfaceNum, shaderNum
@@ -31,7 +33,7 @@
 #define COLFILE_H
 
 #define COL_IDENT       ( ( 'L' << 24 ) + ( 'O' << 16 ) + ( 'C' << 8 ) + 'R' )   // "RCOL"
-#define COL_VERSION     2
+#define COL_VERSION     3
 
 enum {
 	COL_LUMP_SHADERS,

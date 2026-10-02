@@ -3205,11 +3205,13 @@ void Menu_HandleKey( menuDef_t *menu, int key, qboolean down ) {
 	}
 
 	// NERVE - SMF
-	if ( key > 0 && key <= 255 && menu->onKey[key] ) {
-		itemDef_t it;
-		it.parent = menu;
-		Item_RunScript( &it, menu->onKey[key] );
-		return;
+	for ( i = 0; i < menu->numOnKeys; i++ ) {
+		if ( menu->onKey[i].key == key ) {
+			itemDef_t it;
+			it.parent = menu;
+			Item_RunScript( &it, menu->onKey[i].script );
+			return;
+		}
 	}
 	// - NERVE - SMF
 
@@ -6351,6 +6353,23 @@ qboolean MenuParse_itemDef( itemDef_t *item, int handle ) {
 	return qtrue;
 }
 
+// a script for a key (execKey)
+static qboolean Menu_AddOnKey( menuDef_t *menu, int key, int handle ) {
+	if ( key <= 0 || key > 255 ) {
+		return qfalse;
+	}
+	if ( menu->numOnKeys == MAX_MENU_ONKEYS ) {
+		PC_SourceError( handle, "more than MAX_MENU_ONKEYS (%d) execKeys", MAX_MENU_ONKEYS );
+		return qfalse;
+	}
+	menu->onKey[menu->numOnKeys].key = key;
+	if ( !PC_Script_Parse( handle, &menu->onKey[menu->numOnKeys].script ) ) {
+		return qfalse;
+	}
+	menu->numOnKeys++;
+	return qtrue;
+}
+
 // NERVE - SMF
 qboolean MenuParse_execKey( itemDef_t *item, int handle ) {
 	menuDef_t *menu = ( menuDef_t* )item;
@@ -6362,10 +6381,7 @@ qboolean MenuParse_execKey( itemDef_t *item, int handle ) {
 	}
 	keyindex = ( unsigned char )keyname;
 
-	if ( !PC_Script_Parse( handle, &menu->onKey[keyindex] ) ) {
-		return qfalse;
-	}
-	return qtrue;
+	return Menu_AddOnKey( menu, keyindex, handle );
 }
 
 qboolean MenuParse_execKeyInt( itemDef_t *item, int handle ) {
@@ -6376,10 +6392,7 @@ qboolean MenuParse_execKeyInt( itemDef_t *item, int handle ) {
 		return qfalse;
 	}
 
-	if ( !PC_Script_Parse( handle, &menu->onKey[keyname] ) ) {
-		return qfalse;
-	}
-	return qtrue;
+	return Menu_AddOnKey( menu, keyname, handle );
 }
 // -NERVE - SMF
 

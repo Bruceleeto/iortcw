@@ -331,6 +331,7 @@ int main( int argc, char **argv ) {
 	}
 
 	if ( mds.files ) {
+		printf( "mds: %ld root offset keys, %ld cull bounds keys\n", mds.frameKeys, mds.cullKeys );
 		printf( "mds: %d files, %.1f MB -> %.1f MB; bone poses kept %.1f%% (directions %.1f%%); bones off by %.3f units on average, %.2f / %.2f deg at most\n"
 				"     %d of %d triangles in %d strips\n",
 				mds.files, mds.bytesIn / 1048576.0, mds.bytesOut / 1048576.0,
@@ -351,6 +352,8 @@ int main( int argc, char **argv ) {
 	if ( col.files ) {
 		printf( "col: %d files, %.1f MB of bsp -> %.1f MB; %d patches (%d with no contents left out)\n",
 				col.files, col.bytesIn / 1048576.0, col.bytesOut / 1048576.0, col.patches, col.patchesSkipped );
+		printf( "col: planes %ld -> %ld, leaf surfaces %ld -> %ld\n",
+				col.planesIn, col.planesOut, col.leafSurfacesIn, col.leafSurfacesOut );
 	}
 	if ( wld.files ) {
 		printf( "wld: %d files, %.1f MB of bsp -> %.1f MB; %ld surfaces -> %ld; %ld vertexes, %ld triangles; light grids %.1f MB -> %.1f MB\n",

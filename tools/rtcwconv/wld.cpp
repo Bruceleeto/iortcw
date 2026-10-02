@@ -793,7 +793,18 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 	PutLump( out, h, WLD_LUMP_VERTS, outVerts.data(), outVerts.size() * sizeof( outVerts[0] ) );
 	PutLump( out, h, WLD_LUMP_INDEXES, b.indexes.data(), b.indexes.size() * sizeof( b.indexes[0] ) );
 	PutLump( out, h, WLD_LUMP_LEAFSURFACES, outLeafSurfaces.data(), outLeafSurfaces.size() * sizeof( outLeafSurfaces[0] ) );
-	PutLump( out, h, WLD_LUMP_NODES, nodes, numNodes * sizeof( nodes[0] ) );
+	/* the planes are the .col's (CM_WorldPlanes), the used ones renumbered */
+	std::vector<int32_t> planeRemap;
+	int numPlanesUsed;
+	if ( !BspPlaneRemap( bsp, planeRemap, numPlanesUsed ) ) {
+		fprintf( stderr, "%s: bad lumps\n", name );
+		return false;
+	}
+	std::vector<BspNode> outNodes( nodes, nodes + numNodes );
+	for ( BspNode &n : outNodes ) {
+		n.planeNum = planeRemap[n.planeNum];
+	}
+	PutLump( out, h, WLD_LUMP_NODES, outNodes.data(), outNodes.size() * sizeof( outNodes[0] ) );
 	PutLump( out, h, WLD_LUMP_LEAFS, outLeafs.data(), outLeafs.size() * sizeof( outLeafs[0] ) );
 	PutLump( out, h, WLD_LUMP_MODELS, outModels.data(), outModels.size() * sizeof( outModels[0] ) );
 	PutLump( out, h, WLD_LUMP_LIGHTGRID, outGrid.data(), outGrid.size() );

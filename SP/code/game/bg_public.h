@@ -1056,8 +1056,10 @@ typedef enum {
 #define ANIMFL_LADDERANIM   0x1
 #define ANIMFL_FIRINGANIM   0x2
 
+#define MAX_ANIM_NAME   24  // the longest in any wolfanim.cfg is 22
+
 typedef struct animation_s {
-	char name[MAX_QPATH];
+	char name[MAX_ANIM_NAME];
 	int firstFrame;
 	int numFrames;
 	int loopFrames;             // 0 to numFrames

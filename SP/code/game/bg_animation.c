@@ -626,6 +626,9 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 				break;
 			}
 
+			if ( strlen( token ) >= sizeof( animations[i].name ) ) {
+				BG_AnimParseError( "BG_AnimParseAnimConfig: animation name %s longer than MAX_ANIM_NAME", token );
+			}
 			Q_strncpyz( animations[i].name, token, sizeof( animations[i].name ) );
 			// convert to all lower case
 			Q_strlwr( animations[i].name );

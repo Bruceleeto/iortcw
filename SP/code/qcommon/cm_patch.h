@@ -75,12 +75,14 @@ typedef struct {
 	int signbits;           // signx + (signy<<1) + (signz<<2), used as lookup during collision
 } patchPlane_t;
 
+// planes are a patch's, under MAX_PATCH_PLANES, or -1: shorts (some 1300
+// bytes a facet to 112)
 typedef struct {
-	int surfacePlane;
-	int numBorders;             // 3 or four + 6 axial bevels + 4 or 3 * 4 edge bevels
-	int borderPlanes[4 + 6 + 16];
-	int borderInward[4 + 6 + 16];
-	qboolean borderNoAdjust[4 + 6 + 16];
+	short surfacePlane;
+	short numBorders;           // 3 or four + 6 axial bevels + 4 or 3 * 4 edge bevels
+	short borderPlanes[4 + 6 + 16];
+	byte borderInward[4 + 6 + 16];
+	byte borderNoAdjust[4 + 6 + 16];
 } facet_t;
 
 typedef struct patchCollide_s {

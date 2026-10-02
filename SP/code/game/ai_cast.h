@@ -266,7 +266,7 @@ typedef struct
 //
 typedef struct
 {
-	cast_script_stack_item_t items[AICAST_MAX_SCRIPT_STACK_ITEMS];
+	cast_script_stack_item_t *items;    // numItems of them (AICast_ScriptParse)
 	int numItems;
 } cast_script_stack_t;
 //

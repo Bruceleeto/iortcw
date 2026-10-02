@@ -134,7 +134,7 @@ typedef struct
 //
 typedef struct
 {
-	g_script_stack_item_t items[G_MAX_SCRIPT_STACK_ITEMS];
+	g_script_stack_item_t *items;   // numItems of them (G_Script_ScriptParse)
 	int numItems;
 } g_script_stack_t;
 //

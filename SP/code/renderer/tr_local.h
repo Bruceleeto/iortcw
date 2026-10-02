@@ -1805,7 +1805,7 @@ RENDERER BACK END COMMAND QUEUE
 =============================================================
 */
 
-#define MAX_RENDER_COMMANDS 0x40000
+#define MAX_RENDER_COMMANDS 0x20000     // 128K: a full console is about 90K; past it, commands are dropped
 
 typedef struct {
 	byte cmds[MAX_RENDER_COMMANDS];

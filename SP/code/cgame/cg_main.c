@@ -117,7 +117,7 @@ void CG_ResetPlayerEntities( void ) {
 	}
 	cg.predictedPlayerEntity.pe = &cg.predictedPlayerPe;
 }
-weaponInfo_t cg_weapons[MAX_WEAPONS];
+weaponInfo_t cg_weapons[WP_NUM_WEAPONS];  // the weapons there are, not MAX_WEAPONS (64)
 itemInfo_t cg_items[MAX_ITEMS];
 
 

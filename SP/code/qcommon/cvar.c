@@ -35,7 +35,7 @@ cvar_t      *cvar_vars = NULL;
 cvar_t      *cvar_cheats;
 int cvar_modifiedFlags;
 
-#define MAX_CVARS   1024    // escape1 has ~620
+#define MAX_CVARS   768     // escape1 has 587
 cvar_t cvar_indexes[MAX_CVARS];
 int cvar_numIndexes;
 

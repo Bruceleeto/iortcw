@@ -1458,7 +1458,7 @@ typedef struct {
 
 typedef struct soundScriptSound_s
 {
-	char filename[MAX_QPATH];
+	const char *filename;           // in the names pool (cg_sound.c)
 	sfxHandle_t sfxHandle;
 	int lastPlayed;
 
@@ -1472,7 +1472,7 @@ extern soundScriptSound_t *soundScriptSounds;
 typedef struct soundScript_s
 {
 	int index;
-	char name[MAX_QPATH];
+	const char *name;               // in the names pool (cg_sound.c)
 	int channel;
 	int attenuation;
 	qboolean streaming;
@@ -1597,7 +1597,7 @@ extern cgs_t cgs;
 extern cg_t cg;
 extern centity_t cg_entities[MAX_GENTITIES];
 extern playerEntity_t *cg_playerEntities;
-extern weaponInfo_t cg_weapons[MAX_WEAPONS];
+extern weaponInfo_t cg_weapons[WP_NUM_WEAPONS];
 extern itemInfo_t cg_items[MAX_ITEMS];
 
 extern vmCvar_t cg_centertime;

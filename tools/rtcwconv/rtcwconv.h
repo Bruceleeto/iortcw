@@ -27,6 +27,7 @@ struct MdsStats {
 	size_t bytesIn, bytesOut;
 	long framesIn, keysOut;     /* bone poses before / rotation keys after */
 	long dirKeys;
+	long frameKeys, cullKeys;   /* root offset keys, cull bounds keys */
 	int strips, stripTris, tris;
 	float maxErr;               /* furthest a bone moved, in units */
 	float maxAngle;             /* most a bone turned, in degrees */
@@ -88,7 +89,13 @@ struct ColStats {
 	int files;
 	size_t bytesIn, bytesOut;
 	int patches, patchesSkipped;
+	long planesIn, planesOut, leafSurfacesIn, leafSurfacesOut;
 };
+
+/* a .bsp's planes' numbers with only those used (by nodes and brush sides)
+ * kept, -1 for the rest: the .col's and the .wld's nodes'. False if a lump
+ * is bad. */
+bool BspPlaneRemap(const std::vector<uint8_t> &bsp, std::vector<int32_t> &remap, int &numUsed);
 
 /* .bsp -> .col: what the collision code reads, curve collision included.
  * False (with a message) if it isn't a bsp. */

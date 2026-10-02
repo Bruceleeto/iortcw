@@ -47,6 +47,7 @@ If you have questions concerning this license or the applicable additional terms
 #define MAX_MENUS 56    // ui/menus.txt and ui/ingame.txt have 45 between them, 46 with briefing
 #endif
 #define MAX_MENUITEMS 256
+#define MAX_MENU_ONKEYS 4   // a menu's execKeys
 #define MAX_COLOR_RANGES 10
 #define MAX_OPEN_MENUS 16
 
@@ -290,7 +291,13 @@ typedef struct {
 	const char *onOpen;             // run when the menu is first opened
 	const char *onClose;            // run when the menu is closed
 	const char *onESC;              // run when the menu is closed
-	const char *onKey[255];         // NERVE - SMF - execs commands when a key is pressed
+	// NERVE - SMF - execs commands when a key is pressed (execKey); no SP
+	// menu has any, so a few, not one for every key
+	struct {
+		int key;
+		const char *script;
+	} onKey[MAX_MENU_ONKEYS];
+	int numOnKeys;
 	const char *soundName;          // background loop sound for menu
 	const char *onROQDone;          //----(SA)	added.  callback for roqs played from menus
 

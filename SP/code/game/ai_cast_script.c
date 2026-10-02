@@ -392,6 +392,7 @@ AICast_ScriptParse
 */
 #define MAX_SCRIPT_EVENTS   64
 cast_script_event_t cast_temp_events[MAX_SCRIPT_EVENTS];
+static cast_script_stack_item_t cast_temp_items[MAX_SCRIPT_EVENTS][AICAST_MAX_SCRIPT_STACK_ITEMS];  // theirs, while parsing
 void AICast_ScriptParse( cast_state_t *cs ) {
 	gentity_t   *ent;
 	char        *pScript;
@@ -477,6 +478,7 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 			}
 
 			curEvent = &cast_temp_events[numEventItems];
+			curEvent->stack.items = cast_temp_items[numEventItems];
 			curEvent->eventNum = eventNum;
 			memset( params, 0, sizeof( params ) );
 
@@ -603,6 +605,13 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 	if ( numEventItems > 0 ) {
 		cs->castScriptEvents = G_Alloc( sizeof( cast_script_event_t ) * numEventItems );
 		memcpy( cs->castScriptEvents, cast_temp_events, sizeof( cast_script_event_t ) * numEventItems );
+		// each event's actions, just as many as it has
+		for ( i = 0; i < numEventItems; i++ ) {
+			cast_script_stack_t *stack = &cs->castScriptEvents[i].stack;
+
+			stack->items = G_Alloc( stack->numItems * sizeof( stack->items[0] ) );
+			memcpy( stack->items, cast_temp_items[i], stack->numItems * sizeof( stack->items[0] ) );
+		}
 		cs->numCastScriptEvents = numEventItems;
 
 		cs->castScriptStatus.castScriptEventIndex = -1;

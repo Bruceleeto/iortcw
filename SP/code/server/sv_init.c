@@ -245,14 +245,50 @@ static void SV_CreateBaseline( void ) {
 			continue;
 		}
 		svent->s.number = entnum;
-
-		//
-		// take current state as baseline
-		//
-		sv.svEntities[entnum].baseline = svent->s;
+		// no baseline kept: the gamestate sends none (SV_SendClientGameState)
 	}
 }
 
+
+/*
+===============
+SV_SetMapMaxClients
+
+Single player: a client for the player and one for each AI the map has, not
+MAX_SP_CLIENTS (each costs some 14K: the server's, the game's, the AI's and
+the cgame's)
+===============
+*/
+static void SV_SetMapMaxClients( const char *server ) {
+	char *text, *p, *token;
+	int count = 1;      // the player
+	qboolean classname = qfalse;
+
+	text = CM_ReadMapEntities( va( "maps/%s.bsp", server ) );
+	p = text;
+	while ( 1 ) {
+		token = COM_Parse( &p );
+		if ( !p ) {
+			break;
+		}
+		if ( classname ) {
+			// the ai_ entities that are characters (g_spawn.c spawns)
+			if ( !Q_stricmpn( token, "ai_", 3 ) && Q_stricmp( token, "ai_marker" ) &&
+				 Q_stricmp( token, "ai_effect" ) && Q_stricmp( token, "ai_trigger" ) ) {
+				count++;
+			}
+		}
+		classname = !Q_stricmp( token, "classname" );
+	}
+	Hunk_FreeTempMemory( text );
+
+	if ( count > MAX_SP_CLIENTS ) {
+		count = MAX_SP_CLIENTS;
+	}
+	// latched, as SV_Map_f's 32 was: SV_Startup or SV_ChangeMaxClients take
+	// it up, the latter while svs.clients is still the size it was
+	Cvar_SetLatched( "sv_maxclients", va( "%i", count ) );
+}
 
 /*
 ===============
@@ -681,13 +717,8 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 			bot_enable = Cvar_Get( "bot_enable", "1", CVAR_LATCH );
 		}
 		if ( g_gametype->integer == 2 ) {
-			if ( sv_maxclients->latchedString ) {
-				// it's been modified, so grab the new value
-				Cvar_Get( "sv_maxclients", "8", 0 );
-			}
-			if ( sv_maxclients->integer < MAX_CLIENTS ) {
-				Cvar_SetValue( "sv_maxclients", MAX_SP_CLIENTS );
-			}
+			// sv_maxclients is SV_SetMapMaxClients's, for the map, set once the
+			// last map's game is shut down: that goes over the clients it has
 			if ( !bot_enable->integer ) {
 				Cvar_Set( "bot_enable", "1" );
 			}
@@ -713,6 +744,10 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	// clear collision map data
 	CM_ClearMap();
+
+	if ( Cvar_VariableIntegerValue( "g_gametype" ) == 2 ) {     // single player
+		SV_SetMapMaxClients( server );
+	}
 
 	// init client structures and svs.numSnapshotEntities
 	if ( !Cvar_VariableValue( "sv_running" ) ) {

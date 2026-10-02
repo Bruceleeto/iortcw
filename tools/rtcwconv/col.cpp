@@ -1,7 +1,7 @@
 /*
- * .bsp -> .col: the collision lumps as they are, plus the curve collision
- * made here instead of at load, and the vis compressed (see
- * SP/code/qcommon/colfile.h).
+ * .bsp -> .col: the collision lumps, plus the curve collision made here
+ * instead of at load, and the vis compressed; only the planes used and the
+ * curves that can be hit (see SP/code/qcommon/colfile.h).
  */
 #include <stdio.h>
 #include <string.h>
@@ -19,6 +19,40 @@ static const int colFromBsp[COL_LUMP_PATCHES] = {
 
 static void PutInt( std::vector<uint8_t> &out, int32_t v ) {
 	out.insert( out.end(), (uint8_t *)&v, (uint8_t *)&v + 4 );
+}
+
+template <class T> static void PutArray( std::vector<uint8_t> &out, const std::vector<T> &a ) {
+	out.assign( (const uint8_t *)a.data(), (const uint8_t *)( a.data() + a.size() ) );
+}
+
+bool BspPlaneRemap( const std::vector<uint8_t> &bsp, std::vector<int32_t> &remap, int &numUsed ) {
+	int numPlanes, numNodes, numSides;
+	const BspPlane *planes = BspLumpArray<BspPlane>( bsp, BSP_PLANES, numPlanes );
+	const BspNode *nodes = BspLumpArray<BspNode>( bsp, BSP_NODES, numNodes );
+	const BspBrushSide *sides = BspLumpArray<BspBrushSide>( bsp, BSP_BRUSHSIDES, numSides );
+	if ( !planes || !nodes || !sides ) {
+		return false;
+	}
+	remap.assign( numPlanes, -1 );
+	for ( int i = 0; i < numNodes; i++ ) {
+		if ( nodes[i].planeNum < 0 || nodes[i].planeNum >= numPlanes ) {
+			return false;
+		}
+		remap[nodes[i].planeNum] = 0;
+	}
+	for ( int i = 0; i < numSides; i++ ) {
+		if ( sides[i].planeNum < 0 || sides[i].planeNum >= numPlanes ) {
+			return false;
+		}
+		remap[sides[i].planeNum] = 0;
+	}
+	numUsed = 0;
+	for ( int i = 0; i < numPlanes; i++ ) {
+		if ( !remap[i] ) {
+			remap[i] = numUsed++;
+		}
+	}
+	return true;
 }
 
 /* the .bsp's vis (int numClusters, clusterBytes, then a row of clusterBytes
@@ -76,19 +110,110 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 	}
 	const BspLump *lumps = (const BspLump *)( bsp.data() + 8 );
 
-	int numShaders, numVerts, numSurfaces;
+	int numShaders, numVerts, numSurfaces, numPlanes, numNodes, numSides, numLeafs, numLeafSurfaces, numModels;
 	const BspShader *shaders = BspLumpArray<BspShader>( bsp, BSP_SHADERS, numShaders );
 	const BspVert *verts = BspLumpArray<BspVert>( bsp, BSP_DRAWVERTS, numVerts );
 	const BspSurface *surfaces = BspLumpArray<BspSurface>( bsp, BSP_SURFACES, numSurfaces );
-	if ( !shaders || !verts || !surfaces ) {
+	const BspPlane *planes = BspLumpArray<BspPlane>( bsp, BSP_PLANES, numPlanes );
+	const BspNode *nodes = BspLumpArray<BspNode>( bsp, BSP_NODES, numNodes );
+	const BspBrushSide *sides = BspLumpArray<BspBrushSide>( bsp, BSP_BRUSHSIDES, numSides );
+	const BspLeaf *leafs = BspLumpArray<BspLeaf>( bsp, BSP_LEAFS, numLeafs );
+	const int32_t *leafSurfaces = BspLumpArray<int32_t>( bsp, BSP_LEAFSURFACES, numLeafSurfaces );
+	const BspModel *models = BspLumpArray<BspModel>( bsp, BSP_MODELS, numModels );
+	std::vector<int32_t> planeRemap;
+	int numPlanesUsed;
+	if ( !shaders || !verts || !surfaces || !planes || !nodes || !sides || !leafs || !leafSurfaces || !models ||
+		 !BspPlaneRemap( bsp, planeRemap, numPlanesUsed ) ) {
 		fprintf( stderr, "%s: bad lumps\n", name );
 		return false;
+	}
+
+	/* rewritten lumps, in place of the .bsp's */
+	std::vector<uint8_t> rewritten[COL_LUMPS];
+	bool isRewritten[COL_LUMPS] = {};
+
+	/* the planes used, renumbered */
+	{
+		std::vector<BspPlane> outPlanes( numPlanesUsed );
+		for ( int i = 0; i < numPlanes; i++ ) {
+			if ( planeRemap[i] >= 0 ) {
+				outPlanes[planeRemap[i]] = planes[i];
+			}
+		}
+		std::vector<BspNode> outNodes( nodes, nodes + numNodes );
+		for ( BspNode &n : outNodes ) {
+			n.planeNum = planeRemap[n.planeNum];
+		}
+		std::vector<BspBrushSide> outSides( sides, sides + numSides );
+		for ( BspBrushSide &s : outSides ) {
+			s.planeNum = planeRemap[s.planeNum];
+		}
+		PutArray( rewritten[COL_LUMP_PLANES], outPlanes );
+		PutArray( rewritten[COL_LUMP_NODES], outNodes );
+		PutArray( rewritten[COL_LUMP_BRUSHSIDES], outSides );
+		isRewritten[COL_LUMP_PLANES] = isRewritten[COL_LUMP_NODES] = isRewritten[COL_LUMP_BRUSHSIDES] = true;
+		st.planesIn += numPlanes;
+		st.planesOut += numPlanesUsed;
+	}
+
+	/* the surfaces kept: the curves that can be hit, numbered from 0 */
+	std::vector<int32_t> surfRemap( numSurfaces, -1 );
+	int numKept = 0;
+	for ( int i = 0; i < numSurfaces; i++ ) {
+		const BspSurface &s = surfaces[i];
+		if ( s.surfaceType == MST_PATCH && s.shaderNum >= 0 && s.shaderNum < numShaders &&
+			 shaders[s.shaderNum].contentFlags ) {
+			surfRemap[i] = numKept++;
+		}
+	}
+	{
+		std::vector<int32_t> outLeafSurfaces;
+		std::vector<BspLeaf> outLeafs( leafs, leafs + numLeafs );
+		for ( BspLeaf &l : outLeafs ) {
+			if ( l.firstLeafSurface < 0 || l.numLeafSurfaces < 0 || l.firstLeafSurface + l.numLeafSurfaces > numLeafSurfaces ) {
+				fprintf( stderr, "%s: bad leaf\n", name );
+				return false;
+			}
+			int first = outLeafSurfaces.size();
+			for ( int k = 0; k < l.numLeafSurfaces; k++ ) {
+				int s = leafSurfaces[l.firstLeafSurface + k];
+				if ( s >= 0 && s < numSurfaces && surfRemap[s] >= 0 ) {
+					outLeafSurfaces.push_back( surfRemap[s] );
+				}
+			}
+			l.firstLeafSurface = first;
+			l.numLeafSurfaces = outLeafSurfaces.size() - first;
+		}
+		/* a submodel's surfaces are a run, and so are the ones of them kept */
+		std::vector<BspModel> outModels( models, models + numModels );
+		for ( BspModel &m : outModels ) {
+			if ( m.firstSurface < 0 || m.numSurfaces < 0 || m.firstSurface + m.numSurfaces > numSurfaces ) {
+				fprintf( stderr, "%s: bad model\n", name );
+				return false;
+			}
+			int first = numKept, num = 0;
+			for ( int k = 0; k < m.numSurfaces; k++ ) {
+				int n = surfRemap[m.firstSurface + k];
+				if ( n >= 0 ) {
+					first = num ? first : n;
+					num++;
+				}
+			}
+			m.firstSurface = first;
+			m.numSurfaces = num;
+		}
+		st.leafSurfacesIn += numLeafSurfaces;
+		st.leafSurfacesOut += outLeafSurfaces.size();
+		PutArray( rewritten[COL_LUMP_LEAFSURFACES], outLeafSurfaces );
+		PutArray( rewritten[COL_LUMP_LEAFS], outLeafs );
+		PutArray( rewritten[COL_LUMP_MODELS], outModels );
+		isRewritten[COL_LUMP_LEAFSURFACES] = isRewritten[COL_LUMP_LEAFS] = isRewritten[COL_LUMP_MODELS] = true;
 	}
 
 	/* the curve collision */
 	std::vector<uint8_t> patches;
 	int numPatches = 0;
-	PutInt( patches, numSurfaces );
+	PutInt( patches, numKept );
 	PutInt( patches, 0 );   /* numPatches, filled in below */
 	for ( int i = 0; i < numSurfaces; i++ ) {
 		const BspSurface &s = surfaces[i];
@@ -100,7 +225,7 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 			fprintf( stderr, "%s: bad patch %d\n", name, i );
 			return false;
 		}
-		if ( !shaders[s.shaderNum].contentFlags ) {
+		if ( surfRemap[i] < 0 ) {
 			st.patchesSkipped++;
 			continue;   /* nothing can hit it */
 		}
@@ -115,7 +240,7 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 			fprintf( stderr, "%s: patch %d failed\n", name, i );
 			return false;
 		}
-		PutInt( patches, i );
+		PutInt( patches, surfRemap[i] );
 		PutInt( patches, s.shaderNum );
 		patches.insert( patches.end(), pc, pc + size );
 		ColFreePatch();
@@ -141,7 +266,10 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 	for ( int n = 0; n < COL_LUMPS; n++ ) {
 		const uint8_t *p;
 		size_t len;
-		if ( n == COL_LUMP_PATCHES ) {
+		if ( isRewritten[n] ) {
+			p = rewritten[n].data();
+			len = rewritten[n].size();
+		} else if ( n == COL_LUMP_PATCHES ) {
 			p = patches.data();
 			len = patches.size();
 		} else if ( n == COL_LUMP_VISIBILITY ) {

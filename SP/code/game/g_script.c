@@ -286,6 +286,7 @@ G_Script_ScriptParse
 */
 #define MAX_SCRIPT_EVENTS   64
 g_script_event_t g_temp_events[MAX_SCRIPT_EVENTS];
+static g_script_stack_item_t g_temp_items[MAX_SCRIPT_EVENTS][G_MAX_SCRIPT_STACK_ITEMS];    // theirs, while parsing
 void G_Script_ScriptParse( gentity_t *ent ) {
 	char        *pScript;
 	char        *token;
@@ -366,6 +367,7 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 			}
 
 			curEvent = &g_temp_events[numEventItems];
+			curEvent->stack.items = g_temp_items[numEventItems];
 			curEvent->eventNum = eventNum;
 			memset( params, 0, sizeof( params ) );
 
@@ -478,6 +480,13 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 	if ( numEventItems > 0 ) {
 		ent->scriptEvents = G_Alloc( sizeof( g_script_event_t ) * numEventItems );
 		memcpy( ent->scriptEvents, g_temp_events, sizeof( g_script_event_t ) * numEventItems );
+		// each event's actions, just as many as it has
+		for ( i = 0; i < numEventItems; i++ ) {
+			g_script_stack_t *stack = &ent->scriptEvents[i].stack;
+
+			stack->items = G_Alloc( stack->numItems * sizeof( stack->items[0] ) );
+			memcpy( stack->items, g_temp_items[i], stack->numItems * sizeof( stack->items[0] ) );
+		}
 		ent->numScriptEvents = numEventItems;
 	}
 }

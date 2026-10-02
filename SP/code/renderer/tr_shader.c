@@ -38,7 +38,7 @@ static shaderStage_t stages[MAX_SHADER_STAGES];
 static shader_t shader;
 static texModInfo_t texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS];
 
-#define FILE_HASH_SIZE      4096
+#define FILE_HASH_SIZE      1024    // a map has some 1400 shaders
 
 static shader_t*       hashTable[FILE_HASH_SIZE];
 

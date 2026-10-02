@@ -42,6 +42,7 @@ struct MdsSurface {
 };
 
 #define FRAME_FLOATS     13     /* bounds[2], localOrigin, radius, parentOffset */
+#define CULL_TOL         8.0f   /* how far the cull bounds may be off, before they're made bigger to hold it */
 #define BONE_SHORTS      MDSC_POSE_SHORTS
 #define BONE_INFO_SIZE   80     /* mdsBoneInfo_t */
 #define TAG_SIZE         72     /* mdsTag_t */
@@ -100,10 +101,11 @@ static bool DirSpanFits( const std::vector<Dir> &exact, const std::vector<short>
 	return true;
 }
 
-static bool FrameSpanFits( const std::vector<float> &v, int s, int e, float tol ) {
+/* frame floats first to first + n */
+static bool FrameSpanFits( const std::vector<float> &v, int first, int n, int s, int e, float tol ) {
 	for ( int f = s + 1; f < e; f++ ) {
 		float t = (float)( f - s ) / (float)( e - s );
-		for ( int c = 0; c < FRAME_FLOATS; c++ ) {
+		for ( int c = first; c < first + n; c++ ) {
 			float a = v[s * FRAME_FLOATS + c], b = v[e * FRAME_FLOATS + c];
 			if ( fabsf( a + ( b - a ) * t - v[f * FRAME_FLOATS + c] ) > tol ) {
 				return false;
@@ -236,12 +238,31 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 	const size_t trackAt = base + offsetof( mdscAnim_t, tracks );
 
 	std::vector<int> keys = ReduceKeys( nf, opt.maxSpan, [&]( int s, int e ) {
-		return FrameSpanFits( frameVals, s, e, opt.offsetTol );
+		return FrameSpanFits( frameVals, MDSC_CULL_FLOATS, MDSC_OFFSET_FLOATS, s, e, opt.offsetTol );
 	} );
 	PutKeys( o, frameTrackAt, base, keys );
 	for ( int k : keys ) {
-		o.put( &frameVals[k * FRAME_FLOATS], FRAME_FLOATS * 4 );
+		o.put( &frameVals[k * FRAME_FLOATS + MDSC_CULL_FLOATS], MDSC_OFFSET_FLOATS * 4 );
 	}
+	st.frameKeys += keys.size();
+
+	/* the cull bounds: within CULL_TOL, then that much bigger (the sphere's
+	   centre may be off by it in each of x, y and z too) */
+	keys = ReduceKeys( nf, opt.maxSpan, [&]( int s, int e ) {
+		return FrameSpanFits( frameVals, 0, MDSC_CULL_FLOATS, s, e, CULL_TOL );
+	} );
+	PutKeys( o, frameTrackAt + offsetof( mdscAnim_t, cullTrack ), base, keys );
+	for ( int k : keys ) {
+		float v[MDSC_CULL_FLOATS];
+		memcpy( v, &frameVals[k * FRAME_FLOATS], sizeof( v ) );
+		for ( int c = 0; c < 3; c++ ) {
+			v[c] -= CULL_TOL;
+			v[3 + c] += CULL_TOL;
+		}
+		v[9] += CULL_TOL * 3;
+		o.put( v, sizeof( v ) );
+	}
+	st.cullKeys += keys.size();
 
 	/* bones, parents first, each against its parent as the game will have
 	   decoded it so errors don't add up down the skeleton */
@@ -330,6 +351,21 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 		const float *rootB = (const float *)dec.data() + 10;
 
 		MDSC_DecodeFrame( o.b.data(), f, dec.data() );
+
+		/* the cull bounds must hold the frame's */
+		{
+			const float *a = &frameVals[f * FRAME_FLOATS], *b = (const float *)dec.data();
+			float d = 0;
+			bool holds = true;
+			for ( int c = 0; c < 3; c++ ) {
+				holds = holds && b[c] <= a[c] && b[3 + c] >= a[3 + c];
+				d += ( a[6 + c] - b[6 + c] ) * ( a[6 + c] - b[6 + c] );
+			}
+			if ( !holds || sqrtf( d ) + a[9] > b[9] ) {
+				fprintf( stderr, "%s: frame %d: cull bounds don't hold it\n", name, f );
+				return false;
+			}
+		}
 
 		/* bone positions, the way R_CalcBone places them */
 		for ( int b = 0; b < nb; b++ ) {

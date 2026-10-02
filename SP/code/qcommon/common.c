@@ -1584,6 +1584,10 @@ once when the hunk is cleared (or back to the mark). Nothing is set aside up
 front, so the hunk and everything else that mallocs share all the RAM there
 is, each taking just what it uses. Temp memory is plain malloc and free.
 
+Small allocations (a map has thousands: a surface, a shader, a model) share
+blocks of HUNK_CHUNK, which saves each its own block's header and malloc's
+own; a mark or a clear starts a new block, so freeing back to it frees them.
+
 ==============================================================================
 */
 
@@ -1599,7 +1603,11 @@ typedef struct hunkTemp_s {
 } hunkTemp_t;
 
 #define HUNK_ALIGN      32      // cacheline, as the hunk was; the header fills it
+#define HUNK_CHUNK      ( 16 * 1024 )   // a block of small allocations
+#define HUNK_SMALL      1024            // up to this, in one
 static hunkAlloc_t *hunkAllocs, *hunkMark;
+static byte *hunkChunk;         // the block small ones go in: what's left of it
+static int hunkChunkLeft;
 static hunkTemp_t *hunkTemps;
 static qboolean s_hunkInit;
 
@@ -1689,11 +1697,13 @@ int Hunk_MemoryRemaining( void ) {
 }
 
 void Hunk_SetMark( void ) {
+	hunkChunkLeft = 0;      // after the mark, in blocks of their own
 	hunkMark = hunkAllocs;
 	hunk_low.mark = hunk_low.permanent;
 }
 
 static void Hunk_FreeTo( hunkAlloc_t *to ) {
+	hunkChunkLeft = 0;
 	while ( hunkAllocs && hunkAllocs != to ) {
 		hunkAlloc_t *next = hunkAllocs->next;
 		hunk_low.permanent -= hunkAllocs->size;
@@ -1743,6 +1753,18 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 	// rounded as the hunk did: some code writes a little past what it
 	// asked for, which there landed in the slack or the next block
 	size = ( size + 31 ) & ~31;
+	if ( size <= HUNK_SMALL ) {
+		byte *p;
+
+		if ( size > hunkChunkLeft ) {
+			hunkChunk = Hunk_Alloc( HUNK_CHUNK, preference );   // zeroed
+			hunkChunkLeft = HUNK_CHUNK;
+		}
+		p = hunkChunk;
+		hunkChunk += size;
+		hunkChunkLeft -= size;
+		return p;
+	}
 	a = memalign( HUNK_ALIGN, HUNK_ALIGN + size );
 	if ( !a ) {
 		Com_MemoryReport( "out of memory" );

@@ -40,6 +40,25 @@ static int maxSoundScripts;
 soundScriptSound_t *soundScriptSounds;
 int numSoundScriptSounds = 0;
 static int maxSoundScriptSounds;
+// their names and filenames, one after the other
+static char *soundNames;
+static int soundNamesUsed, maxSoundNames;
+
+static const char *CG_SoundName( const char *s ) {
+	int len = strlen( s ) + 1;
+	char *name;
+
+	if ( len > MAX_QPATH ) {
+		len = MAX_QPATH;
+	}
+	if ( soundNamesUsed + len > maxSoundNames ) {
+		CG_Error( "CG_SoundName: more than counted\n" );
+	}
+	name = soundNames + soundNamesUsed;
+	Q_strncpyz( name, s, len );
+	soundNamesUsed += len;
+	return name;
+}
 
 /*
 ================
@@ -91,7 +110,7 @@ int CG_SoundScriptPrecache( const char *name ) {
 	s = (char *)name;
 	sound = hashTable[hash];
 	while ( sound ) {
-		if ( !Q_strcasecmp( s, sound->name ) ) {
+		if ( !Q_stricmp( s, sound->name ) ) {
 			// found a match, precache these sounds
 			scriptSound = sound->soundList;
 			if ( !sound->streaming ) {
@@ -189,7 +208,7 @@ qboolean CG_SoundPlaySoundScript( const char *name, vec3_t org, int entnum ) {
 	s = (char *)name;
 	sound = hashTable[hash];
 	while ( sound ) {
-		if ( !Q_strcasecmp( s, sound->name ) ) {
+		if ( !Q_stricmp( s, sound->name ) ) {
 			// found a match, pick the oldest sound
 			CG_SoundPickOldestRandomSound( sound, org, entnum );
 			return qtrue;
@@ -233,8 +252,11 @@ static void CG_SoundParseSounds( char *filename, char *buffer ) {
 	char *token, **text;
 	long hash;
 	soundScript_t sound;                // the current sound being read
+	char name[MAX_QPATH];               // its name
 	soundScriptSound_t  *scriptSound;
 	qboolean inSound, wantSoundName;
+
+	name[0] = 0;
 
 	inSound = qfalse;
 	wantSoundName = qtrue;
@@ -244,29 +266,30 @@ static void CG_SoundParseSounds( char *filename, char *buffer ) {
 		token = COM_ParseExt( text, qtrue );
 		if ( !token[0] ) {
 			if ( inSound ) {
-				CG_Error( "no concluding '}' in sound %s, file %s\n", sound.name, filename );
+				CG_Error( "no concluding '}' in sound %s, file %s\n", name, filename );
 			}
 			return;
 		}
 		if ( !Q_strcasecmp( token, "{" ) ) {
 			if ( inSound ) {
-				CG_Error( "no concluding '}' in sound %s, file %s\n", sound.name, filename );
+				CG_Error( "no concluding '}' in sound %s, file %s\n", name, filename );
 			}
 			if ( wantSoundName ) {
-				CG_Error( "'{' found but not expected, after %s, file %s\n", sound.name, filename );
+				CG_Error( "'{' found but not expected, after %s, file %s\n", name, filename );
 			}
 			inSound = qtrue;
 			continue;
 		}
 		if ( !Q_strcasecmp( token, "}" ) ) {
 			if ( !inSound ) {
-				CG_Error( "'}' unexpected after sound %s, file %s\n", sound.name, filename );
+				CG_Error( "'}' unexpected after sound %s, file %s\n", name, filename );
 			}
 
 			// end of a sound, copy it to the global list and stick it in the hashTable
 			if ( numSoundScripts == maxSoundScripts ) {
 				CG_Error( "CG_SoundParseSounds: more sound scripts than counted\n" );
 			}
+			sound.name = CG_SoundName( name );
 			hash = generateHashValue( sound.name );
 			sound.nextHash = hashTable[hash];
 			soundScripts[numSoundScripts] = sound;
@@ -279,10 +302,10 @@ static void CG_SoundParseSounds( char *filename, char *buffer ) {
 		if ( !inSound ) {
 			// this is the identifier for a new sound
 			if ( !wantSoundName ) {
-				CG_Error( "'%s' unexpected after sound %s, file %s\n", token, sound.name, filename );
+				CG_Error( "'%s' unexpected after sound %s, file %s\n", token, name, filename );
 			}
 			memset( &sound, 0, sizeof( sound ) );
-			Q_strncpyz( sound.name, token, sizeof( sound.name ) );
+			Q_strncpyz( name, token, sizeof( name ) );
 			wantSoundName = qfalse;
 			sound.index = numSoundScripts;
 			// setup the new sound defaults
@@ -352,7 +375,7 @@ static void CG_SoundParseSounds( char *filename, char *buffer ) {
 			scriptSound = &soundScriptSounds[numSoundScriptSounds++];
 
 			token = COM_ParseExt( text, qtrue );
-			Q_strncpyz( scriptSound->filename, token, sizeof( scriptSound->filename ) );
+			scriptSound->filename = CG_SoundName( token );
 			scriptSound->lastPlayed = 0;
 			scriptSound->sfxHandle = 0;
 			scriptSound->next = sound.soundList;
@@ -372,6 +395,8 @@ each ends in a '}', each sound is after a "sound"
 */
 static void CG_SoundCountSounds( char *buffer ) {
 	char *token, **text;
+	int len, lastLen = 0;   // the token before, which a '{' makes a sound's name
+	qboolean filename = qfalse;     // the token after "sound" is a filename
 
 	text = &buffer;
 	while ( 1 ) {
@@ -379,11 +404,22 @@ static void CG_SoundCountSounds( char *buffer ) {
 		if ( !token[0] ) {
 			return;
 		}
-		if ( !Q_strcasecmp( token, "}" ) ) {
+		len = strlen( token ) + 1;  // as CG_SoundName keeps it
+		if ( len > MAX_QPATH ) {
+			len = MAX_QPATH;
+		}
+		if ( filename ) {
+			filename = qfalse;
+			maxSoundNames += len;
+		} else if ( !Q_strcasecmp( token, "}" ) ) {
 			maxSoundScripts++;
+		} else if ( !Q_strcasecmp( token, "{" ) ) {
+			maxSoundNames += lastLen;
 		} else if ( !Q_strcasecmp( token, "sound" ) ) {
 			maxSoundScriptSounds++;
+			filename = qtrue;
 		}
+		lastLen = len;
 	}
 }
 
@@ -439,7 +475,9 @@ static void CG_SoundLoadSoundFiles( void ) {
 		if ( pass == 1 ) {
 			soundScripts = malloc( maxSoundScripts * sizeof( *soundScripts ) );
 			soundScriptSounds = malloc( maxSoundScriptSounds * sizeof( *soundScriptSounds ) );
-			if ( ( maxSoundScripts && !soundScripts ) || ( maxSoundScriptSounds && !soundScriptSounds ) ) {
+			soundNames = malloc( maxSoundNames );
+			if ( ( maxSoundScripts && !soundScripts ) || ( maxSoundScriptSounds && !soundScriptSounds ) ||
+				 ( maxSoundNames && !soundNames ) ) {
 				CG_Error( "CG_SoundLoadSoundFiles: out of memory\n" );
 			}
 		}

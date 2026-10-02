@@ -50,6 +50,7 @@ int         CM_NumClusters( void );
 int         CM_NumInlineModels( void );
 char        *CM_EntityString( void );
 void        CM_FreeEntityString( void );
+char        *CM_ReadMapEntities( const char *name );
 
 // returns an ORed contents mask
 int         CM_PointContents( const vec3_t p, clipHandle_t model );
