@@ -485,6 +485,10 @@ static void SV_MapRestart_f( void ) {
 	VM_Call (gvm, GAME_RUN_FRAME, sv.time);
 	sv.time += 100;
 	svs.time += 100;
+
+	// the game's read the map's entities again: as after a load
+	// (CL_InitCGame), they're read from the file again if wanted
+	CM_FreeEntityString();
 }
 
 /*
