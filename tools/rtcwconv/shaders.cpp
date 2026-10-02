@@ -11,6 +11,9 @@
  * it begins whose rest is named somewhere too, or is short (a number); not
  * when it goes on to a path or a file (models/players/%s/head.md3 names no
  * shader).
+ *
+ * Names are matched with \ as / (some, models\mapobjects\flag\flag1a, are
+ * written so in the .shader and the model both), as the renderer finds them.
  */
 #include <algorithm>
 #include <map>
@@ -31,7 +34,7 @@ std::vector<std::string> prefixes;
 std::map<std::string, std::vector<Shader>> files;   /* by file name, as the renderer lists them */
 
 bool WordChar( char c ) {
-	return ( c >= 'a' && c <= 'z' ) || ( c >= '0' && c <= '9' ) || c == '_' || c == '/' || c == '.' || c == '-' || c == '%';
+	return ( c >= 'a' && c <= 'z' ) || ( c >= '0' && c <= '9' ) || c == '_' || c == '/' || c == '\\' || c == '.' || c == '-' || c == '%';
 }
 
 /* comments out, whitespace down to one space or newline, as COM_Compress:
@@ -90,7 +93,7 @@ void ShaderNames( const uint8_t *data, size_t size ) {
 	for ( size_t i = 0; i <= size; i++ ) {
 		char c = i < size ? tolower( data[i] ) : 0;
 		if ( i < size && WordChar( c ) ) {
-			w += c;
+			w += c == '\\' ? '/' : c;
 			continue;
 		}
 		if ( w.size() >= 4 ) {
@@ -156,7 +159,7 @@ bool ShaderFile( const std::string &fileName, const std::vector<uint8_t> &data, 
 		for ( ; depth > 0; depth-- ) {
 			body += "\n}";
 		}
-		std::transform( name.begin(), name.end(), name.begin(), ::tolower );
+		std::transform( name.begin(), name.end(), name.begin(), []( char c ) { return c == '\\' ? '/' : (char)tolower( c ); } );
 		shaders.push_back( { name, body } );
 	}
 	files[fileName] = std::move( shaders );
