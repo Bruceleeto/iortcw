@@ -1186,30 +1186,37 @@ previous strings
 */
 char    * QDECL va( char *format, ... ) {
 	va_list argptr;
-	#define MAX_VA_STRING   32000
-	static char temp_buffer[MAX_VA_STRING];
+	#define MAX_VA_STRING   16384   // (was 32000, twice, in every module)
 	static char string[MAX_VA_STRING];      // in case va is called by nested functions
 	static int index = 0;
 	char    *buf;
 	int len;
 
-
+	// straight into the ring where it's going; from its start again if it
+	// doesn't fit in what's left
+	buf = &string[index];
 	va_start( argptr, format );
-	Q_vsnprintf (temp_buffer, sizeof(temp_buffer), format, argptr);
+	len = Q_vsnprintf( buf, MAX_VA_STRING - index, format, argptr );
 	va_end( argptr );
 
-	if ( ( len = strlen( temp_buffer ) ) >= MAX_VA_STRING ) {
-		Com_Error( ERR_DROP, "Attempted to overrun string in call to va()\n" );
-	}
-
-	if ( len + index >= MAX_VA_STRING - 1 ) {
+	if ( len < 0 || len >= MAX_VA_STRING - index ) {
+		if ( index == 0 ) {
+			Com_Error( ERR_DROP, "Attempted to overrun string in call to va()\n" );
+		}
 		index = 0;
+		buf = string;
+		va_start( argptr, format );
+		len = Q_vsnprintf( buf, MAX_VA_STRING, format, argptr );
+		va_end( argptr );
+		if ( len < 0 || len >= MAX_VA_STRING ) {
+			Com_Error( ERR_DROP, "Attempted to overrun string in call to va()\n" );
+		}
 	}
-
-	buf = &string[index];
-	memcpy( buf, temp_buffer, len + 1 );
 
 	index += len + 1;
+	if ( index >= MAX_VA_STRING - 1 ) {
+		index = 0;
+	}
 
 	return buf;
 }
@@ -1306,8 +1313,10 @@ FIXME: overflow check?
 ===============
 */
 char *Info_ValueForKey( const char *s, const char *key ) {
-	static char pkey[BIG_INFO_KEY];         // static like value: 8K off the stack of every caller
-	static char value[2][BIG_INFO_VALUE];   // use two buffers so compares
+	// (BIG_INFO_KEY / BIG_INFO_VALUE once: 48K in every module, for the
+	// multiplayer pk3 lists. Longer than this is cut short.)
+	static char pkey[MAX_INFO_KEY];
+	static char value[2][2048];             // use two buffers so compares
 											// work without stomping on each other
 	static int valueindex = 0;
 	char    *o;
@@ -1332,7 +1341,10 @@ char *Info_ValueForKey( const char *s, const char *key ) {
 			if ( !*s ) {
 				return "";
 			}
-			*o++ = *s++;
+			if ( o < pkey + sizeof( pkey ) - 1 ) {
+				*o++ = *s;
+			}
+			s++;
 		}
 		*o = 0;
 		s++;
@@ -1341,7 +1353,10 @@ char *Info_ValueForKey( const char *s, const char *key ) {
 
 		while ( *s != '\\' && *s )
 		{
-			*o++ = *s++;
+			if ( o < value[valueindex] + sizeof( value[0] ) - 1 ) {
+				*o++ = *s;
+			}
+			s++;
 		}
 		*o = 0;
 

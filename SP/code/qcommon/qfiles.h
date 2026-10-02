@@ -42,7 +42,7 @@ If you have questions concerning this license or the applicable additional terms
 #endif
 
 // surface geometry should not exceed these limits
-#define SHADER_MAX_VERTEXES 4000
+#define SHADER_MAX_VERTEXES 2304    // a .wld surface has at most 2048 (WLD_MAX_VERTS), a model 862
 #define SHADER_MAX_INDEXES  ( 6 * SHADER_MAX_VERTEXES )
 
 

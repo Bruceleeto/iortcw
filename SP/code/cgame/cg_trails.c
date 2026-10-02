@@ -430,7 +430,7 @@ CG_AddTrailToScene
 struct {
 	vec3_t vforward, vright, vup;
 } trailOrientation;
-#define MAX_TRAIL_VERTS     2048
+#define MAX_TRAIL_VERTS     512     // a trail with more is cut short
 static polyVert_t verts[MAX_TRAIL_VERTS];
 static polyVert_t outVerts[MAX_TRAIL_VERTS * 3];
 

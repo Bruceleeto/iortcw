@@ -3827,6 +3827,9 @@ void WM_GetSpawnPoints( void ) {
 	Q_strncpyz( uiInfo.spawnPoints[0], "Auto Pick", MAX_SPAWNDESC );
 
 	uiInfo.spawnCount = atoi( s ) + 1;
+	if ( uiInfo.spawnCount > MAX_SPAWNPOINTS ) {
+		uiInfo.spawnCount = MAX_SPAWNPOINTS;
+	}
 
 	for ( i = 1; i < uiInfo.spawnCount; i++ ) {
 		trap_GetConfigString( CS_MULTI_SPAWNTARGETS + i, cs, sizeof( cs ) );

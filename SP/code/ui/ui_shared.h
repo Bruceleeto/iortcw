@@ -41,7 +41,11 @@ If you have questions concerning this license or the applicable additional terms
 #define MAX_ITEMACTION 64
 #define MAX_MENUDEFFILE 4096
 #define MAX_MENUFILE 32768
-#define MAX_MENUS 64
+#ifdef UI_HUD_ONLY
+#define MAX_MENUS 12    // cgame's: ui/hud.txt has 7
+#else
+#define MAX_MENUS 56    // ui/menus.txt and ui/ingame.txt have 45 between them, 46 with briefing
+#endif
 #define MAX_MENUITEMS 256
 #define MAX_COLOR_RANGES 10
 #define MAX_OPEN_MENUS 16

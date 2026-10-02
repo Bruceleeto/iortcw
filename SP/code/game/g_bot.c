@@ -37,7 +37,9 @@ static char g_botInfos[MAX_BOTS][MAX_INFO_STRING];
 
 
 int g_numArenas;
-static char g_arenaInfos[MAX_ARENAS][MAX_INFO_STRING];
+// (arenas are multiplayer's: G_InitBots, which loads them, isn't called)
+#define MAX_ARENAS_SP   1
+static char g_arenaInfos[MAX_ARENAS_SP][MAX_INFO_STRING];
 
 
 #define BOT_BEGIN_DELAY_BASE        2000
@@ -97,7 +99,7 @@ static void G_LoadArenas( void ) {
 	buf[len] = 0;
 	trap_FS_FCloseFile( f );
 
-	g_numArenas = COM_ParseInfos( buf, MAX_ARENAS, g_arenaInfos );
+	g_numArenas = COM_ParseInfos( buf, MAX_ARENAS_SP, g_arenaInfos );
 	trap_Print( va( "%i arenas parsed\n", g_numArenas ) );
 
 	for( n = 0; n < g_numArenas; n++ ) {

@@ -1632,7 +1632,8 @@ void Com_MemoryReport( const char *when ) {
 	DCSim_DumpAllocs( when );
 	{
 		extern int SV_NumEntities( void );
-		Com_Printf( "MEM %s: %d entity slots used of %d\n", when, SV_NumEntities(), MAX_GENTITIES );
+		extern int cvar_numIndexes;
+		Com_Printf( "MEM %s: %d entity slots used of %d, %d cvars\n", when, SV_NumEntities(), MAX_GENTITIES, cvar_numIndexes );
 		if ( strstr( when, "seconds" ) ) {
 			Cmd_ExecuteString( "dcsim_ents" );    // the game's
 		}

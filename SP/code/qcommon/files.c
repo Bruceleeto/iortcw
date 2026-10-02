@@ -234,7 +234,7 @@ static const unsigned int sp_sppak_checksums[] = {
 //#define PRE_RELEASE_TADEMO
 
 #define MAX_ZPATH           256
-#define MAX_SEARCH_PATHS    4096
+#define MAX_SEARCH_PATHS    128     // pure server pk3 lists: the Dreamcast has a handful
 #define MAX_FILEHASH_SIZE   1024
 
 typedef struct fileInPack_s {

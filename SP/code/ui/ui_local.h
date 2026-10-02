@@ -623,7 +623,7 @@ typedef struct {
 #define MAX_HEADNAME  32
 #define MAX_TEAMS 64
 #define MAX_GAMETYPES 16
-#define MAX_MAPS 128
+#define MAX_MAPS 64      // the game has 32
 #define MAX_SPMAPS 16
 #define PLAYERS_PER_TEAM 5
 #define MAX_PINGREQUESTS        32
@@ -644,9 +644,9 @@ typedef struct {
 #define MAX_TIERS 16
 #define MAX_MODS 64
 #define MAX_MOVIES 256
-#define MAX_PLAYERMODELS 256
-#define MAX_SAVEGAMES 256
-#define MAX_SPAWNPOINTS 128     // NERVE - SMF
+#define MAX_PLAYERMODELS 16     // multiplayer's
+#define MAX_SAVEGAMES 64
+#define MAX_SPAWNPOINTS 8       // NERVE - SMF (multiplayer's)
 #define MAX_SPAWNDESC   128     // NERVE - SMF
 
 typedef struct {

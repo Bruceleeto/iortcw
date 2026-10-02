@@ -100,7 +100,9 @@ FT_Library ftLibrary = NULL;
 
 #define MAX_FONTS 6
 static int registeredFontCount = 0;
+#ifdef BUILD_FREETYPE
 static fontInfo_t registeredFont[MAX_FONTS];
+#endif
 
 #ifdef BUILD_FREETYPE
 void R_GetGlyphInfo( FT_GlyphSlot glyph, int *left, int *right, int *width, int *top, int *bottom, int *height, int *pitch ) {
@@ -357,6 +359,7 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 	void *faceData;
 	int i, len;
 	char name[1024];
+	char shaderName[FONT_DAT_GLYPH_NAME];
 
 	if (!fontName) {
 		ri.Printf(PRINT_ALL, "RE_RegisterFont: called with empty name\n");
@@ -369,21 +372,27 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 
 	R_IssuePendingRenderCommands();
 
+#ifdef BUILD_FREETYPE
 	if ( registeredFontCount >= MAX_FONTS ) {
 		ri.Printf( PRINT_WARNING, "RE_RegisterFont: Too many fonts registered already.\n" );
 		return;
 	}
+#endif
 
 	Com_sprintf( name, sizeof( name ), "fonts/fontImage_%i.dat",pointSize );
+#ifdef BUILD_FREETYPE
 	for ( i = 0; i < registeredFontCount; i++ ) {
 		if ( Q_stricmp( name, registeredFont[i].name ) == 0 ) {
 			Com_Memcpy( font, &registeredFont[i], sizeof( fontInfo_t ) );
 			return;
 		}
 	}
+#endif
+	// (without FreeType, no copy kept here: the caller has one, and a font
+	// asked for again is read again, its shaders already registered)
 
 	len = ri.FS_ReadFile( name, NULL );
-	if ( len == sizeof( fontInfo_t ) ) {
+	if ( len == FONT_DAT_SIZE ) {
 		ri.FS_ReadFile( name, &faceData );
 		fdOffset = 0;
 		fdFile = faceData;
@@ -400,18 +409,20 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 			font->glyphs[i].s2          = readFloat();
 			font->glyphs[i].t2          = readFloat();
 			font->glyphs[i].glyph       = readInt();
-			Q_strncpyz(font->glyphs[i].shaderName, (const char *)&fdFile[fdOffset], sizeof(font->glyphs[i].shaderName));
-			fdOffset += sizeof(font->glyphs[i].shaderName);
+			Q_strncpyz( shaderName, (const char *)&fdFile[fdOffset], sizeof( shaderName ) );
+			fdOffset += FONT_DAT_GLYPH_NAME;
+			if ( i >= GLYPH_START && i <= GLYPH_END ) {
+				font->glyphs[i].glyph = RE_RegisterShaderNoMip( shaderName );
+			}
 		}
 		font->glyphScale = readFloat();
 		Com_Memcpy( font->name, &fdFile[fdOffset], MAX_QPATH );
 
 //		Com_Memcpy(font, faceData, sizeof(fontInfo_t));
 		Q_strncpyz( font->name, name, sizeof( font->name ) );
-		for ( i = GLYPH_START; i <= GLYPH_END; i++ ) {
-			font->glyphs[i].glyph = RE_RegisterShaderNoMip( font->glyphs[i].shaderName );
-		}
+#ifdef BUILD_FREETYPE
 		Com_Memcpy( &registeredFont[registeredFontCount++], font, sizeof( fontInfo_t ) );
+#endif
 		ri.FS_FreeFile(faceData);
 		return;
 	}
@@ -513,7 +524,6 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 			h = RE_RegisterShaderFromImage( name, LIGHTMAP_2D, image, qfalse );
 			for ( j = lastStart; j < i; j++ ) {
 				font->glyphs[j].glyph = h;
-				Q_strncpyz( font->glyphs[j].shaderName, name, sizeof( font->glyphs[j].shaderName ) );
 			}
 			lastStart = i;
 			Com_Memset( out, 0, 256 * 256 );

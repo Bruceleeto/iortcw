@@ -1701,8 +1701,13 @@ typedef struct {
 	float s2;
 	float t2;
 	qhandle_t glyph; // handle to the shader with the glyph
-	char shaderName[32];
+	// (its name, 32 bytes, is only in the .dat: 8K a font, in every copy)
 } glyphInfo_t;
+
+// a fontImage_%i.dat: each glyph as above with its shader's name, then the
+// glyphScale and name
+#define FONT_DAT_GLYPH_NAME 32
+#define FONT_DAT_SIZE       ( ( GLYPHS_PER_FONT ) * ( 12 * 4 + FONT_DAT_GLYPH_NAME ) + 4 + MAX_QPATH )
 
 typedef struct {
 	glyphInfo_t glyphs [GLYPHS_PER_FONT];

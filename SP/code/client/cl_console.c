@@ -38,7 +38,7 @@ int g_console_field_width = 78;
 #define NUM_CON_TIMES 4
 
 //#define		CON_TEXTSIZE	32768
-#define     CON_TEXTSIZE    65536   // (SA) DM want's more console...
+#define     CON_TEXTSIZE    8192    // 16K: no one scrolls back far on a Dreamcast
 
 typedef struct {
 	qboolean initialized;

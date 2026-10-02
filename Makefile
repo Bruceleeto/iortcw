@@ -486,8 +486,9 @@ ifneq ($(RENDERER),rend2)
 endif
 GLSL_OBJ     = $(patsubst %,$(B)/glsl/%.o,$(GLSL_SRC))
 QAGAME_OBJ   = $(call obj,qagame,$(QAGAME_SRC))
-# cgame also links the -DUI build of ui_shared, like the original Makefiles
-CGAME_OBJ    = $(call obj,cgame,$(CGAME_SRC)) $(B)/ui/ui/ui_shared.c.o
+# cgame also links a -DUI build of ui_shared, like the original Makefiles
+# (its own, with room for only the hud's menus)
+CGAME_OBJ    = $(call obj,cgame,$(CGAME_SRC)) $(B)/cgame/ui_shared_hud.c.o
 UI_OBJ       = $(call obj,ui,$(UI_SRC))
 MODCOMMON_OBJ = $(call obj,modcommon,$(MODCOMMON_SRC))
 
@@ -593,6 +594,11 @@ $(B)/cgame/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "CGAME_CC $<"
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(MOD_CFLAGS) -DCGAMEDLL -DCGAME -c $< -o $@
+
+$(B)/cgame/ui_shared_hud.c.o: $(CODE)/ui/ui_shared.c
+	$(echo_cmd) "CGAME_CC $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(MOD_CFLAGS) -DUI -DUI_HUD_ONLY -c $< -o $@
 
 $(B)/ui/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "UI_CC $<"
