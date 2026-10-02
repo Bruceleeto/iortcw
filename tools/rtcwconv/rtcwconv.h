@@ -76,11 +76,12 @@ struct AasStats {
 	int files;
 	size_t bytesIn, bytesOut;
 	long facesIn, facesOut;
+	long planesIn, planesOut;
 	int skipped;                /* second worlds left empty: no big characters */
 };
 
-/* .aas -> .aasc: only the ladder faces (and their edges and vertexes) kept.
- * False (with a message) if it isn't one. */
+/* .aas -> .aasc: what the game reads of it, in the botlib's AAS_COMPACT
+ * structs, checked. False (with a message) if it isn't one or doesn't fit. */
 bool ConvertAas(const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasStats &st, const char *name);
 
 /* ---- col.cpp ---- */

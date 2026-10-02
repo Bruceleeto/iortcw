@@ -1845,7 +1845,7 @@ journaled file
 ===================================================================
 */
 
-#define MAX_PUSHED_EVENTS              1024 
+#define MAX_PUSHED_EVENTS              64  // a frame's input at most (Com_Milliseconds)
 static int com_pushedEventsHead = 0;
 static int com_pushedEventsTail = 0;
 static sysEvent_t com_pushedEvents[MAX_PUSHED_EVENTS];
@@ -1888,7 +1888,7 @@ EVENT LOOP
 ========================================================================
 */
 
-#define MAX_QUEUED_EVENTS  256
+#define MAX_QUEUED_EVENTS  64   // a frame's input; more drops the oldest
 #define MASK_QUEUED_EVENTS ( MAX_QUEUED_EVENTS - 1 )
 
 static sysEvent_t  eventQueue[ MAX_QUEUED_EVENTS ];

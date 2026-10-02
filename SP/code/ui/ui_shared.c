@@ -4160,6 +4160,10 @@ void Item_Model_Paint( itemDef_t *item ) {
 		return;
 	}
 
+	if ( !item->asset && modelPtr->name ) {
+		item->asset = DC->registerModel( modelPtr->name );
+		modelPtr->name = NULL;
+	}
 	if ( !item->asset ) {
 		return;
 	}
@@ -5085,7 +5089,12 @@ qboolean ItemParse_asset_model( itemDef_t *item, int handle ) {
 	if ( !PC_String_Parse( handle, &temp ) ) {
 		return qfalse;
 	}
-	if ( !( item->asset ) ) {
+	// a model item's is registered when it's first drawn: every menu is
+	// loaded in game too, and the main menu's (B.J., the flags: 535K) are
+	// never drawn there
+	if ( item->type == ITEM_TYPE_MODEL && item->typeData ) {
+		( (modelDef_t *)item->typeData )->name = temp;
+	} else if ( !( item->asset ) ) {
 		item->asset = DC->registerModel( temp );
 	}
 	return qtrue;

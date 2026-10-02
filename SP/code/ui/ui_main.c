@@ -103,6 +103,8 @@ void _UI_MouseEvent( int dx, int dy );
 void _UI_Refresh( int realtime );
 qboolean _UI_IsFullscreen( void );
 void UI_ReloadMenus( void );
+void UI_ConnectMenus( void );
+qboolean UI_Loading( void );
 
 Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11  ) {
 	switch ( command ) {
@@ -609,7 +611,9 @@ void _UI_Refresh( int realtime ) {
 	//	return;
 	//}
 
-	if ( trap_Key_GetCatcher() & KEYCATCH_UI ) {
+	// not while a level loads: the loading screen has its own menus
+	// (UI_ConnectMenus)
+	if ( ( trap_Key_GetCatcher() & KEYCATCH_UI ) && !UI_Loading() ) {
 		UI_ReloadMenus();
 	}
 
@@ -2321,7 +2325,7 @@ static void UI_DrawGLInfo( rectDef_t *rect, int font, float scale, vec4_t color,
 	Text_Paint( rect->x + 2, rect->y + 30, font, scale, color, va( "PIXELFORMAT: color(%d-bits) Z(%d-bits) stencil(%d-bits)", uiInfo.uiDC.glconfig.colorBits, uiInfo.uiDC.glconfig.depthBits, uiInfo.uiDC.glconfig.stencilBits ), 0, 30, textStyle );
 
 	// build null terminated extension strings
-	Q_strncpyz( buff, uiInfo.uiDC.glconfig.extensions_string, 4096 );
+	Q_strncpyz( buff, uiInfo.uiDC.glconfig.extensions_string, sizeof( buff ) );
 	eptr = buff;
 	y = rect->y + 45;
 	numLines = 0;
@@ -5730,7 +5734,12 @@ uiMenuCommand_t _UI_GetActiveMenu( void ) {
 void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 	char buf[256];
 
-	if ( menu != UIMENU_NONE ) {
+	// the briefing a loading level pops up each time its screen is drawn
+	// (CG_DrawInformation) is one of the loading screen's menus: all the
+	// menus read again each time would be some fifty times a load
+	if ( menu == UIMENU_BRIEFING && UI_Loading() ) {
+		UI_ConnectMenus();
+	} else if ( menu != UIMENU_NONE ) {
 		UI_ReloadMenus();
 	}
 
@@ -5932,14 +5941,24 @@ static void UI_UnloadMenus( void ) {
 	menusLoaded = MENUS_NONE;
 }
 
-/* the loading screen's menu alone, so a level loads without the rest */
-static void UI_ConnectMenus( void ) {
+/* the loading screen's menus alone (and the briefing it shows), so a level
+   loads without the rest */
+void UI_ConnectMenus( void ) {
 	if ( menusLoaded == MENUS_CONNECT ) {
 		return;
 	}
 	UI_UnloadMenus();
 	UI_ParseMenu( "ui/connect.menu" );
+	UI_ParseMenu( "ui/briefing.menu" );
 	menusLoaded = MENUS_CONNECT;
+}
+
+/* a level being connected to or loaded */
+qboolean UI_Loading( void ) {
+	uiClientState_t cstate;
+
+	trap_GetClientState( &cstate );
+	return cstate.connState >= CA_CONNECTING && cstate.connState <= CA_PRIMED;
 }
 
 void UI_ReloadMenus( void ) {

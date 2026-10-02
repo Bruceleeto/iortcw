@@ -347,6 +347,8 @@ int AAS_AreaReachability( int areanum ) {
 	}
 	return ( *aasworld ).areasettings[areanum].numreachableareas;
 } //end of the function AAS_AreaReachability
+#ifndef AAS_COMPACT
+// the faces of the areas: the .aasc keeps only the ladder ones
 //===========================================================================
 // returns the surface area of the given face
 //
@@ -469,6 +471,7 @@ void AAS_FaceCenter( int facenum, vec3_t center ) {
 	scale = 0.5 / face->numedges;
 	VectorScale( center, scale, center );
 } //end of the function AAS_FaceCenter
+#endif // AAS_COMPACT
 //===========================================================================
 // returns the maximum distance a player can fall before being damaged
 // damage = deltavelocity*deltavelocity  * 0.0001
@@ -642,6 +645,8 @@ int AAS_AreaDoNotEnter( int areanum ) {
 int AAS_AreaDoNotEnterLarge( int areanum ) {
 	return ( ( *aasworld ).areasettings[areanum].contents & AREACONTENTS_DONOTENTER_LARGE );
 } //end of the function AAS_AreaDoNotEnter
+#ifndef AAS_COMPACT
+// working out the reachability: the .aasc has it, and only the areas' centers
 //===========================================================================
 // returns the time it takes perform a barrier jump
 //
@@ -4436,6 +4441,7 @@ int AAS_ContinueInitReachability( float time ) {
 	  //not yet finished
 	return qtrue;
 } //end of the function AAS_ContinueInitReachability
+#endif // AAS_COMPACT
 //===========================================================================
 //
 // Parameter:				-
@@ -4447,6 +4453,14 @@ void AAS_InitReachability( void ) {
 		return;
 	}
 
+#ifdef AAS_NO_COMPILE
+	// the .aas files have it, made offline: working it out here would take
+	// more memory and time than there is
+	if ( !( *aasworld ).reachabilitysize ) {
+		botimport.Print( PRT_ERROR, "%s has no reachability\n", ( *aasworld ).filename );
+	}
+	( *aasworld ).reachabilityareas = ( *aasworld ).numareas + 2;
+#else
 	if ( ( *aasworld ).reachabilitysize ) {
 #ifndef BSPC
 		if ( !( (int)LibVarGetValue( "forcereachability" ) ) ) {
@@ -4468,4 +4482,5 @@ void AAS_InitReachability( void ) {
 		( *aasworld ).numareas * sizeof( aas_lreachability_t * ) );
 	//
 	AAS_SetWeaponJumpAreaFlags();
+#endif
 } //end of the function AAS_InitReachable

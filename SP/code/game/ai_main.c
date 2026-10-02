@@ -585,7 +585,9 @@ int BotAI( int client, float thinktime ) {
 	//get the area the bot is in
 	bs->areanum = BotPointAreaNum( bs->origin );
 	//the real AI
+#ifndef NO_DM_BOTS
 	BotDeathmatchAI( bs, thinktime );
+#endif
 	//set the weapon selection every AI frame
 	trap_EA_SelectWeapon( bs->client, bs->weaponnum );
 	//subtract the delta angles
@@ -625,6 +627,12 @@ int BotAISetupClient( int client, struct bot_settings_s *settings ) {
 	char filename[144], name[144], gender[144];
 	bot_state_t *bs;
 	int errnum;
+
+#ifdef NO_DM_BOTS
+	// AI casts are set up by AICast_SetupClient; these are addbot's
+	BotAI_Print( PRT_ERROR, "no deathmatch bots in this build\n" );
+	return qfalse;
+#endif
 
 	if ( !botstates[client] ) {
 		botstates[client] = G_Alloc( sizeof( bot_state_t ) );
@@ -704,7 +712,9 @@ int BotAISetupClient( int client, struct bot_settings_s *settings ) {
 
 	if ( trap_Cvar_VariableIntegerValue( "bot_testichat" ) ) {
 		trap_BotLibVarSet( "bot_testichat", "1" );
+#ifndef NO_DM_BOTS
 		BotChatTest( bs );
+#endif
 	}
 	//NOTE: reschedule the bot thinking
 	BotScheduleBotThink();
@@ -733,9 +743,11 @@ int BotAIShutdownClient( int client ) {
 		return BLERR_AICLIENTALREADYSHUTDOWN;
 	}
 
+#ifndef NO_DM_BOTS
 	if ( BotChat_ExitGame( bs ) ) {
 		trap_BotEnterChat( bs->cs, bs->client, CHAT_ALL );
 	}
+#endif
 
 	trap_BotFreeMoveState( bs->ms );
 	//free the goal state
@@ -747,8 +759,10 @@ int BotAIShutdownClient( int client ) {
 	//free the bot character
 	trap_BotFreeCharacter( bs->character );
 	//
+#ifndef NO_DM_BOTS     // only the deathmatch AI makes them
 	BotFreeWaypoints( bs->checkpoints );
 	BotFreeWaypoints( bs->patrolpoints );
+#endif
 	//clear the bot state
 	memset( bs, 0, sizeof( bot_state_t ) );
 	//set the inuse flag to qfalse
@@ -788,8 +802,10 @@ void BotResetState( bot_state_t *bs ) {
 	weaponstate = bs->ws;
 	entergame_time = bs->entergame_time;
 	//free checkpoints and patrol points
+#ifndef NO_DM_BOTS     // only the deathmatch AI makes them
 	BotFreeWaypoints( bs->checkpoints );
 	BotFreeWaypoints( bs->patrolpoints );
+#endif
 	//reset the whole state
 	memset( bs, 0, sizeof( bot_state_t ) );
 	//copy back some state stuff that should not be reset
@@ -843,7 +859,9 @@ int BotAILoadMap( int restart ) {
 		}
 	}
 
+#ifndef NO_DM_BOTS
 	BotSetupDeathmatchAI();
+#endif
 
 	return BLERR_NOERROR;
 }
@@ -1053,7 +1071,8 @@ int BotInitLibrary( void ) {
 	//set the maxclients and maxentities library variables before calling BotSetupLibrary
 	Com_sprintf( buf, sizeof( buf ), "%d", level.maxclients );
 	trap_BotLibVarSet( "maxclients", buf );
-	Com_sprintf( buf, sizeof( buf ), "%d", MAX_GENTITIES );
+	// SP gives it only the clients and the one after (BotAIStartFrame)
+	Com_sprintf( buf, sizeof( buf ), "%d", g_gametype.integer == GT_SINGLE_PLAYER ? level.maxclients + 1 : MAX_GENTITIES );
 	trap_BotLibVarSet( "maxentities", buf );
 	//bsp checksum
 	trap_Cvar_VariableStringBuffer( "sv_mapChecksum", buf, sizeof( buf ) );

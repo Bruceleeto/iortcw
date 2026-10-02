@@ -68,6 +68,8 @@ int numclusterareas;
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
+#ifndef AAS_COMPACT
+// an area's faces: the .aasc has only the ladder ones
 void AAS_AltRoutingFloodCluster_r( int areanum ) {
 	int i, otherareanum;
 	aas_area_t *area;
@@ -99,6 +101,7 @@ void AAS_AltRoutingFloodCluster_r( int areanum ) {
 		AAS_AltRoutingFloodCluster_r( otherareanum );
 	} //end for
 } //end of the function AAS_AltRoutingFloodCluster_r
+#endif // AAS_COMPACT
 //===========================================================================
 //
 // Parameter:				-

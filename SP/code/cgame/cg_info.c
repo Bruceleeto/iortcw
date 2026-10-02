@@ -39,12 +39,22 @@ CG_LoadingString
 ======================
 */
 void CG_LoadingString( const char *s ) {
+	static int lastUpdate;
+	int now;
+
 	Q_strncpyz( cg.infoScreenText, s, sizeof( cg.infoScreenText ) );
 
 	if ( s && s[0] != 0 ) {
 		CG_Printf( "LOADING... %s\n",s );   //----(SA)	added so you can see from the console what's going on
 
 	}
+	// a frame (a vsync at least) for each of the twenty or so steps of a
+	// load: a few a second do (and the last, cleared, one always)
+	now = trap_Milliseconds();
+	if ( s && s[0] && now - lastUpdate >= 0 && now - lastUpdate < 250 ) {
+		return;
+	}
+	lastUpdate = now;
 	trap_UpdateScreen();
 }
 

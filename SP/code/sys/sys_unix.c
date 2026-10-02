@@ -275,13 +275,27 @@ Sys_FOpen
 ==============
 */
 FILE *Sys_FOpen( const char *ospath, const char *mode ) {
+	FILE *f;
+#ifndef _arch_dreamcast
+	// (KOS's iso9660 opens no directory as a file: this would be a second
+	// walk of the disc's directories for each file)
 	struct stat buf;
 
 	// check if path exists and is a directory
 	if ( !stat( ospath, &buf ) && S_ISDIR( buf.st_mode ) )
 		return NULL;
+#endif
 
-	return fopen( ospath, mode );
+	f = fopen( ospath, mode );
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// unbuffered, a file read is read straight into where it goes (FS_Read):
+	// buffered, newlib reads it 1K at a time through a buffer of its own,
+	// each 1K a read through KOS's cache of 2K sectors
+	if ( f && mode[0] == 'r' ) {
+		setvbuf( f, NULL, _IONBF, 0 );
+	}
+#endif
+	return f;
 }
 
 /*

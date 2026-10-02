@@ -42,8 +42,8 @@
 #define PVR_PT_ALPHA_REF	0x011c
 #endif
 
-#define MAX_MATRIX_DEPTH	32
-#define MAX_TEXTURES		16384
+#define MAX_MATRIX_DEPTH	8	/* the renderer pushes 2 deep at most (tr_flares.c) */
+#define MAX_TEXTURES		( 2048 + 1 )	/* the renderer's MAX_DRAWIMAGES, from name 1, reused */
 #define MAX_IMMEDIATE		4096
 /* the lists are kept in blocks, from one pool for all of them, made as
    frames need them, up to the vertex buffer pvrgl_Init gives the PVR: no
@@ -143,8 +143,8 @@ static struct {
 
 	/* textures */
 	pvrTexture_t	*textures[MAX_TEXTURES];
+	unsigned char	named[( MAX_TEXTURES + 7 ) / 8];	/* names given out, not yet deleted */
 	GLuint		bound;
-	GLuint		nextName;
 	int			textureBytes;
 	int			outOfVram;
 
@@ -749,10 +749,20 @@ static void FreeTextureData( pvrTexture_t *t ) {
 }
 
 void APIENTRY pvrglGenTextures( GLsizei n, GLuint *textures ) {
-	int i;
-	for ( i = 0; i < n; i++ ) {
-		/* the renderer picks its own names from 1024 up; stay below them */
-		textures[i] = ++gl.nextName;
+	GLuint i, name;
+
+	/* the lowest free, as deleted names come back: 0 is no texture */
+	for ( i = 0, name = 1; i < (GLuint)n; i++ ) {
+		while ( name < MAX_TEXTURES && ( gl.named[name >> 3] & ( 1 << ( name & 7 ) ) ) ) {
+			name++;
+		}
+		if ( name == MAX_TEXTURES ) {
+			fprintf( stderr, "pvr_gl: out of texture names (%d)\n", MAX_TEXTURES );
+			textures[i] = MAX_TEXTURES;	/* binds to nothing */
+			continue;
+		}
+		gl.named[name >> 3] |= 1 << ( name & 7 );
+		textures[i] = name;
 	}
 }
 
@@ -764,10 +774,13 @@ void APIENTRY pvrglBindTexture( GLenum target, GLuint texture ) {
 void APIENTRY pvrglDeleteTextures( GLsizei n, const GLuint *textures ) {
 	int i;
 	for ( i = 0; i < n; i++ ) {
-		if ( textures[i] < MAX_TEXTURES && gl.textures[textures[i]] ) {
-			FreeTextureData( gl.textures[textures[i]] );
-			free( gl.textures[textures[i]] );
-			gl.textures[textures[i]] = NULL;
+		if ( textures[i] < MAX_TEXTURES ) {
+			if ( gl.textures[textures[i]] ) {
+				FreeTextureData( gl.textures[textures[i]] );
+				free( gl.textures[textures[i]] );
+				gl.textures[textures[i]] = NULL;
+			}
+			gl.named[textures[i] >> 3] &= ~( 1 << ( textures[i] & 7 ) );
 		}
 	}
 }
@@ -1549,7 +1562,6 @@ int pvrgl_Init( void ) {
 	gl.texEnv = GL_MODULATE;
 	gl.shadeModel = GL_SMOOTH;
 	gl.color = 0xffffffff;
-	gl.nextName = 0;
 	gl.inited = 1;
 	return 0;
 }

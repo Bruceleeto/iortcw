@@ -286,22 +286,11 @@ typedef struct centity_s {
 	int overheatTime;
 	int previousEvent;
 	int previousEventSequence;              // Ridah
-	int teleportFlag;
 
 	int trailTime;                  // so missile trails can handle dropped initial packets
 	int miscTime;
 
 	playerEntity_t *pe;             // a client's own; the rest share one (CG_ResetPlayerEntities)
-
-	int errorTime;                  // decay the error from this time
-	vec3_t errorOrigin;
-	vec3_t errorAngles;
-
-	qboolean extrapolated;          // false if origin / angles is an interpolation
-	vec3_t rawOrigin;
-	vec3_t rawAngles;
-
-	vec3_t beamEnd;
 
 	// exact interpolated position of entity on this frame
 	vec3_t lerpOrigin;
@@ -315,11 +304,8 @@ typedef struct centity_s {
 	// done.
 
 	// Ridah
-	float loopSoundVolume;
 	vec3_t fireRiseDir;             // if standing still this will be up, otherwise it'll point away from movement dir
 	int lastWeaponClientFrame;
-	int lastFuseSparkTime;
-	vec3_t lastFuseSparkOrg;
 
 	// client side dlights
 	int dl_frame;

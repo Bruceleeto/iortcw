@@ -244,11 +244,15 @@ static void SV_Map_f( void ) {
 	// done.
 
 	// make sure the level exists before trying to change, so that
-	// a typo at the server console won't end the game
-	Com_sprintf( expanded, sizeof( expanded ), "maps/%s.bsp", map );
+	// a typo at the server console won't end the game: its .bsp, or its .col
+	// (`make disc` leaves out a .bsp that has one)
+	Com_sprintf( expanded, sizeof( expanded ), "maps/%s.col", map );
 	if ( FS_ReadFile( expanded, NULL ) == -1 ) {
-		Com_Printf( "Can't find map %s\n", expanded );
-		return;
+		Com_sprintf( expanded, sizeof( expanded ), "maps/%s.bsp", map );
+		if ( FS_ReadFile( expanded, NULL ) == -1 ) {
+			Com_Printf( "Can't find map %s\n", expanded );
+			return;
+		}
 	}
 
 	Cvar_Set( "r_mapFogColor", "0" );       //----(SA)	added

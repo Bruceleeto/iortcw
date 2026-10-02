@@ -376,7 +376,7 @@ typedef struct cast_state_s
 
 	//
 	cast_weapon_info_t  *weaponInfo;    // FIXME: make this a list, so they can have multiple weapons?
-	cast_visibility_t vislist[MAX_CLIENTS];         // array of all other client entities, allocated at level start-up
+	cast_visibility_t *vislist;                     // one for each client (aicast_maxclients), allocated at level start-up
 	int weaponFireTimes[MAX_WEAPONS];
 
 	char    *( *aifunc )( struct cast_state_s *cs );            //current AI function

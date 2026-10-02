@@ -392,7 +392,14 @@ AICast_ScriptParse
 */
 #define MAX_SCRIPT_EVENTS   64
 cast_script_event_t cast_temp_events[MAX_SCRIPT_EVENTS];
-static cast_script_stack_item_t cast_temp_items[MAX_SCRIPT_EVENTS][AICAST_MAX_SCRIPT_STACK_ITEMS];  // theirs, while parsing
+// theirs, while parsing; one buffer for this and G_Script_ScriptParse's,
+// as each is done with it (copied out) before it returns
+static union {
+	cast_script_stack_item_t cast[MAX_SCRIPT_EVENTS][AICAST_MAX_SCRIPT_STACK_ITEMS];
+	g_script_stack_item_t g[MAX_SCRIPT_EVENTS][G_MAX_SCRIPT_STACK_ITEMS];
+} scriptParseItems;
+#define cast_temp_items scriptParseItems.cast
+g_script_stack_item_t( *const g_temp_items )[G_MAX_SCRIPT_STACK_ITEMS] = scriptParseItems.g;
 void AICast_ScriptParse( cast_state_t *cs ) {
 	gentity_t   *ent;
 	char        *pScript;

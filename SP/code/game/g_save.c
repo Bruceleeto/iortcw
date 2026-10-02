@@ -194,6 +194,7 @@ static ignoreField_t castStateIgnoreFields[] = {
 	{CSFOFS( numCastScriptEvents ),   sizeof( int )},
 	{CSFOFS( castScriptEvents ), sizeof( cast_script_event_t * ) }, // gets created upon parsing the script file, this is static while playing
 	{CSFOFS( weaponInfo ),    sizeof( cast_weapon_info_t * )},
+	{CSFOFS( vislist ),   sizeof( cast_visibility_t * )},
 
 	{0, 0}
 };

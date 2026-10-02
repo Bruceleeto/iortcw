@@ -129,7 +129,8 @@ void AICast_Pain( gentity_t *targ, gentity_t *attacker, int damage, vec3_t point
 	}
 
 	// if either of us are neutral, then we are now enemies
-	if ( targ->aiTeam == AITEAM_NEUTRAL || attacker->aiTeam == AITEAM_NEUTRAL ) {
+	// (vislist is clients only: an attacker can be a mover or a trap)
+	if ( attacker->client && ( targ->aiTeam == AITEAM_NEUTRAL || attacker->aiTeam == AITEAM_NEUTRAL ) ) {
 		cs->vislist[attacker->s.number].flags |= AIVIS_ENEMY;
 	}
 

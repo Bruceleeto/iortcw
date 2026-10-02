@@ -227,6 +227,7 @@ void AAS_ContinueInit( float time ) {
 	if ( ( *aasworld ).initialized ) {
 		return;
 	}
+#ifndef AAS_NO_COMPILE     // the .aas files have it all (AAS_InitReachability)
 	//calculate reachability, if not finished return
 	if ( AAS_ContinueInitReachability( time ) ) {
 		return;
@@ -249,6 +250,7 @@ void AAS_ContinueInit( float time ) {
 			botimport.Print( PRT_ERROR, "couldn't write %s\n", ( *aasworld ).filename );
 		} //end else
 	} //end if
+#endif
 	  //initialize the routing
 	AAS_InitRouting();
 	//at this point AAS is initialized
@@ -319,8 +321,10 @@ float AAS_Time( void ) {
 int AAS_LoadFiles( const char *mapname ) {
 	int errnum;
 	char aasfile[MAX_QPATH];
+#ifdef AAS_COMPACT
 	fileHandle_t fp = 0;
 	int length;
+#endif
 
 	Q_strncpyz( ( *aasworld ).mapname, mapname, sizeof( ( *aasworld ).mapname ) );
 	//NOTE: first reset the entity links into the AAS areas and BSP leaves
@@ -328,9 +332,10 @@ int AAS_LoadFiles( const char *mapname ) {
 	// AAS file and BSP file are loaded
 	AAS_ResetEntityLinks();
 
-	//load the aas file: the .aasc from rtcwconv (only the faces the game
-	//still reads) if there is one; an empty one is a world the map has no
-	//one for (no big characters), so it isn't loaded
+#ifdef AAS_COMPACT
+	//load the aas file: the .aasc from rtcwconv (what the game reads of the
+	//.aas, in smaller structs); an empty one is a world the map has no one
+	//for (no big characters), so it isn't loaded
 	Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aasc", mapname );
 	length = botimport.FS_FOpenFile( aasfile, &fp, FS_READ );
 	if ( fp ) {
@@ -340,9 +345,9 @@ int AAS_LoadFiles( const char *mapname ) {
 		botimport.Print( PRT_MESSAGE, "%s: not needed here\n", aasfile );
 		return BLERR_CANNOTOPENAASFILE;
 	}
-	if ( length < 0 || !fp ) {
-		Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aas", mapname );
-	}
+#else
+	Com_sprintf( aasfile, sizeof( aasfile ), "maps/%s.aas", mapname );
+#endif
 	errnum = AAS_LoadAASFile( aasfile );
 	if ( errnum != BLERR_NOERROR ) {
 		return errnum;

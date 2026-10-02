@@ -1353,6 +1353,8 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 	unsigned short *indexes;
 	int i, j, count, numVerts, numIndexes;
 	int numSurfs = 0, numFlares = 0;
+	srfWorld_t *srfs;
+	srfFlare_t *flares;
 
 	if ( vl->filelen % sizeof( *verts ) || il->filelen % sizeof( *indexes ) ) {
 		ri.Error( ERR_DROP, "LoadMap: funny lump size in %s",s_worldData.name );
@@ -1379,6 +1381,14 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 	s_worldData.surfaces = out;
 	s_worldData.numsurfaces = count;
 
+	// all in one go: one at a time, each would be rounded up
+	for ( i = 0 ; i < count ; i++ ) {
+		numFlares += in[i].kind == WLD_FLARE;
+	}
+	flares = numFlares ? ri.Hunk_Alloc( numFlares * sizeof( *flares ), h_low ) : NULL;
+	srfs = count > numFlares ? ri.Hunk_Alloc( ( count - numFlares ) * sizeof( *srfs ), h_low ) : NULL;
+	numFlares = 0;
+
 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
 		out->fogIndex = in->fogNum + 1;
 		out->shader = ShaderForShaderNum( in->shaderNum, in->lightmapNum );
@@ -1387,7 +1397,7 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 		}
 
 		if ( in->kind == WLD_FLARE ) {
-			srfFlare_t *flare = ri.Hunk_Alloc( sizeof( *flare ), h_low );
+			srfFlare_t *flare = flares + numFlares;
 
 			flare->surfaceType = SF_FLARE;
 			VectorCopy( in->flare[0], flare->origin );
@@ -1396,7 +1406,7 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 			out->data = (surfaceType_t *)flare;
 			numFlares++;
 		} else {
-			srfWorld_t *srf = ri.Hunk_Alloc( sizeof( *srf ), h_low );
+			srfWorld_t *srf = srfs + numSurfs;
 
 			if ( in->kind < WLD_PLANAR || in->kind > WLD_TRIANGLES ||
 				 in->firstVert < 0 || in->numVerts < 0 || in->firstVert + in->numVerts > numVerts ||
@@ -1671,7 +1681,13 @@ void RE_LoadWorldMap( const char *name ) {
 	c_gridVerts = 0;
 
 	if ( !R_LoadWld() ) {
+#ifdef NO_BSP_SURFACES
+		// every map has its .wld (make assets); without one the .bsp's
+		// surfaces would be cut at load, in more memory than there is
+		ri.Error( ERR_DROP, "RE_LoadWorldMap: no maps/%s.wld", s_worldData.baseName );
+#else
 		R_LoadBsp( name );
+#endif
 	}
 
 	s_worldData.dataSize = (byte *)ri.Hunk_Alloc( 0, h_low ) - startMarker;

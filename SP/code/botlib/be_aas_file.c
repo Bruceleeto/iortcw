@@ -51,6 +51,12 @@ If you have questions concerning this license or the applicable additional terms
 
 //#define AASFILEDEBUG
 
+#ifdef AAS_COMPACT
+// the structs rtcwconv writes (tools/rtcwconv/aas.cpp)
+typedef char aas_compact_sizes[sizeof( aas_area_t ) == 16 && sizeof( aas_areasettings_t ) == 20
+							   && sizeof( aas_node_t ) == 6 ? 1 : -1];
+#endif
+
 //===========================================================================
 //
 // Parameter:				-
@@ -58,13 +64,20 @@ If you have questions concerning this license or the applicable additional terms
 // Changes Globals:		-
 //===========================================================================
 void AAS_SwapAASData( void ) {
+#ifndef AAS_COMPACT
 	int i, j;
+#endif
 
 	// Ridah, no need to do anything if this OS doesn't need byte swapping
 	if ( LittleLong( 1 ) == 1 ) {
 		return;
 	}
 	// done.
+#ifdef AAS_COMPACT
+	// rtcwconv writes the .aasc for little endian machines only
+	AAS_Error( "the .aasc is little endian\n" );
+	return;
+#else
 
 	//bounding boxes
 	for ( i = 0; i < ( *aasworld ).numbboxes; i++ )
@@ -185,6 +198,7 @@ void AAS_SwapAASData( void ) {
 		( *aasworld ).clusters[i].numportals = LittleLong( ( *aasworld ).clusters[i].numportals );
 		( *aasworld ).clusters[i].firstportal = LittleLong( ( *aasworld ).clusters[i].firstportal );
 	} //end for
+#endif // AAS_COMPACT
 } //end of the function AAS_SwapAASData
 //===========================================================================
 // dump the current loaded aas file

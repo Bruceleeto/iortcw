@@ -1542,6 +1542,13 @@ void AAS_InitClustering( void ) {
 	if ( !( *aasworld ).loaded ) {
 		return;
 	}
+#ifdef AAS_NO_COMPILE
+	// as reachability (AAS_InitReachability): the .aas files have them
+	if ( ( *aasworld ).numclusters < 1 ) {
+		botimport.Print( PRT_ERROR, "%s has no clusters\n", ( *aasworld ).filename );
+	}
+	return;
+#endif
 	//if there are clusters
 	if ( ( *aasworld ).numclusters >= 1 ) {
 #ifndef BSPC

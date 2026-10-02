@@ -286,7 +286,8 @@ G_Script_ScriptParse
 */
 #define MAX_SCRIPT_EVENTS   64
 g_script_event_t g_temp_events[MAX_SCRIPT_EVENTS];
-static g_script_stack_item_t g_temp_items[MAX_SCRIPT_EVENTS][G_MAX_SCRIPT_STACK_ITEMS];    // theirs, while parsing
+// theirs, while parsing: MAX_SCRIPT_EVENTS of them, shared with AICast_ScriptParse
+extern g_script_stack_item_t( *const g_temp_items )[G_MAX_SCRIPT_STACK_ITEMS];
 void G_Script_ScriptParse( gentity_t *ent ) {
 	char        *pScript;
 	char        *token;

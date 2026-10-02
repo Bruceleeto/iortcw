@@ -172,8 +172,8 @@ int AICast_SetupClient( int client ) {
 	cs = AICast_GetCastState( client );
 	cs->bs = bs;
 
-	//allocate a goal state
-	bs->gs = trap_BotAllocGoalState( client );
+	// no goal state (bs->gs): that's the deathmatch bots' item goals, casts
+	// have none
 
 	bs->inuse = qtrue;
 	bs->client = client;
@@ -192,6 +192,7 @@ AICast_ShutdownClient
 */
 int AICast_ShutdownClient( int client ) {
 	cast_state_t    *cs;
+	cast_visibility_t *vis;
 	bot_state_t *bs;
 
 	if ( !( bs = botstates[client] ) ) {
@@ -204,7 +205,10 @@ int AICast_ShutdownClient( int client ) {
 
 	cs = AICast_GetCastState( client );
 	//
+	vis = cs->vislist;
 	memset( cs, 0, sizeof( cast_state_t ) );
+	memset( vis, 0, aicast_maxclients * sizeof( *vis ) );
+	cs->vislist = vis;
 	numcast--;
 
 	// now do the other bot stuff
@@ -214,8 +218,6 @@ int AICast_ShutdownClient( int client ) {
 #endif //DEBUG
 
 	trap_BotFreeMoveState( bs->ms );
-	//free the goal state
-	trap_BotFreeGoalState( bs->gs );
 	//
 	//clear the bot state
 	memset( bs, 0, sizeof( bot_state_t ) );
@@ -472,6 +474,7 @@ static int numSpawningCast;
 void AICast_Init( void ) {
 	vmCvar_t cvar;
 	int i;
+	cast_visibility_t *vis;
 
 	numcast = 0;
 	numSpawningCast = 0;
@@ -499,8 +502,11 @@ void AICast_Init( void ) {
 
 	caststates = G_Alloc( aicast_maxclients * sizeof( cast_state_t ) );
 	memset( caststates, 0, aicast_maxclients * sizeof( *caststates ) );
+	vis = G_Alloc( aicast_maxclients * aicast_maxclients * sizeof( *vis ) );
+	memset( vis, 0, aicast_maxclients * aicast_maxclients * sizeof( *vis ) );
 	for ( i = 0; i < aicast_maxclients; i++ ) {
 		caststates[i].entityNum = i;
+		caststates[i].vislist = vis + i * aicast_maxclients;
 	}
 
 /* RF, this is useless, since the AAS hasnt been loaded yet

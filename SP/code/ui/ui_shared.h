@@ -233,6 +233,7 @@ typedef struct modelDef_s {
 	int oldframe;
 	float backlerp;
 	int frameTime;
+	const char *name;               // asset_model's, registered when first drawn
 } modelDef_t;
 
 #define CVAR_ENABLE     0x00000001

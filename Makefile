@@ -250,7 +250,11 @@ $(eval $(call assets_pk3,sp,$(SP_PAKS)))
 # make disc: the Dreamcast build and the sp pk3s on a selfboot .cdi; the
 # pk3s are unpacked into main/ at the root of the disc (/cd/main on the
 # Dreamcast), in the order the game loads them so the same file wins: no
-# zip directories in RAM, no inflating, no seeking through big zips
+# zip directories in RAM, no inflating, no seeking through big zips. Then
+# every original that a converted file replaces is taken out
+# (tools/prune_disc.sh), and what's left listed in main/files.idx, so the
+# game knows a file isn't there without a look at the disc (FS_LoadDirIndex
+# in files.c); the sim runs from the same dir
 #############################################################################
 
 MKDCDISC  ?= mkdcdisc
@@ -268,6 +272,8 @@ disc:
 	$(Q)rm -rf $(DISC_DIR) && mkdir -p $(DISC_DIR)/main/scripts
 	$(Q)for f in $(DISC_PAKS); do unzip -qq -o "$$f" -d $(DISC_DIR)/main || exit 1; done
 	$(Q)for f in $(DISC_FILES); do cp "$$f" $(DISC_DIR)/main/scripts/; done
+	$(Q)tools/prune_disc.sh $(DISC_DIR)/main
+	$(Q)cd $(DISC_DIR)/main && find . -type f ! -name files.idx | sed 's|^\./||' | LC_ALL=C sort > files.idx
 	$(Q)$(MKDCDISC) -e $(BUILD_DIR)/sp-sh4/iowolfsp.elf -D $(DISC_DIR) -o $(DISC_CDI) \
 	  -n "Return to Castle Wolfenstein" -N
 
@@ -351,6 +357,10 @@ ifeq ($(DCSIM),1)
   # free when the hunk starts, here 23088K without it
   DCSIM_KOS_BYTES ?= 105472
   BASE_CFLAGS += -DDCSIM -include $(CURDIR)/$(CODE)/sys/dcsim.h
+endif
+ifeq ($(RENDERER),pvr)
+  # in every module: glconfig_t is passed between them
+  BASE_CFLAGS += -DGLCONFIG_SHORT_STRINGS
 endif
 
 # engine + renderer
@@ -460,6 +470,27 @@ ifeq ($(RENDERER),pvr)
   # every image is a .dt, so no JPEG decoder (a missing one gets the default)
   RENDERER_SRC := $(filter-out renderer/tr_image_jpg.c,$(RENDERER_SRC))
   CLIENT_CFLAGS += -DNO_JPEG
+  # and every file loose on the disc (build/disc), so no .pk3 reader or zlib
+  ENGINE_SRC := $(filter-out zlib-1.2.11/%,$(ENGINE_SRC))
+  CLIENT_CFLAGS += -DNO_PK3
+  # nor any .png, .pcx or .bmp: .dt, and .tga
+  RENDERER_SRC := $(filter-out renderer/tr_image_png.c renderer/tr_image_pcx.c renderer/tr_image_bmp.c,$(RENDERER_SRC))
+  ENGINE_SRC := $(filter-out qcommon/puff.c,$(ENGINE_SRC))
+  CLIENT_CFLAGS += -DNO_PNG_PCX_BMP
+  # nor any .iqm or .mdr model (what's left of them the DC link drops)
+  CLIENT_CFLAGS += -DNO_IQM_MDR
+  # nor a map without its .wld: no .bsp surface loading
+  CLIENT_CFLAGS += -DNO_BSP_SURFACES
+  CLIENT_CFLAGS += -DNO_ZOMBIEFX
+  # SP never runs them (BotAIStartFrame); only addbot would make one
+  GAME_CFLAGS += -DNO_DM_BOTS
+  # the splines throw nothing and ask no types: none of the C++ runtime for
+  # them (its own new and delete, splines/new.cpp)
+  SPLINES_CXXFLAGS += -fno-exceptions -fno-rtti -fno-threadsafe-statics -DSPLINES_OWN_NEW
+  # every .aas has its reachability and clusters: none worked out at load
+  BOTLIB_CFLAGS += -DAAS_NO_COMPILE
+  # and the .aasc in its smaller structs (tools/rtcwconv/aas.cpp)
+  BOTLIB_CFLAGS += -DAAS_COMPACT
   PVR_OBJ = $(B)/pvr/pvr_gl.c.o $(B)/pvr/pvr_glimp.c.o
   ifeq ($(PLATFORM),dc)
     RENDERER_LIBS =
@@ -560,7 +591,7 @@ $(B)/engine/%.c.o: $(CODE)/%.c
 $(B)/engine/%.cpp.o: $(CODE)/%.cpp
 	$(echo_cmd) "CXX $<"
 	@mkdir -p $(@D)
-	$(Q)$(CXX) $(CLIENT_CFLAGS) $(SIZE_OPT) -c $< -o $@
+	$(Q)$(CXX) $(CLIENT_CFLAGS) $(SIZE_OPT) $(SPLINES_CXXFLAGS) -c $< -o $@
 
 $(B)/engine/%.s.o: $(CODE)/%.s
 	$(echo_cmd) "AS $<"
@@ -592,12 +623,12 @@ endif
 $(B)/botlib/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "BOT_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(BASE_CFLAGS) $(FAST_MATH) $(SIZE_OPT) -DBOTLIB -c $< -o $@
+	$(Q)$(CC) $(BASE_CFLAGS) $(FAST_MATH) $(SIZE_OPT) -DBOTLIB $(BOTLIB_CFLAGS) -c $< -o $@
 
 $(B)/qagame/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "GAME_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -DGAMEDLL -DQAGAME -c $< -o $@
+	$(Q)$(CC) $(MOD_CFLAGS) $(SIZE_OPT) -DGAMEDLL -DQAGAME $(GAME_CFLAGS) -c $< -o $@
 
 $(B)/cgame/%.c.o: $(CODE)/%.c
 	$(echo_cmd) "CGAME_CC $<"

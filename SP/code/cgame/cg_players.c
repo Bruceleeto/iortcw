@@ -5335,9 +5335,6 @@ A player just came into view or teleported, so reset all animation info
 ===============
 */
 void CG_ResetPlayerEntity( centity_t *cent ) {
-	cent->errorTime = -99999;       // guarantee no error decay added
-	cent->extrapolated = qfalse;
-
 	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
 		CG_ClearLerpFrameRate( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe->legs, cent->currentState.legsAnim, cent );
 		CG_ClearLerpFrame( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe->torso, cent->currentState.torsoAnim );
@@ -5358,8 +5355,6 @@ void CG_ResetPlayerEntity( centity_t *cent ) {
 	BG_EvaluateTrajectory( &cent->currentState.pos, cg.time, cent->lerpOrigin );
 	BG_EvaluateTrajectory( &cent->currentState.apos, cg.time, cent->lerpAngles );
 
-	VectorCopy( cent->lerpOrigin, cent->rawOrigin );
-	VectorCopy( cent->lerpAngles, cent->rawAngles );
 
 	if ( cg_debugPosition.integer ) {
 		CG_Printf( "%i ResetPlayerEntity yaw=%f\n", cent->currentState.number, cent->pe->torso.yawAngle );

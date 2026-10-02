@@ -32,7 +32,14 @@ If you have questions concerning this license or the applicable additional terms
 //					default long
 
 #define AASID                       ( ( 'S' << 24 ) + ( 'A' << 16 ) + ( 'A' << 8 ) + 'E' )
+#ifdef AAS_COMPACT
+// rtcwconv's .aasc: the areas, area settings and nodes in the smaller
+// structs below, only the ladder faces in the face index, only the planes
+// something uses; every value the game reads is the same (rtcwconv checks)
+#define AASVERSION                  100
+#else
 #define AASVERSION                  8
+#endif
 
 //presence types
 #define PRESENCE_NONE               1
@@ -143,6 +150,19 @@ typedef struct aas_reachability_s
 	unsigned short int traveltime; //travel time of the inter area movement
 } aas_reachability_t;
 
+#ifdef AAS_COMPACT
+typedef struct aas_areasettings_s
+{
+	int contents;
+	int firstreachablearea;
+	float groundsteepness;
+	unsigned short areaflags;
+	short cluster;
+	unsigned short clusterareanum;
+	unsigned char presencetype;
+	unsigned char numreachableareas;
+} aas_areasettings_t;
+#else
 //area settings
 typedef struct aas_areasettings_s
 {
@@ -157,6 +177,7 @@ typedef struct aas_areasettings_s
 	// Ridah, add a ground steepness stat, so we can avoid terrain when we can take a close-by flat route
 	float groundsteepness;          // 0 = flat, 1 = steep
 } aas_areasettings_t;
+#endif
 
 //cluster portal
 typedef struct aas_portal_s
@@ -214,6 +235,22 @@ typedef struct aas_face_s
 //face index, stores a negative index if backside of face
 typedef int aas_faceindex_t;
 
+#ifdef AAS_COMPACT
+// the faces of an area are only its ladder faces (AAS_AgainstLadder), none
+// for an area that isn't a ladder area
+typedef struct aas_area_s
+{
+	vec3_t center;                      //'center' of the convex area
+	unsigned short firstface;
+	unsigned short numfaces;
+} aas_area_t;
+
+typedef struct aas_node_s
+{
+	unsigned short planenum;
+	short children[2];
+} aas_node_t;
+#else
 //convex area with a boundary of faces
 typedef struct aas_area_s
 {
@@ -233,6 +270,7 @@ typedef struct aas_node_s
 	int children[2];                    //child nodes of this node, or convex areas as leaves when negative
 										//when a child is zero it's a solid leaf
 } aas_node_t;
+#endif
 
 //=========== aas file ===============
 

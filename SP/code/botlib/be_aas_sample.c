@@ -100,7 +100,8 @@ void AAS_InitAASLinkHeap( void ) {
 	max_aaslinks = ( *aasworld ).linkheapsize;
 	//if there's no link heap present
 	if ( !( *aasworld ).linkheap ) {
-		max_aaslinks = (int) 4096; //LibVarValue("max_aaslinks", "4096");
+		// SP links only clients (BotAIStartFrame): a box is in a few areas
+		max_aaslinks = (int) 1024; //LibVarValue("max_aaslinks", "4096");
 		if ( max_aaslinks < 0 ) {
 			max_aaslinks = 0;
 		}
@@ -902,6 +903,8 @@ qboolean AAS_PointInsideFace( int facenum, vec3_t point, float epsilon ) {
 	} //end for
 	return qtrue;
 } //end of the function AAS_PointInsideFace
+#ifndef AAS_COMPACT
+// an area's faces: the .aasc has only the ladder ones
 //===========================================================================
 // returns the ground face the given point is above in the given area
 //
@@ -1018,6 +1021,7 @@ aas_face_t *AAS_TraceEndFace( aas_trace_t *trace ) {
 	} //end for
 	return firstface;
 } //end of the function AAS_TraceEndFace
+#endif // AAS_COMPACT
 //===========================================================================
 //
 // Parameter:				-

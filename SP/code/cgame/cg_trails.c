@@ -432,7 +432,21 @@ struct {
 } trailOrientation;
 #define MAX_TRAIL_VERTS     512     // a trail with more is cut short
 static polyVert_t verts[MAX_TRAIL_VERTS];
-static polyVert_t outVerts[MAX_TRAIL_VERTS * 3];
+#define TRAIL_OUT_QUADS     8       // outVerts goes to the scene this many quads at a time
+static polyVert_t outVerts[TRAIL_OUT_QUADS * 12];
+
+// the renderer takes each triangle on its own, so a trail can go in pieces
+static void CG_FlushTrailOutVerts( trailJunc_t *trail, int numOutVerts ) {
+	int k;
+
+	if ( !( trail->flags & TJFL_NOPOLYMERGE ) ) {
+		trap_R_AddPolysToScene( trail->shader, 3, &outVerts[0], numOutVerts / 3 );
+	} else {
+		for ( k = 0; k < numOutVerts / 3; k++ ) {
+			trap_R_AddPolyToScene( trail->shader, 3, &outVerts[k * 3] );
+		}
+	}
+}
 
 void CG_AddTrailToScene( trailJunc_t *trail, int iteration, int numJuncs ) {
 	int k, i, n, l, numOutVerts;
@@ -686,6 +700,10 @@ void CG_AddTrailToScene( trailJunc_t *trail, int iteration, int numJuncs ) {
 			}
 
 			// now output the tri's
+			if ( numOutVerts == TRAIL_OUT_QUADS * 12 ) {
+				CG_FlushTrailOutVerts( trail, numOutVerts );
+				numOutVerts = 0;
+			}
 			for ( n = 0; n < 4; n++ ) {
 				outVerts[numOutVerts++] = verts[k + n];
 				outVerts[numOutVerts++] = mid;
@@ -698,14 +716,7 @@ void CG_AddTrailToScene( trailJunc_t *trail, int iteration, int numJuncs ) {
 
 		}
 
-		if ( !( trail->flags & TJFL_NOPOLYMERGE ) ) {
-			trap_R_AddPolysToScene( trail->shader, 3, &outVerts[0], numOutVerts / 3 );
-		} else {
-			int k;
-			for ( k = 0; k < numOutVerts / 3; k++ ) {
-				trap_R_AddPolyToScene( trail->shader, 3, &outVerts[k * 3] );
-			}
-		}
+		CG_FlushTrailOutVerts( trail, numOutVerts );
 	} else
 	{
 		// send the polygons

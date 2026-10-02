@@ -324,8 +324,10 @@ typedef struct
 // when there are multiple models of different formats available
 static modelExtToLoaderMap_t modelLoaders[ ] =
 {
+#ifndef NO_IQM_MDR
 	{ "iqm", R_RegisterIQM },
 	{ "mdr", R_RegisterMDR },
+#endif
 	{ "mds", R_RegisterMDS },
 	{ "md3", R_RegisterMD3 },
 	{ "mdc", R_RegisterMD3 }
@@ -2180,7 +2182,9 @@ R_LerpTag
 */
 int R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagNameIn, int startIndex ) {
 	md3Tag_t    *start, *end;
+#ifndef NO_IQM_MDR
 	md3Tag_t	start_space, end_space;
+#endif
 	md3Tag_t ustart, uend;
 	int i;
 	float frontLerp, backLerp;
@@ -2208,6 +2212,9 @@ int R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagNam
 */
 	model = R_GetModelByHandle( handle );
 	if ( !model->md3[0] && !model->mdc[0] && !model->mds ) {
+#ifdef NO_IQM_MDR
+		start = end = NULL;
+#else
 		if(model->type == MOD_MDR)
 		{
 			start = &start_space;
@@ -2222,6 +2229,7 @@ int R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagNam
 		} else {
 			start = end = NULL;
 		}
+#endif
 	} else if ( model->type == MOD_MESH ) {
 		// old MD3 style
 		retval = R_GetTag( (byte *)model->md3[0], startFrame, tagName, startIndex, &start );
@@ -2361,6 +2369,7 @@ void R_ModelBounds( qhandle_t handle, vec3_t mins, vec3_t maxs ) {
 		VectorCopy( frame->bounds[0], mins );
 		VectorCopy( frame->bounds[1], maxs );
 		return;
+#ifndef NO_IQM_MDR
 	} else if (model->type == MOD_MDR) {
 		mdrHeader_t	*header;
 		mdrFrame_t	*frame;
@@ -2383,6 +2392,7 @@ void R_ModelBounds( qhandle_t handle, vec3_t mins, vec3_t maxs ) {
 			VectorCopy(iqmData->bounds + 3, maxs);
 			return;
 		}
+#endif
 	}
 
 	VectorClear( mins );

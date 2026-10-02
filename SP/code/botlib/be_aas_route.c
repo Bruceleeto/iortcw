@@ -1150,7 +1150,10 @@ int AAS_ReadRouteCache( void ) {
 		//AAS_Error("route cache dump has wrong number of clusters\n");
 		return qfalse;
 	} //end if
-	// crc code is only good on little endian machines
+	// crc code is only good on little endian machines; the .aasc's areas
+	// aren't the ones it was summed over (the .rcd is the game's own, made
+	// for the .aas the .aasc is made from)
+#ifndef AAS_COMPACT
 	if ( 1 == LittleLong( 1 ) ) {
 		if ( routecacheheader.areacrc !=
 			 CRC_ProcessString( (unsigned char *)( *aasworld ).areas, sizeof( aas_area_t ) * ( *aasworld ).numareas ) ) {
@@ -1171,6 +1174,7 @@ int AAS_ReadRouteCache( void ) {
 			return qfalse;
 		} //end if
 	} //end if
+#endif
 #if defined( _arch_dreamcast ) || defined( DCSIM )
 	// the routes worked out ahead (most of the file, 1.7MB for escape1) are
 	// left: they're worked out as they're needed, into the cache
@@ -1996,6 +2000,8 @@ int AAS_NextModelReachability( int num, int modelnum ) {
 // Returns:				-
 // Changes Globals:		-
 //===========================================================================
+#ifndef AAS_COMPACT
+// needs the areas' ground faces, which the .aasc doesn't have (nothing calls it)
 int AAS_RandomGoalArea( int areanum, int travelflags, int *goalareanum, vec3_t goalorigin ) {
 	int i, n, t;
 	vec3_t start, end;
@@ -2047,6 +2053,7 @@ int AAS_RandomGoalArea( int areanum, int travelflags, int *goalareanum, vec3_t g
 	} //end for
 	return qfalse;
 } //end of the function AAS_RandomGoalArea
+#endif
 //===========================================================================
 // run-length compression on zeros
 //

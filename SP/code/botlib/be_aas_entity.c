@@ -164,6 +164,15 @@ int AAS_UpdateEntity( int entnum, bot_entitystate_t *state ) {
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
+// an entity the table has no room for, as it would be if never updated: SP
+// gives botlib only clients (BotInitLibrary sizes maxentities so)
+static qboolean AAS_EntityNotKept( int entnum, const char *func ) {
+	if ( entnum < 0 || entnum >= MAX_GENTITIES ) {
+		botimport.Print( PRT_FATAL, "%s: entnum %d out of range\n", func, entnum );
+	}
+	return entnum < 0 || entnum >= ( *defaultaasworld ).maxentities;
+}
+
 void AAS_EntityInfo( int entnum, aas_entityinfo_t *info ) {
 	if ( !( *defaultaasworld ).initialized ) {
 		botimport.Print( PRT_FATAL, "AAS_EntityInfo: (*defaultaasworld) not initialized\n" );
@@ -171,8 +180,7 @@ void AAS_EntityInfo( int entnum, aas_entityinfo_t *info ) {
 		return;
 	} //end if
 
-	if ( entnum < 0 || entnum >= ( *defaultaasworld ).maxentities ) {
-		botimport.Print( PRT_FATAL, "AAS_EntityInfo: entnum %d out of range\n", entnum );
+	if ( AAS_EntityNotKept( entnum, "AAS_EntityInfo" ) ) {
 		memset( info, 0, sizeof( aas_entityinfo_t ) );
 		return;
 	} //end if
@@ -186,8 +194,7 @@ void AAS_EntityInfo( int entnum, aas_entityinfo_t *info ) {
 // Changes Globals:		-
 //===========================================================================
 void AAS_EntityOrigin( int entnum, vec3_t origin ) {
-	if ( entnum < 0 || entnum >= ( *defaultaasworld ).maxentities ) {
-		botimport.Print( PRT_FATAL, "AAS_EntityOrigin: entnum %d out of range\n", entnum );
+	if ( AAS_EntityNotKept( entnum, "AAS_EntityOrigin" ) ) {
 		VectorClear( origin );
 		return;
 	} //end if
@@ -201,8 +208,7 @@ void AAS_EntityOrigin( int entnum, vec3_t origin ) {
 // Changes Globals:		-
 //===========================================================================
 int AAS_EntityModelindex( int entnum ) {
-	if ( entnum < 0 || entnum >= ( *defaultaasworld ).maxentities ) {
-		botimport.Print( PRT_FATAL, "AAS_EntityModelindex: entnum %d out of range\n", entnum );
+	if ( AAS_EntityNotKept( entnum, "AAS_EntityModelindex" ) ) {
 		return 0;
 	} //end if
 	return ( *defaultaasworld ).entities[entnum].i.modelindex;
@@ -218,8 +224,7 @@ int AAS_EntityType( int entnum ) {
 		return 0;
 	}
 
-	if ( entnum < 0 || entnum >= ( *defaultaasworld ).maxentities ) {
-		botimport.Print( PRT_FATAL, "AAS_EntityType: entnum %d out of range\n", entnum );
+	if ( AAS_EntityNotKept( entnum, "AAS_EntityType" ) ) {
 		return 0;
 	} //end if
 	return ( *defaultaasworld ).entities[entnum].i.type;
@@ -235,8 +240,7 @@ int AAS_EntityModelNum( int entnum ) {
 		return 0;
 	}
 
-	if ( entnum < 0 || entnum >= ( *defaultaasworld ).maxentities ) {
-		botimport.Print( PRT_FATAL, "AAS_EntityModelNum: entnum %d out of range\n", entnum );
+	if ( AAS_EntityNotKept( entnum, "AAS_EntityModelNum" ) ) {
 		return 0;
 	} //end if
 	return ( *defaultaasworld ).entities[entnum].i.modelindex;
@@ -276,8 +280,9 @@ void AAS_EntitySize( int entnum, vec3_t mins, vec3_t maxs ) {
 		return;
 	}
 
-	if ( entnum < 0 || entnum >= ( *defaultaasworld ).maxentities ) {
-		botimport.Print( PRT_FATAL, "AAS_EntitySize: entnum %d out of range\n", entnum );
+	if ( AAS_EntityNotKept( entnum, "AAS_EntitySize" ) ) {
+		VectorClear( mins );
+		VectorClear( maxs );
 		return;
 	} //end if
 

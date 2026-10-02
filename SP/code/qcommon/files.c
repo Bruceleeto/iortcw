@@ -38,7 +38,21 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "q_shared.h"
 #include "qcommon.h"
+#ifdef NO_PK3
+// the Dreamcast's files are all loose (build/disc), so no .pk3 is ever
+// opened and neither zlib nor the zip reader is built: these stand in for
+// the calls the file code makes on a pak, which never happen
+typedef void *unzFile;
+#define unzOpen( name )                     ( (unzFile)NULL )
+#define unzClose( z )                       ( (void)0 )
+#define unzOpenCurrentFile( z )             ( (void)0 )
+#define unzCloseCurrentFile( z )            ( (void)0 )
+#define unzSetOffset( z, pos )              ( (void)0 )
+#define unzReadCurrentFile( z, buf, len )   ( 0 )
+#define unztell( z )                        ( 0 )
+#else
 #include "../zlib-1.2.11/unzip.h"
+#endif
 
 /*
 =============================================================================
@@ -263,7 +277,11 @@ typedef struct {
 	char path[MAX_OSPATH];              // c:\quake3
 	char fullpath[MAX_OSPATH];	    // c:\quake3\baseq3
 	char gamedir[MAX_OSPATH];           // baseq3
+	unsigned *index;                    // its files.idx's name hashes, sorted
+	int numIndex;                       // (FS_LoadDirIndex), or NULL
 } directory_t;
+
+static qboolean FS_DirMayHave( const directory_t *dir, const char *filename );
 
 typedef struct searchpath_s {
 	struct searchpath_s *next;
@@ -1407,6 +1425,10 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 		{
 			dir = search->dir;
 
+			if ( !FS_DirMayHave( dir, filename ) ) {
+				return 0;
+			}
+
 			netpath = FS_BuildOSPath(dir->path, dir->gamedir, filename);
 			filep = Sys_FOpen(netpath, "rb");
 
@@ -1546,6 +1568,11 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 		}
 
 		dir = search->dir;
+
+		if ( !FS_DirMayHave( dir, filename ) ) {
+			*file = 0;
+			return -1;
+		}
 
 		netpath = FS_BuildOSPath(dir->path, dir->gamedir, filename);
 		filep = Sys_FOpen(netpath, "rb");
@@ -1787,6 +1814,25 @@ int FS_Read( void *buffer, int len, fileHandle_t f ) {
 	if ( fsh[f].zipFile == qfalse ) {
 		remaining = len;
 		tries = 0;
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		// KOS reads whole sectors from the disc straight into the buffer
+		// (DMA) only where the buffer is 32 byte aligned at a sector start,
+		// else each sector through a cache of its own: so read where the
+		// buffer is aligned as the file is, and move it down after
+		if ( len >= 4096 ) {
+			FILE *fp = fsh[f].handleFiles.file.o;
+			long pos = ftell( fp );
+			int d = ( pos - (intptr_t)buf ) & 31;
+
+			if ( pos >= 0 && d && fread( buf + d, 1, len - d, fp ) == len - d ) {
+				memmove( buf, buf + d, len - d );
+				remaining = d;
+				buf += len - d;
+			} else if ( pos >= 0 && d ) {
+				fseek( fp, pos, SEEK_SET );	// (short: read as before)
+			}
+		}
+#endif
 		while ( remaining ) {
 			block = remaining;
 			read = fread( buf, 1, block, fsh[f].handleFiles.file.o );
@@ -2283,6 +2329,12 @@ of a zip file.
 =================
 */
 static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename)
+#ifdef NO_PK3
+{
+	Com_Printf( "%s: no .pk3s in this build\n", zipfile );
+	return NULL;
+}
+#else
 {
 	fileInPack_t    *buildBuffer;
 	pack_t          *pack;
@@ -2384,6 +2436,7 @@ static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename)
 	pack->buildBuffer = buildBuffer;
 	return pack;
 }
+#endif
 
 /*
 =================
@@ -3192,6 +3245,92 @@ static int QDECL paksort( const void *a, const void *b ) {
 
 /*
 ================
+FS_DirIndex
+
+`make disc` lists every file of the disc's game dir in its files.idx, one
+path a line. Its names' hashes, kept sorted, tell a file that isn't there
+without a look at the disc: a look for one is most of the looks a level
+load makes (each model's levels of detail, each texture's .tga and .jpg),
+and each on the Dreamcast is a walk of the iso9660 directory. 4 bytes a
+file; a name whose hash is there by chance is looked for as before.
+================
+*/
+static unsigned FS_IndexHash( const char *name ) {
+	unsigned h = 2166136261u;
+	int c;
+
+	while ( ( c = *name++ ) != 0 ) {
+		if ( c == '\\' ) {
+			c = '/';
+		}
+		h = ( h ^ (unsigned)tolower( c ) ) * 16777619u;
+	}
+	return h;
+}
+
+static int FS_IndexCompare( const void *a, const void *b ) {
+	unsigned x = *(const unsigned *)a, y = *(const unsigned *)b;
+
+	return x < y ? -1 : x > y;
+}
+
+static void FS_LoadDirIndex( directory_t *dir ) {
+	FILE *f;
+	long len;
+	char *buf, *s, *e;
+	int n;
+
+	f = Sys_FOpen( FS_BuildOSPath( dir->path, dir->gamedir, "files.idx" ), "rb" );
+	if ( !f ) {
+		return;
+	}
+	len = FS_fplength( f );
+	buf = Z_Malloc( len + 1 );
+	if ( fread( buf, 1, len, f ) != len ) {
+		fclose( f );
+		Z_Free( buf );
+		return;
+	}
+	fclose( f );
+	buf[len] = 0;
+
+	for ( n = 0, s = buf; *s; s++ ) {
+		n += ( *s == '\n' );
+	}
+	dir->index = Z_Malloc( ( n + 1 ) * sizeof( *dir->index ) );
+	for ( n = 0, s = buf; *s; s = e ) {
+		for ( e = s; *e && *e != '\n' && *e != '\r'; e++ ) {
+		}
+		if ( e > s ) {
+			char c = *e;
+
+			*e = 0;
+			dir->index[n++] = FS_IndexHash( s );
+			*e = c;
+		}
+		while ( *e == '\n' || *e == '\r' ) {
+			e++;
+		}
+	}
+	Z_Free( buf );
+	qsort( dir->index, n, sizeof( *dir->index ), FS_IndexCompare );
+	dir->numIndex = n;
+	Com_Printf( "%s: %d files\n", FS_BuildOSPath( dir->path, dir->gamedir, "files.idx" ), n );
+}
+
+/* qfalse: the dir's files.idx hasn't the file */
+static qboolean FS_DirMayHave( const directory_t *dir, const char *filename ) {
+	unsigned h;
+
+	if ( !dir->index ) {
+		return qtrue;
+	}
+	h = FS_IndexHash( filename );
+	return bsearch( &h, dir->index, dir->numIndex, sizeof( *dir->index ), FS_IndexCompare ) != NULL;
+}
+
+/*
+================
 FS_AddGameDirectory
 
 Sets fs_gamedir, adds the directory to the head of the path,
@@ -3232,6 +3371,7 @@ void FS_AddGameDirectory( const char *path, const char *dir ) {
 	Q_strncpyz( search->dir->path, path, sizeof( search->dir->path ) );
 	Q_strncpyz( search->dir->fullpath, curpath, sizeof( search->dir->fullpath ) );
 	Q_strncpyz( search->dir->gamedir, dir, sizeof( search->dir->gamedir ) );
+	FS_LoadDirIndex( search->dir );
 	search->next = fs_searchpaths;
 	fs_searchpaths = search;
 
@@ -3497,8 +3637,12 @@ void FS_Shutdown( qboolean closemfp ) {
 
 		if(p->pack)
 			FS_FreePak(p->pack);
-		if (p->dir)
+		if (p->dir) {
+			if ( p->dir->index ) {
+				Z_Free( p->dir->index );
+			}
 			Z_Free(p->dir);
+		}
 
 		Z_Free(p);
 	}
@@ -3990,8 +4134,15 @@ Returns a space separated string containing the checksums of all loaded pk3 file
 Servers with sv_pure set will get this string and pass it to clients.
 =====================
 */
+#ifdef NO_PK3
+// no paks: "" or, for the pure checksums, the one number
+#define PAK_INFO_SIZE 16
+#else
+#define PAK_INFO_SIZE BIG_INFO_STRING
+#endif
+
 const char *FS_LoadedPakChecksums( void ) {
-	static char info[BIG_INFO_STRING];
+	static char info[PAK_INFO_SIZE];
 	searchpath_t    *search;
 
 	info[0] = 0;
@@ -4017,7 +4168,7 @@ Servers with sv_pure set will get this string and pass it to clients.
 =====================
 */
 const char *FS_LoadedPakNames( void ) {
-	static char info[BIG_INFO_STRING];
+	static char info[PAK_INFO_SIZE];
 	searchpath_t    *search;
 
 	info[0] = 0;
@@ -4047,7 +4198,7 @@ back to the server.
 =====================
 */
 const char *FS_LoadedPakPureChecksums( void ) {
-	static char info[BIG_INFO_STRING];
+	static char info[PAK_INFO_SIZE];
 	searchpath_t    *search;
 
 	info[0] = 0;
@@ -4073,7 +4224,7 @@ The server will send this to the clients so they can check which files should be
 =====================
 */
 const char *FS_ReferencedPakChecksums( void ) {
-	static char info[BIG_INFO_STRING];
+	static char info[PAK_INFO_SIZE];
 	searchpath_t *search;
 
 	info[0] = 0;
@@ -4104,7 +4255,7 @@ pure checksums code is not relevant to SP binary anyway
 =====================
 */
 const char *FS_ReferencedPakPureChecksums( void ) {
-	static char info[BIG_INFO_STRING];
+	static char info[PAK_INFO_SIZE];
 	searchpath_t    *search;
 	int nFlags, numPaks, checksum;
 
@@ -4138,7 +4289,7 @@ The server will send this to the clients so they can check which files should be
 =====================
 */
 const char *FS_ReferencedPakNames( void ) {
-	static char info[BIG_INFO_STRING];
+	static char info[PAK_INFO_SIZE];
 	searchpath_t    *search;
 
 	info[0] = 0;

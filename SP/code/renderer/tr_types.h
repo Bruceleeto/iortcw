@@ -289,10 +289,18 @@ typedef enum {
 } glHardwareType_t;
 
 typedef struct {
+#ifdef GLCONFIG_SHORT_STRINGS
+	// pvr_gl's are a few words, no extensions; there are six copies of this
+	char renderer_string[64];
+	char vendor_string[64];
+	char version_string[64];
+	char extensions_string[64];
+#else
 	char renderer_string[MAX_STRING_CHARS];
 	char vendor_string[MAX_STRING_CHARS];
 	char version_string[MAX_STRING_CHARS];
 	char extensions_string[4 * MAX_STRING_CHARS];                       // this is actually too short for many current cards/drivers  // (SA) doubled from 2x to 4x MAX_STRING_CHARS
+#endif
 
 	int maxTextureSize;                             // queried from GL
 	int numTextureUnits;				// multitexture ability

@@ -559,6 +559,7 @@ void RB_BeginDrawingView( void ) {
 	}
 }
 
+#ifndef NO_ZOMBIEFX
 /*
 ============
 RB_ZombieFX
@@ -854,6 +855,14 @@ void RB_ZombieFX( int part, drawSurf_t *drawSurf, int oldNumVerts, int oldNumInd
 	}
 
 }
+#else
+// nothing sets REFLAG_ZOMBIEFX (cg_players.c has it commented out)
+void RB_ZombieFXInit( void ) {
+}
+
+void RB_ZombieFXAddNewHit( int entityNum, const vec3_t hitPos, const vec3_t hitDir ) {
+}
+#endif
 
 
 /*
@@ -871,7 +880,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	drawSurf_t      *drawSurf;
 	int oldSort;
 	double originalTime;
+#ifndef NO_ZOMBIEFX
 	int oldNumVerts, oldNumIndex;
+#endif
 //GR - tessellation flag
 	int atiTess = 0, oldAtiTess;
 
@@ -899,11 +910,14 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	for ( i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++ ) {
 		if ( drawSurf->sort == oldSort ) {
 			// fast path, same as previous sort
+#ifndef NO_ZOMBIEFX
 			oldNumVerts = tess.numVertexes;
 			oldNumIndex = tess.numIndexes;
+#endif
 
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 
+#ifndef NO_ZOMBIEFX
 			// RF, convert the newly created vertexes into dust particles, and overwrite
 			if (backEnd.currentEntity->e.reFlags & REFLAG_ZOMBIEFX) {
 				RB_ZombieFX( 0, drawSurf, oldNumVerts, oldNumIndex );
@@ -911,6 +925,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			else if (backEnd.currentEntity->e.reFlags & REFLAG_ZOMBIEFX2) {
 				RB_ZombieFX( 1, drawSurf, oldNumVerts, oldNumIndex );
 			}
+#endif
 			continue;
 		}
 		oldSort = drawSurf->sort;
@@ -1040,18 +1055,22 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 		// RF, ZOMBIEFX, store the tess indexes, so we can grab the calculated
 		// vertex positions and normals, and convert them into dust particles
+#ifndef NO_ZOMBIEFX
 		oldNumVerts = tess.numVertexes;
 		oldNumIndex = tess.numIndexes;
+#endif
 
 		// add the triangles for this surface
 		rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 
+#ifndef NO_ZOMBIEFX
 		// RF, convert the newly created vertexes into dust particles, and overwrite
 		if ( backEnd.currentEntity->e.reFlags & REFLAG_ZOMBIEFX ) {
 			RB_ZombieFX( 0, drawSurf, oldNumVerts, oldNumIndex );
 		} else if ( backEnd.currentEntity->e.reFlags & REFLAG_ZOMBIEFX2 )     {
 			RB_ZombieFX( 1, drawSurf, oldNumVerts, oldNumIndex );
 		}
+#endif
 	}
 
 	// draw the contents of the last shader batch

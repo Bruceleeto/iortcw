@@ -18,8 +18,8 @@
  *   .mdc   vertex animated models -> .mdb with rigid bones in place of
  *          the vertexes a frame (mdc.cpp), which the renderer looks for
  *          first; none when the .mdc is better kept
- *   .aas   bot navigation -> .aasc without the faces the game doesn't read
- *          (aas.cpp), which the botlib looks for first
+ *   .aas   bot navigation -> .aasc, what the game reads of it in smaller
+ *          structs (aas.cpp), which a botlib built with AAS_COMPACT reads
  *          and an empty maps/<map>_b1.aasc for a map with no big characters
  *          (the only ones that use the second world), which the botlib
  *          then doesn't load
@@ -364,8 +364,9 @@ int main( int argc, char **argv ) {
 		}
 	}
 	if ( aas.files ) {
-		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces kept; %d maps with no big characters, their second world left out\n",
-				aas.files, aas.bytesIn / 1048576.0, aas.bytesOut / 1048576.0, aas.facesOut, aas.facesIn, aas.skipped );
+		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces, %ld of %ld planes kept; %d maps with no big characters, their second world left out\n",
+				aas.files, aas.bytesIn / 1048576.0, aas.bytesOut / 1048576.0, aas.facesOut, aas.facesIn,
+				aas.planesOut, aas.planesIn, aas.skipped );
 	}
 	if ( tex.files ) {
 		printf( "tex: %d files, %.1f MB of 16 bit texels -> %.1f MB of .dt\n",
