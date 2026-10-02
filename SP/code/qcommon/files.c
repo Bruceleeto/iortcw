@@ -1818,17 +1818,26 @@ int FS_Read( void *buffer, int len, fileHandle_t f ) {
 		// KOS reads whole sectors from the disc straight into the buffer
 		// (DMA) only where the buffer is 32 byte aligned at a sector start,
 		// else each sector through a cache of its own: so read where the
-		// buffer is aligned as the file is, and move it down after
+		// buffer is aligned as the file is, and move it down after.
+		// Whole 32 byte blocks only, then stop the stream (a seek away and
+		// back): a stream's last few bytes come by a DMA that's waited on
+		// without blocking, which can hang for good; they're read through
+		// the cache instead
 		if ( len >= 4096 ) {
 			FILE *fp = fsh[f].handleFiles.file.o;
 			long pos = ftell( fp );
 			int d = ( pos - (intptr_t)buf ) & 31;
+			int n = ( len - d ) & ~31;
 
-			if ( pos >= 0 && d && fread( buf + d, 1, len - d, fp ) == len - d ) {
-				memmove( buf, buf + d, len - d );
-				remaining = d;
-				buf += len - d;
-			} else if ( pos >= 0 && d ) {
+			if ( pos >= 0 && fread( buf + d, 1, n, fp ) == n ) {
+				if ( d ) {
+					memmove( buf, buf + d, n );
+				}
+				remaining = len - n;
+				buf += n;
+				fseek( fp, 0, SEEK_SET );
+				fseek( fp, pos + n, SEEK_SET );
+			} else if ( pos >= 0 ) {
 				fseek( fp, pos, SEEK_SET );	// (short: read as before)
 			}
 		}
