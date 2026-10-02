@@ -102,6 +102,7 @@ void _UI_KeyEvent( int key, qboolean down );
 void _UI_MouseEvent( int dx, int dy );
 void _UI_Refresh( int realtime );
 qboolean _UI_IsFullscreen( void );
+void UI_ReloadMenus( void );
 
 Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11  ) {
 	switch ( command ) {
@@ -607,6 +608,10 @@ void _UI_Refresh( int realtime ) {
 	//if ( !( trap_Key_GetCatcher() & KEYCATCH_UI ) ) {
 	//	return;
 	//}
+
+	if ( trap_Key_GetCatcher() & KEYCATCH_UI ) {
+		UI_ReloadMenus();
+	}
 
 	uiInfo.uiDC.frameTime = realtime - uiInfo.uiDC.realTime;
 	uiInfo.uiDC.realTime = realtime;
@@ -5725,6 +5730,10 @@ uiMenuCommand_t _UI_GetActiveMenu( void ) {
 void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 	char buf[256];
 
+	if ( menu != UIMENU_NONE ) {
+		UI_ReloadMenus();
+	}
+
 	// this should be the ONLY way the menu system is brought up
 	// enusure minumum menu data is cached
 	if ( Menu_Count() > 0 ) {
@@ -5908,7 +5917,55 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 	}
 }
 
+/*
+The menus, near 1MB, are let go while a level is played and loaded again
+when one is brought up
+*/
+static qboolean menusUnloaded;
+
+static void UI_UnloadMenus( void ) {
+	String_Init();
+	uiInfo.savegameCount = 0;
+	uiInfo.movieCount = 0;
+	uiInfo.modCount = 0;
+	menusUnloaded = qtrue;
+}
+
+void UI_ReloadMenus( void ) {
+	uiClientState_t cstate;
+	const char *menuSet;
+
+	if ( !menusUnloaded ) {
+		return;
+	}
+	menusUnloaded = qfalse;
+	trap_GetClientState( &cstate );
+	if ( cstate.connState == CA_ACTIVE ) {
+		UI_LoadMenus( "ui/ingame.txt", qtrue );
+		UI_ParseMenu( "ui/briefing.menu" );
+		uiInfo.inGameLoad = qtrue;
+	} else {
+		menuSet = UI_Cvar_VariableString( "ui_menuFiles" );
+		if ( menuSet == NULL || menuSet[0] == '\0' ) {
+			menuSet = "ui/menus.txt";
+		}
+		UI_LoadMenus( menuSet, qtrue );
+		UI_LoadMenus( "ui/ingame.txt", qfalse );
+		uiInfo.inGameLoad = qfalse;
+	}
+	Menus_CloseAll();
+}
+
+/* asked every frame, outside any menu code: the place to let them go */
 qboolean _UI_IsFullscreen( void ) {
+	if ( !menusUnloaded && !( trap_Key_GetCatcher() & KEYCATCH_UI ) ) {
+		uiClientState_t cstate;
+
+		trap_GetClientState( &cstate );
+		if ( cstate.connState == CA_ACTIVE ) {
+			UI_UnloadMenus();
+		}
+	}
 	return Menus_AnyFullScreenVisible();
 }
 
@@ -6036,7 +6093,12 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 	char text[256];
 	float centerPoint, yStart, scale;
 
-	menuDef_t *menu = Menus_FindByName( "Connect" );
+	menuDef_t *menu;
+
+	if ( !overlay ) {
+		UI_ReloadMenus();
+	}
+	menu = Menus_FindByName( "Connect" );
 
 
 	if ( !overlay && menu ) {

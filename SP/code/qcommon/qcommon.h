@@ -50,7 +50,7 @@ The client and the server run in the same program and call each other
 ==============================================================
 */
 
-#define PACKET_BACKUP   4   // snapshots the server keeps for the client, which
+#define PACKET_BACKUP   2   // snapshots the server keeps for the client, which
 							// reads each one the frame it is built
 #define PACKET_MASK     ( PACKET_BACKUP - 1 )
 

@@ -442,6 +442,15 @@ void String_Init( void ) {
 	strUsed = 0;
 	menuCount = 0;
 	openMenuCount = 0;
+	// nothing may point into the menus let go
+	captureFunc = 0;
+	captureData = NULL;
+	itemCapture = NULL;
+	g_bindItem = NULL;
+	g_editItem = NULL;
+	g_waitingForKey = qfalse;
+	g_editingField = qfalse;
+	scrollInfo.item = NULL;
 	UI_InitMemory();
 	Item_SetupKeywordHash();
 	Menu_SetupKeywordHash();
