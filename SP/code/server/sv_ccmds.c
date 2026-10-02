@@ -393,6 +393,12 @@ static void SV_MapRestart_f( void ) {
 
 		if ( savegameTime >= 0 ) {
 			sv.time = savegameTime;
+			// the time's gone back: a usercmd is run only when newer than
+			// the last one, so the player would stand there frozen until
+			// the time caught up with where it was
+			for ( i = 0; i < sv_maxclients->integer; i++ ) {
+				svs.clients[i].lastUsercmd.serverTime = 0;
+			}
 		}
 
 		Hunk_FreeTempMemory( buffer );

@@ -169,7 +169,12 @@ mdsFrame_t *R_MDSFrame( mdsHeader_t *header, int frame ) {
 		}
 	}
 
-	MDSC_DecodeFrame( header, frame, mdsFrameData[oldest] );
+	if ( header->version == MDSC_VERSION_SHARED ) {
+		const mdscShare_t *share = (const mdscShare_t *)( (byte *)header + header->ofsFrames );
+		MDSC_DecodeSharedFrame( header, R_GetModelByHandle( share->baseHandle )->mds, frame, mdsFrameData[oldest] );
+	} else {
+		MDSC_DecodeFrame( header, frame, mdsFrameData[oldest] );
+	}
 	mdsFrameCache[oldest].header = header;
 	mdsFrameCache[oldest].frame = frame;
 	mdsFrameCache[oldest].used = ++mdsFrameTime;

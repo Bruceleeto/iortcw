@@ -29,6 +29,7 @@ extern "C" {
 
 #define MDSC_IDENT          ( ( 'C' << 24 ) + ( 'S' << 16 ) + ( 'D' << 8 ) + 'M' )
 #define MDSC_VERSION        2
+#define MDSC_VERSION_SHARED 3       /* frames shared with another MDSC: mdscShare_t */
 
 #define MDSC_MAX_BONES      128     /* MDS_MAX_BONES */
 #define MDSC_FRAME_FLOATS   13      /* bounds[2], localOrigin, radius, parentOffset */
@@ -57,6 +58,31 @@ typedef struct {
 } mdscAnim_t;                       /* all offsets are from the start of this */
 
 #define MDSC_DIR_SCALE      32767.0f
+
+/*
+ * Shared frames (MDSC_VERSION_SHARED). Characters with the one skeleton
+ * (the guards: infantryss, officerss, trench) have most of their animation
+ * frames the same, byte for byte, but for the cull bounds, the mesh's. Such
+ * a frame is kept once, in a base: an MDSC (MDSC_VERSION) with no surfaces
+ * or tags, of the frames they share. The character's ofsFrames points to an
+ * mdscShare_t: which of its frames are the base's and which its own, and an
+ * mdscAnim_t of its own frames, whose cull bounds track is by the
+ * character's frame numbers (all its frames), the rest by its own frames in
+ * order. Frame numbers, wolfanim.cfg and all, stay as they were.
+ */
+typedef struct {
+	int first, count;               /* the character's frames first to first + count - 1 */
+	int srcFirst;                   /* are the base's (fromBase) or its own frames from srcFirst */
+	int fromBase;
+} mdscSegment_t;
+
+typedef struct {
+	char base[64];                  /* the base, as the game registers it (.mds) */
+	int baseHandle;                 /* the renderer's: the base's model handle once loaded */
+	int numSegments;
+	int ofsSegments;                /* mdscSegment_t[numSegments] by first, from the start of this */
+	int ofsAnim;                    /* its mdscAnim_t, from the start of this */
+} mdscShare_t;
 
 typedef float mdscMatrix_t[3][3];   /* rows are the bone's axes, as AnglesToAxis */
 
@@ -92,6 +118,9 @@ void MDSC_ChildMatrix( const mdscMatrix_t parent, const float q[4], mdscMatrix_t
  * laid out as an mdsFrame_t (MDSC_FRAME_SIZE bytes). Bones must come after
  * their parents, which the converter checks. */
 void MDSC_DecodeFrame( const void *mds, int frame, void *out );
+
+/* The same for an MDSC_VERSION_SHARED one, `base` its base's file. */
+void MDSC_DecodeSharedFrame( const void *mds, const void *base, int frame, void *out );
 
 #ifdef __cplusplus
 }

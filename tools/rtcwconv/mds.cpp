@@ -13,6 +13,8 @@
  * The bones, surfaces and tags are copied as they are, the triangles put in
  * strip order. The layout is described in mdsc/mdsc.h.
  */
+#include <algorithm>
+#include <map>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -148,9 +150,19 @@ static void PutKeys( Out &o, size_t trackAt, size_t base, const std::vector<int>
 
 /* ---- conversion ---- */
 
-bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
-                 const MdsOptions &opt, MdsStats &st, const char *name ) {
+/* an .mds pulled apart */
+struct MdsSrc {
 	MdsHeader h;
+	const std::vector<uint8_t> *in;
+	int nf, nb;
+	std::vector<int> parent;
+	std::vector<float> parentDist;
+	std::vector<float> frameVals;   /* [nf][FRAME_FLOATS] */
+	std::vector<short> model;       /* [nf][nb][BONE_SHORTS] */
+};
+
+static bool ParseMds( const std::vector<uint8_t> &in, MdsSrc &s, const char *name ) {
+	MdsHeader &h = s.h;
 
 	if ( in.size() < sizeof( h ) ) {
 		fprintf( stderr, "%s: too small for an .mds\n", name );
@@ -173,64 +185,103 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 		fprintf( stderr, "%s: more than %d bones\n", name, MDSC_MAX_BONES );
 		return false;
 	}
-	std::vector<int> parent( nb );
-	std::vector<float> parentDist( nb );
+	s.in = &in;
+	s.nf = nf;
+	s.nb = nb;
+	s.parent.resize( nb );
+	s.parentDist.resize( nb );
 	for ( int b = 0; b < nb; b++ ) {
 		const uint8_t *bi = in.data() + h.ofsBones + b * BONE_INFO_SIZE;
-		memcpy( &parent[b], bi + 64, 4 );
-		memcpy( &parentDist[b], bi + 72, 4 );
-		if ( parent[b] >= b ) {
+		memcpy( &s.parent[b], bi + 64, 4 );
+		memcpy( &s.parentDist[b], bi + 72, 4 );
+		if ( s.parent[b] >= b ) {
 			fprintf( stderr, "%s: bone %d comes before its parent\n", name, b );
 			return false;
 		}
 	}
 
 	/* pull the frames apart */
-	std::vector<float> frameVals( nf * FRAME_FLOATS );
-	std::vector<short> model( (size_t)nf * nb * BONE_SHORTS );
+	s.frameVals.resize( nf * FRAME_FLOATS );
+	s.model.resize( (size_t)nf * nb * BONE_SHORTS );
 	for ( int f = 0; f < nf; f++ ) {
 		const uint8_t *fr = in.data() + h.ofsFrames + f * frameSize;
-		memcpy( &frameVals[f * FRAME_FLOATS], fr, FRAME_FLOATS * 4 );
-		memcpy( &model[(size_t)f * nb * BONE_SHORTS], fr + FRAME_FLOATS * 4, nb * BONE_SHORTS * 2 );
+		memcpy( &s.frameVals[f * FRAME_FLOATS], fr, FRAME_FLOATS * 4 );
+		memcpy( &s.model[(size_t)f * nb * BONE_SHORTS], fr + FRAME_FLOATS * 4, nb * BONE_SHORTS * 2 );
 	}
+	return true;
+}
 
-	Out o;
+/* the header, then the bones, and the tags and surfaces (mesh), as they
+   are but for the triangles put in strip order; the header's offsets set */
+static void PutMesh( Out &o, const MdsSrc &s, bool mesh, MdsStats &st, const char *name ) {
+	const std::vector<uint8_t> &in = *s.in;
+	const MdsHeader &h = s.h;
+
 	o.put( &h, sizeof( h ) );
 
-	/* bones and tags as they are */
 	size_t ofsBones = o.pos();
-	o.put( in.data() + h.ofsBones, nb * BONE_INFO_SIZE );
+	o.put( in.data() + h.ofsBones, s.nb * BONE_INFO_SIZE );
 	size_t ofsTags = o.pos();
-	o.put( in.data() + h.ofsTags, h.numTags * TAG_SIZE );
+	if ( mesh ) {
+		o.put( in.data() + h.ofsTags, h.numTags * TAG_SIZE );
+	}
 
-	/* surfaces as they are, triangles in strip order */
 	size_t ofsSurfaces = o.pos();
 	size_t at = h.ofsSurfaces;
-	for ( int i = 0; i < h.numSurfaces; i++ ) {
-		MdsSurface s;
-		memcpy( &s, in.data() + at, sizeof( s ) );
+	for ( int i = 0; mesh && i < h.numSurfaces; i++ ) {
+		MdsSurface surf;
+		memcpy( &surf, in.data() + at, sizeof( surf ) );
 
 		size_t surfAt = o.pos();
-		o.put( in.data() + at, s.ofsEnd );
+		o.put( in.data() + at, surf.ofsEnd );
 		o.set32( surfAt + offsetof( MdsSurface, ofsHeader ), -(int32_t)surfAt );
 
-		std::vector<uint32_t> tris( s.numTriangles * 3 );
-		memcpy( tris.data(), in.data() + at + s.ofsTriangles, tris.size() * 4 );
+		std::vector<uint32_t> tris( surf.numTriangles * 3 );
+		memcpy( tris.data(), in.data() + at + surf.ofsTriangles, tris.size() * 4 );
 		int stripTris;
 		int strips = StripOrder( tris, &stripTris );
 		if ( strips < 0 ) {
-			fprintf( stderr, "%s: %s: strips didn't check out, triangles left in order\n", name, s.name );
+			fprintf( stderr, "%s: %s: strips didn't check out, triangles left in order\n", name, surf.name );
 		} else {
-			memcpy( &o.b[surfAt + s.ofsTriangles], tris.data(), tris.size() * 4 );
+			memcpy( &o.b[surfAt + surf.ofsTriangles], tris.data(), tris.size() * 4 );
 			st.strips += strips;
 			st.stripTris += stripTris;
 		}
-		st.tris += s.numTriangles;
+		st.tris += surf.numTriangles;
 
-		at += s.ofsEnd;
+		at += surf.ofsEnd;
 	}
 
-	/* the animation */
+	MdsHeader *oh = (MdsHeader *)o.b.data();
+	oh->ident = MDSC_IDENT;
+	oh->version = MDSC_VERSION;
+	oh->ofsBones = (int32_t)ofsBones;
+	oh->ofsTags = (int32_t)ofsTags;
+	oh->ofsSurfaces = (int32_t)ofsSurfaces;
+	if ( !mesh ) {
+		oh->numTags = 0;
+		oh->numSurfaces = 0;
+	}
+}
+
+/* An mdscAnim_t, at the end of o (aligned): its offsets and bones of s's
+   frames `pose` in that order, its cull bounds of s's frames `cull`.
+   Returns where it starts. */
+static size_t PutAnim( Out &o, const MdsSrc &s, const std::vector<int> &pose, const std::vector<int> &cull,
+					   const MdsOptions &opt, MdsStats &st ) {
+	const int nb = s.nb, nf = (int)pose.size(), ncf = (int)cull.size();
+
+	/* just those frames */
+	std::vector<float> frameVals( nf * FRAME_FLOATS ), cullVals( ncf * FRAME_FLOATS );
+	std::vector<short> model( (size_t)nf * nb * BONE_SHORTS );
+	for ( int f = 0; f < nf; f++ ) {
+		memcpy( &frameVals[f * FRAME_FLOATS], &s.frameVals[pose[f] * FRAME_FLOATS], FRAME_FLOATS * 4 );
+		memcpy( &model[(size_t)f * nb * BONE_SHORTS], &s.model[(size_t)pose[f] * nb * BONE_SHORTS], nb * BONE_SHORTS * 2 );
+	}
+	for ( int f = 0; f < ncf; f++ ) {
+		memcpy( &cullVals[f * FRAME_FLOATS], &s.frameVals[cull[f] * FRAME_FLOATS], FRAME_FLOATS * 4 );
+	}
+
 	o.align();
 	size_t base = o.pos();
 	size_t frameTrackAt = base;
@@ -248,13 +299,13 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 
 	/* the cull bounds: within CULL_TOL, then that much bigger (the sphere's
 	   centre may be off by it in each of x, y and z too) */
-	keys = ReduceKeys( nf, opt.maxSpan, [&]( int s, int e ) {
-		return FrameSpanFits( frameVals, 0, MDSC_CULL_FLOATS, s, e, CULL_TOL );
+	keys = ReduceKeys( ncf, opt.maxSpan, [&]( int s, int e ) {
+		return FrameSpanFits( cullVals, 0, MDSC_CULL_FLOATS, s, e, CULL_TOL );
 	} );
 	PutKeys( o, frameTrackAt + offsetof( mdscAnim_t, cullTrack ), base, keys );
 	for ( int k : keys ) {
 		float v[MDSC_CULL_FLOATS];
-		memcpy( v, &frameVals[k * FRAME_FLOATS], sizeof( v ) );
+		memcpy( v, &cullVals[k * FRAME_FLOATS], sizeof( v ) );
 		for ( int c = 0; c < 3; c++ ) {
 			v[c] -= CULL_TOL;
 			v[3 + c] += CULL_TOL;
@@ -275,15 +326,16 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 		std::vector<Dir> exactDir( nf );
 		std::vector<uint32_t> packedRot( nf );
 		std::vector<short> packedDir( nf * 4 );
+		const int parent = s.parent[b];
 
 		for ( int f = 0; f < nf; f++ ) {
-			const short *pose = &model[( (size_t)f * nb + b ) * BONE_SHORTS];
-			const float( *p )[3] = parent[b] < 0 ? NULL : decoded[(size_t)parent[b] * nf + f].m;
+			const short *p = &model[( (size_t)f * nb + b ) * BONE_SHORTS];
+			const float( *pm )[3] = parent < 0 ? NULL : decoded[(size_t)parent * nf + f].m;
 
-			MDSC_LocalRotation( p, pose, exactRot[f].v );
+			MDSC_LocalRotation( pm, p, exactRot[f].v );
 			packedRot[f] = MDSC_PackQuat( exactRot[f].v );
-			if ( p ) {
-				MDSC_LocalDir( p, pose + 4, exactDir[f].v );
+			if ( pm ) {
+				MDSC_LocalDir( pm, p + 4, exactDir[f].v );
 			} else {
 				exactDir[f] = { { 0, 0, 0 } };
 			}
@@ -293,11 +345,11 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 		rotKeys[b] = ReduceKeys( nf, opt.maxSpan, [&]( int s, int e ) {
 			return QuatSpanFits( exactRot, packedRot, s, e, opt.angleTol );
 		} );
-		if ( parent[b] < 0 ) {
+		if ( parent < 0 ) {
 			dirKeys[b] = { 0 };
 		} else {
 			/* the direction is good enough when the bone is within offsetTol */
-			float tol = parentDist[b] > opt.offsetTol ? ( opt.offsetTol / parentDist[b] ) * ( 180.0f / (float)M_PI ) : 180.0f;
+			float tol = s.parentDist[b] > opt.offsetTol ? ( opt.offsetTol / s.parentDist[b] ) * ( 180.0f / (float)M_PI ) : 180.0f;
 			dirKeys[b] = ReduceKeys( nf, opt.maxSpan, [&]( int s, int e ) {
 				return DirSpanFits( exactDir, packedDir, s, e, tol );
 			} );
@@ -312,10 +364,10 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 		/* and what the game will make of it */
 		std::vector<unsigned short> k16( rotKeys[b].begin(), rotKeys[b].end() );
 		for ( int f = 0; f < nf; f++ ) {
-			const float( *p )[3] = parent[b] < 0 ? NULL : decoded[(size_t)parent[b] * nf + f].m;
+			const float( *pm )[3] = parent < 0 ? NULL : decoded[(size_t)parent * nf + f].m;
 			float q[4];
 			MDSC_TrackQuat( k16.data(), rotVals[b].data(), (int)k16.size(), f, q );
-			MDSC_ChildMatrix( p, q, decoded[(size_t)b * nf + f].m );
+			MDSC_ChildMatrix( pm, q, decoded[(size_t)b * nf + f].m );
 		}
 		st.keysOut += rotKeys[b].size();
 		st.dirKeys += dirKeys[b].size();
@@ -330,31 +382,31 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 		o.put( dirVals[b].data(), dirVals[b].size() * 2 );
 	}
 	st.framesIn += (long)nf * nb;
+	return base;
+}
 
-	/* header pointing at it all */
-	MdsHeader *oh = (MdsHeader *)o.b.data();
-	oh->ident = MDSC_IDENT;
-	oh->version = MDSC_VERSION;
-	oh->ofsFrames = (int32_t)base;
-	oh->ofsBones = (int32_t)ofsBones;
-	oh->ofsTags = (int32_t)ofsTags;
-	oh->ofsSurfaces = (int32_t)ofsSurfaces;
-	oh->ofsEnd = (int32_t)o.pos();
-
-	/* decode every frame as the game will and see how far the bones moved */
+/* decode every frame of the MDSC made of s (with its base, if shared) as the
+   game will, and see how far the bones moved */
+static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile, const MdsSrc &s, MdsStats &st, const char *name ) {
+	const int nf = s.nf, nb = s.nb;
 	std::vector<uint8_t> dec( MDSC_FRAME_SIZE( nb ) );
 	std::vector<float> posA( nb * 3 ), posB( nb * 3 );
+
 	for ( int f = 0; f < nf; f++ ) {
-		const short *ma = &model[(size_t)f * nb * BONE_SHORTS];
+		const short *ma = &s.model[(size_t)f * nb * BONE_SHORTS];
 		const short *mb = (const short *)( dec.data() + FRAME_FLOATS * 4 );
-		const float *rootA = &frameVals[f * FRAME_FLOATS + 10];
+		const float *rootA = &s.frameVals[f * FRAME_FLOATS + 10];
 		const float *rootB = (const float *)dec.data() + 10;
 
-		MDSC_DecodeFrame( o.b.data(), f, dec.data() );
+		if ( baseFile ) {
+			MDSC_DecodeSharedFrame( file.data(), baseFile, f, dec.data() );
+		} else {
+			MDSC_DecodeFrame( file.data(), f, dec.data() );
+		}
 
 		/* the cull bounds must hold the frame's */
 		{
-			const float *a = &frameVals[f * FRAME_FLOATS], *b = (const float *)dec.data();
+			const float *a = &s.frameVals[f * FRAME_FLOATS], *b = (const float *)dec.data();
 			float d = 0;
 			bool holds = true;
 			for ( int c = 0; c < 3; c++ ) {
@@ -374,14 +426,14 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 				float *pos = &( set ? posB : posA )[b * 3];
 				const float *root = set ? rootB : rootA;
 
-				if ( parent[b] < 0 ) {
+				if ( s.parent[b] < 0 ) {
 					memcpy( pos, root, 12 );
 				} else {
 					float pitch = p[4] * ( (float)M_PI / 32768.0f ), yaw = p[5] * ( (float)M_PI / 32768.0f );
-					const float *pp = &( set ? posB : posA )[parent[b] * 3];
-					pos[0] = pp[0] + parentDist[b] * cosf( pitch ) * cosf( yaw );
-					pos[1] = pp[1] + parentDist[b] * cosf( pitch ) * sinf( yaw );
-					pos[2] = pp[2] - parentDist[b] * sinf( pitch );
+					const float *pp = &( set ? posB : posA )[s.parent[b] * 3];
+					pos[0] = pp[0] + s.parentDist[b] * cosf( pitch ) * cosf( yaw );
+					pos[1] = pp[1] + s.parentDist[b] * cosf( pitch ) * sinf( yaw );
+					pos[2] = pp[2] - s.parentDist[b] * sinf( pitch );
 				}
 			}
 			float qa[4], qb[4];
@@ -402,10 +454,184 @@ bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
 			st.numErr++;
 		}
 	}
+	return true;
+}
 
+bool ConvertMds( const std::vector<uint8_t> &in, std::vector<uint8_t> &result,
+                 const MdsOptions &opt, MdsStats &st, const char *name ) {
+	MdsSrc s;
+
+	if ( !ParseMds( in, s, name ) ) {
+		return false;
+	}
+
+	Out o;
+	PutMesh( o, s, true, st, name );
+	std::vector<int> all( s.nf );
+	for ( int f = 0; f < s.nf; f++ ) {
+		all[f] = f;
+	}
+	size_t anim = PutAnim( o, s, all, all, opt, st );
+	MdsHeader *oh = (MdsHeader *)o.b.data();
+	oh->ofsFrames = (int32_t)anim;
+	oh->ofsEnd = (int32_t)o.pos();
+
+	if ( !CheckMdsc( o.b, NULL, s, st, name ) ) {
+		return false;
+	}
 	st.files++;
-	st.bytesIn += h.ofsEnd;
+	st.bytesIn += s.h.ofsEnd;
 	st.bytesOut += o.pos();
 	result.swap( o.b );
+	return true;
+}
+
+/* ---- shared frames (mdsc.h, mdscShare_t) ---- */
+
+const MdsGroup mdsGroups[] = {
+	/* the guards: of officerss' 5335 frames, 4205 are infantryss' (but for
+	   the cull bounds), of trench's 5383, 4156 */
+	{ "models/players/guards_anim.mds",
+	  { "models/players/infantryss/body.mds", "models/players/officerss/body.mds", "models/players/trench/body.mds" } },
+};
+const int numMdsGroups = sizeof( mdsGroups ) / sizeof( mdsGroups[0] );
+
+bool ConvertMdsGroup( const MdsGroup &g, const std::vector<std::vector<uint8_t>> &ins,
+					  std::vector<std::vector<uint8_t>> &outs, std::vector<uint8_t> &baseOut,
+					  const MdsOptions &opt, MdsStats &st ) {
+	const int n = (int)ins.size();
+	std::vector<MdsSrc> src( n );
+
+	for ( int m = 0; m < n; m++ ) {
+		if ( !ParseMds( ins[m], src[m], g.members[m].c_str() ) ) {
+			return false;
+		}
+		if ( src[m].nb != src[0].nb || src[m].parent != src[0].parent ) {
+			fprintf( stderr, "%s: not %s's skeleton\n", g.members[m].c_str(), g.members[0].c_str() );
+			return false;
+		}
+	}
+	const MdsSrc &first = src[0];
+
+	/* each frame of each, as one of the first's where it is one: the next
+	   of the last one's where that will do, so they come in runs */
+	std::map<std::vector<uint8_t>, std::vector<int>> byPose;
+	for ( int f = 0; f < first.nf; f++ ) {
+		std::vector<uint8_t> k( (const uint8_t *)&first.frameVals[f * FRAME_FLOATS + MDSC_CULL_FLOATS],
+								(const uint8_t *)&first.frameVals[f * FRAME_FLOATS + FRAME_FLOATS] );
+		k.insert( k.end(), (const uint8_t *)&first.model[(size_t)f * first.nb * BONE_SHORTS],
+				  (const uint8_t *)&first.model[(size_t)( f + 1 ) * first.nb * BONE_SHORTS] );
+		byPose[k].push_back( f );
+	}
+	std::vector<std::vector<int>> match( n );
+	std::vector<bool> used( first.nf, false );
+	for ( int m = 1; m < n; m++ ) {
+		const MdsSrc &s = src[m];
+		int last = -2;
+		match[m].assign( s.nf, -1 );
+		for ( int f = 0; f < s.nf; f++ ) {
+			std::vector<uint8_t> k( (const uint8_t *)&s.frameVals[f * FRAME_FLOATS + MDSC_CULL_FLOATS],
+									(const uint8_t *)&s.frameVals[f * FRAME_FLOATS + FRAME_FLOATS] );
+			k.insert( k.end(), (const uint8_t *)&s.model[(size_t)f * s.nb * BONE_SHORTS],
+					  (const uint8_t *)&s.model[(size_t)( f + 1 ) * s.nb * BONE_SHORTS] );
+			auto it = byPose.find( k );
+			if ( it == byPose.end() ) {
+				last = -2;
+				continue;
+			}
+			const std::vector<int> &c = it->second;
+			int pick = std::find( c.begin(), c.end(), last + 1 ) != c.end() ? last + 1 : c[0];
+			match[m][f] = last = pick;
+			used[pick] = true;
+		}
+	}
+	match[0].assign( first.nf, -1 );
+	for ( int f = 0; f < first.nf; f++ ) {
+		if ( used[f] ) {
+			match[0][f] = f;
+		}
+	}
+
+	/* the base: the first's frames any other has, in order */
+	std::vector<int> shared, sharedAt( first.nf, -1 );
+	for ( int f = 0; f < first.nf; f++ ) {
+		if ( used[f] ) {
+			sharedAt[f] = (int)shared.size();
+			shared.push_back( f );
+		}
+	}
+	if ( shared.empty() ) {
+		fprintf( stderr, "%s: they share no frames\n", g.base.c_str() );
+		return false;
+	}
+	{
+		Out o;
+		PutMesh( o, first, false, st, g.base.c_str() );
+		size_t anim = PutAnim( o, first, shared, shared, opt, st );
+		MdsHeader *oh = (MdsHeader *)o.b.data();
+		oh->numFrames = (int32_t)shared.size();
+		oh->ofsFrames = (int32_t)anim;
+		oh->ofsEnd = (int32_t)o.pos();
+		baseOut.swap( o.b );
+		st.bytesOut += baseOut.size();
+	}
+
+	/* each: its mesh, which frames are the base's, its own */
+	outs.resize( n );
+	for ( int m = 0; m < n; m++ ) {
+		const MdsSrc &s = src[m];
+		const char *name = g.members[m].c_str();
+		std::vector<int> own, all( s.nf );
+		std::vector<mdscSegment_t> segs;
+
+		for ( int f = 0; f < s.nf; f++ ) {
+			int fromBase = match[m][f] >= 0;
+			int at = fromBase ? sharedAt[match[m][f]] : (int)own.size();
+			all[f] = f;
+			if ( !fromBase ) {
+				own.push_back( f );
+			}
+			if ( !segs.empty() && segs.back().fromBase == fromBase &&
+				 segs.back().srcFirst + segs.back().count == at ) {
+				segs.back().count++;
+			} else {
+				segs.push_back( { f, 1, at, fromBase } );
+			}
+		}
+		if ( own.empty() ) {
+			own.push_back( 0 );     /* (an mdscAnim_t needs a frame) */
+		}
+
+		Out o;
+		PutMesh( o, s, true, st, name );
+		o.align();
+		size_t shareAt = o.pos();
+		mdscShare_t share = {};
+		snprintf( share.base, sizeof( share.base ), "%s", g.base.c_str() );
+		share.numSegments = (int)segs.size();
+		o.put( &share, sizeof( share ) );
+		o.set32( shareAt + offsetof( mdscShare_t, ofsSegments ), (int32_t)( o.pos() - shareAt ) );
+		o.put( segs.data(), segs.size() * sizeof( mdscSegment_t ) );
+		size_t anim = PutAnim( o, s, own, all, opt, st );
+		o.set32( shareAt + offsetof( mdscShare_t, ofsAnim ), (int32_t)( anim - shareAt ) );
+		MdsHeader *oh = (MdsHeader *)o.b.data();
+		oh->version = MDSC_VERSION_SHARED;
+		oh->ofsFrames = (int32_t)shareAt;
+		oh->ofsEnd = (int32_t)o.pos();
+
+		if ( !CheckMdsc( o.b, baseOut.data(), s, st, name ) ) {
+			return false;
+		}
+		int baseFrames = 0, runs = 0;
+		for ( const mdscSegment_t &x : segs ) {
+			baseFrames += x.fromBase ? x.count : 0;
+			runs += x.fromBase;
+		}
+		printf( "mds: %s: %d of its %d frames in %s, %d runs of them\n", name, baseFrames, s.nf, g.base.c_str(), runs );
+		st.files++;
+		st.bytesIn += s.h.ofsEnd;
+		st.bytesOut += o.pos();
+		outs[m].swap( o.b );
+	}
 	return true;
 }

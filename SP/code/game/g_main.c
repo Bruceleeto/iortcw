@@ -1204,6 +1204,14 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	G_ProcessIPBans();
 
 	G_InitMemory();
+	{
+		// the bots' states were in what G_InitMemory just took back: the
+		// game isn't a dll loaded again on a restart (dying's map_restart),
+		// so their pointers would still be there, pointing at what's next
+		// allocated
+		extern struct bot_state_s *botstates[MAX_CLIENTS];
+		memset( botstates, 0, sizeof( botstates ) );
+	}
 
 	// set some level globals
 	memset( &level, 0, sizeof( level ) );

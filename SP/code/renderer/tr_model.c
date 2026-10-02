@@ -1750,7 +1750,7 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 	// MDSC (tools/rtcwconv) is an .mds with its frames packed, see mdsc/mdsc.h
 	compact = LittleLong( pinmodel->ident ) == MDSC_IDENT;
 	version = LittleLong( pinmodel->version );
-	if ( version != ( compact ? MDSC_VERSION : MDS_VERSION ) ) {
+	if ( version != ( compact ? MDSC_VERSION : MDS_VERSION ) && !( compact && version == MDSC_VERSION_SHARED ) ) {
 		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has wrong version (%i should be %i)\n",
 				   mod_name, version, compact ? MDSC_VERSION : MDS_VERSION );
 		return qfalse;
@@ -1792,6 +1792,21 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 	if ( mds->numFrames < 1 ) {
 		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has no frames\n", mod_name );
 		return qfalse;
+	}
+
+	// frames shared with a base MDSC (the guards', mdsc/mdsc.h): load it too
+	if ( compact && version == MDSC_VERSION_SHARED ) {
+		mdscShare_t *share = (mdscShare_t *)( (byte *)mds + mds->ofsFrames );
+		model_t *base;
+
+		share->base[sizeof( share->base ) - 1] = 0;
+		share->baseHandle = RE_RegisterModel( share->base );
+		base = R_GetModelByHandle( share->baseHandle );
+		if ( !share->baseHandle || base->type != MOD_MDS || base->mds->ident != MDSC_IDENT ||
+			 base->mds->version != MDSC_VERSION || base->mds->numBones != mds->numBones ) {
+			ri.Printf( PRINT_WARNING, "R_LoadMDS: %s: no %s to share frames with\n", mod_name, share->base );
+			return qfalse;
+		}
 	}
 
 	if ( LittleLong( 1 ) != 1 ) {

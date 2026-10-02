@@ -321,11 +321,10 @@ static void TrackFloats( const unsigned char *animBase, const mdscTrack_t *track
 	}
 }
 
-void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
-	const unsigned char *base = (const unsigned char *)mds;
-	int numFrames = ReadInt( base + HDR_NUMFRAMES );
+/* the parent offsets and bones of frame `frame` of the mdscAnim_t at
+   animBase, of the MDSC at base (for its bones), into the decoded frame out */
+static void DecodePose( const unsigned char *base, const unsigned char *animBase, int frame, void *out ) {
 	int numBones = ReadInt( base + HDR_NUMBONES );
-	const unsigned char *animBase = base + ReadInt( base + HDR_OFSFRAMES );
 	const mdscAnim_t *anim = (const mdscAnim_t *)animBase;
 	const unsigned char *boneInfo = base + ReadInt( base + HDR_OFSBONES );
 	float *floats = (float *)out;
@@ -333,14 +332,6 @@ void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
 	static mdscMatrix_t model[MDSC_MAX_BONES];
 	int i, j;
 
-	if ( frame < 0 ) {
-		frame = 0;
-	} else if ( frame >= numFrames ) {
-		frame = numFrames - 1;
-	}
-
-	/* bounds, then offsets */
-	TrackFloats( animBase, &anim->cullTrack, MDSC_CULL_FLOATS, frame, floats );
 	TrackFloats( animBase, &anim->frameTrack, MDSC_OFFSET_FLOATS, frame, floats + MDSC_CULL_FLOATS );
 
 	/* bones, parents first */
@@ -369,5 +360,52 @@ void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
 		}
 		MatrixToAngles( (const float (*)[3])model[i], pose );
 		pose[3] = 0;
+	}
+}
+
+static int ClampFrame( const unsigned char *base, int frame ) {
+	int numFrames = ReadInt( base + HDR_NUMFRAMES );
+
+	if ( frame < 0 ) {
+		return 0;
+	}
+	return frame >= numFrames ? numFrames - 1 : frame;
+}
+
+void MDSC_DecodeFrame( const void *mds, int frame, void *out ) {
+	const unsigned char *base = (const unsigned char *)mds;
+	const unsigned char *animBase = base + ReadInt( base + HDR_OFSFRAMES );
+
+	frame = ClampFrame( base, frame );
+	TrackFloats( animBase, &( (const mdscAnim_t *)animBase )->cullTrack, MDSC_CULL_FLOATS, frame, (float *)out );
+	DecodePose( base, animBase, frame, out );
+}
+
+void MDSC_DecodeSharedFrame( const void *mds, const void *base, int frame, void *out ) {
+	const unsigned char *own = (const unsigned char *)mds;
+	const unsigned char *shareBase = own + ReadInt( own + HDR_OFSFRAMES );
+	const mdscShare_t *share = (const mdscShare_t *)shareBase;
+	const mdscSegment_t *seg = (const mdscSegment_t *)( shareBase + share->ofsSegments );
+	const unsigned char *animBase = shareBase + share->ofsAnim;
+	int lo = 0, hi = share->numSegments - 1;
+
+	frame = ClampFrame( own, frame );
+
+	/* the cull bounds are its own, the rest the base's or its own */
+	TrackFloats( animBase, &( (const mdscAnim_t *)animBase )->cullTrack, MDSC_CULL_FLOATS, frame, (float *)out );
+	while ( lo < hi ) {
+		int mid = ( lo + hi + 1 ) / 2;
+		if ( seg[mid].first <= frame ) {
+			lo = mid;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	seg += lo;
+	if ( seg->fromBase ) {
+		const unsigned char *b = (const unsigned char *)base;
+		DecodePose( b, b + ReadInt( b + HDR_OFSFRAMES ), ClampFrame( b, seg->srcFirst + frame - seg->first ), out );
+	} else {
+		DecodePose( own, animBase, seg->srcFirst + frame - seg->first, out );
 	}
 }

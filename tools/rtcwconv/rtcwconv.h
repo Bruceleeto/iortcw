@@ -45,6 +45,23 @@ struct MdsOptions {
 bool ConvertMds(const std::vector<uint8_t> &in, std::vector<uint8_t> &out,
                 const MdsOptions &opt, MdsStats &st, const char *name);
 
+/* Characters with the one skeleton whose frames are mostly the same (the
+ * guards): those are kept once, in `base` (no mesh), each member's .mdsc
+ * keeping its mesh, which frames are base's and the rest (mdscShare_t in
+ * mdsc/mdsc.h). Members are paths as in the pk3s, the first's frames the
+ * ones shared. */
+struct MdsGroup {
+	std::string base;
+	std::vector<std::string> members;
+};
+extern const MdsGroup mdsGroups[];
+extern const int numMdsGroups;
+
+/* ins in members' order; outs the members' .mdsc, baseOut base's */
+bool ConvertMdsGroup(const MdsGroup &g, const std::vector<std::vector<uint8_t>> &ins,
+                     std::vector<std::vector<uint8_t>> &outs, std::vector<uint8_t> &baseOut,
+                     const MdsOptions &opt, MdsStats &st);
+
 /* ---- tex.cpp ---- */
 
 struct TexJob {

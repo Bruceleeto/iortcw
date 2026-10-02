@@ -821,11 +821,13 @@ CL_DCSimNewGame
 menu: New Game (play.menu's action), the pregame menu's arrow after each
 load (uiScript playerstart), skip the cutscene as a key does, then
 quit 10 seconds into escape1; at once on an error, and after a minute
-whatever happens
+whatever happens. 2: die 3 seconds into escape1 (kill), fire till the
+level is loaded again as dying does, and quit 10 seconds after
 ==================
 */
 static void CL_DCSimNewGame( void ) {
 	static int start, started, escape, lastSkip, pregameServerId = -1;
+	static int killed, killedServerId, lastFire, reloaded;
 	int now = Sys_Milliseconds();
 
 	if ( !Cvar_VariableIntegerValue( "dcsim_newgame" ) ) {
@@ -868,6 +870,28 @@ static void CL_DCSimNewGame( void ) {
 	if ( cl.cameraMode && now - lastSkip > 500 ) {
 		CL_AddReliableCommand( "cameraInterrupt", qfalse );
 		lastSkip = now;
+	}
+	if ( Cvar_VariableIntegerValue( "dcsim_newgame" ) == 2 && escape ) {
+		if ( !killed && now - escape > 3000 ) {
+			Com_Printf( "DCSIM newgame: dying\n" );
+			CL_AddReliableCommand( "kill", qfalse );
+			killed = now;
+			killedServerId = cl.serverId;
+		} else if ( killed && !reloaded && cl.serverId != killedServerId ) {
+			Com_Printf( "DCSIM newgame: loaded again\n" );
+			Com_MemoryReport( "loaded again" );
+			Cbuf_AddText( "-attack\n" );
+			reloaded = now;
+		} else if ( killed && !reloaded && now - killed > 2000 && now - lastFire > 500 ) {
+			Cbuf_AddText( ( now / 500 ) & 1 ? "+attack\n" : "-attack\n" );
+			lastFire = now;
+		} else if ( reloaded && now - reloaded > 10000 ) {
+			Com_Printf( "DCSIM newgame: 10 seconds after, quitting\n" );
+			Com_MemoryReport( "10 seconds after dying" );
+			Cbuf_AddText( "quit\n" );
+			reloaded = now + 100000;
+		}
+		return;
 	}
 	if ( !Q_stricmp( Cvar_VariableString( "mapname" ), "escape1" ) ) {
 		if ( !escape ) {

@@ -6,7 +6,8 @@
  * zipped into a pk3. Run by `make assets`.
  *
  *   .mds   skeletal models -> .mdsc (mds.cpp), which the renderer looks
- *          for first
+ *          for first; the guards' frames they share kept once, in
+ *          models/players/guards_anim.mdsc (mdsGroups)
  *   .tga / .jpg   images -> .dt (tex.cpp, with -p), which the PVR renderer
  *          looks for first; a .tga wins over a .jpg of the same name, as
  *          in the game
@@ -105,6 +106,18 @@ static bool ReadEdits( const char *file, std::map<std::string, MapEdits> &edits 
 	return true;
 }
 
+/* rel: one of an mdsGroups' members */
+static bool InMdsGroup( const std::string &rel ) {
+	for ( int g = 0; g < numMdsGroups; g++ ) {
+		for ( const std::string &m : mdsGroups[g].members ) {
+			if ( !strcasecmp( m.c_str(), rel.c_str() ) ) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 static void Usage( void ) {
 	fprintf( stderr,
 		"usage: rtcwconv [options] <in dir> <out dir>\n"
@@ -200,7 +213,9 @@ int main( int argc, char **argv ) {
 			ShaderNames( in.data(), in.size() );
 		}
 
-		if ( !strcasecmp( ext.c_str(), ".mds" ) ) {
+		if ( !strcasecmp( ext.c_str(), ".mds" ) && InMdsGroup( rel.string() ) ) {
+			continue;	/* after, with the rest of its group */
+		} else if ( !strcasecmp( ext.c_str(), ".mds" ) ) {
 			std::vector<uint8_t> in, out;
 			MdsStats before = mds;
 
@@ -285,6 +300,37 @@ int main( int argc, char **argv ) {
 				 !ConvertWld( in, wldOut, wld, rel.c_str(), subdivisions, edits[e.path().stem().string()].drop ) || !WriteFile( wldPath, wldOut ) ) {
 				failed++;
 			} else if ( !texOpt.pvrtex.empty() && !BspLightmapJobs( in, e.path().stem().string(), outDir, lightmaps ) ) {
+				failed++;
+			}
+		}
+	}
+
+	/* the characters that share frames, each group as one */
+	for ( int g = 0; g < numMdsGroups; g++ ) {
+		const MdsGroup &grp = mdsGroups[g];
+		std::vector<std::vector<uint8_t>> ins( grp.members.size() ), outs;
+		std::vector<uint8_t> baseOut;
+		bool all = true;
+
+		for ( size_t m = 0; m < grp.members.size(); m++ ) {
+			all = all && ReadFile( inDir / grp.members[m], ins[m] );
+		}
+		if ( all && ConvertMdsGroup( grp, ins, outs, baseOut, opt, mds ) ) {
+			for ( size_t m = 0; m < grp.members.size(); m++ ) {
+				if ( !WriteFile( ( outDir / grp.members[m] ).concat( "c" ), outs[m] ) ) {
+					failed++;
+				}
+			}
+			if ( !WriteFile( ( outDir / grp.base ).concat( "c" ), baseOut ) ) {
+				failed++;
+			}
+			continue;
+		}
+		/* else each on its own, as any other */
+		for ( size_t m = 0; m < grp.members.size(); m++ ) {
+			std::vector<uint8_t> out;
+			if ( !ins[m].empty() && ( !ConvertMds( ins[m], out, opt, mds, grp.members[m].c_str() ) ||
+									  !WriteFile( ( outDir / grp.members[m] ).concat( "c" ), out ) ) ) {
 				failed++;
 			}
 		}
