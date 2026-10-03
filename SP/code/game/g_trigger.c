@@ -366,8 +366,8 @@ void Use_target_push( gentity_t *self, gentity_t *other, gentity_t *activator ) 
 	VectorCopy( self->s.origin2, activator->client->ps.velocity );
 
 	// play fly sound every 1.5 seconds
-	if ( activator->fly_sound_debounce_time < level.time ) {
-		activator->fly_sound_debounce_time = level.time + 1500;
+	if ( G_Misc( activator )->fly_sound_debounce_time < level.time ) {
+		G_Misc( activator )->fly_sound_debounce_time = level.time + 1500;
 		G_Sound( activator, self->noise_index );
 	}
 }
@@ -703,12 +703,12 @@ void trigger_aidoor_stayopen( gentity_t * ent, gentity_t * other, trace_t * trac
 			return;
 		}
 
-		if ( door->moverState == MOVER_POS2ROTATE ) {     // door is in open state waiting to close keep it open
+		if ( G_Mover( door )->moverState == MOVER_POS2ROTATE ) {     // door is in open state waiting to close keep it open
 			door->nextthink = level.time + door->wait + 3000;
 		}
 
 //----(SA)	added
-		if ( door->moverState == MOVER_POS2 ) {   // door is in open state waiting to close keep it open
+		if ( G_Mover( door )->moverState == MOVER_POS2 ) {   // door is in open state waiting to close keep it open
 			door->nextthink = level.time + door->wait + 3000;
 		}
 //----(SA)	end
@@ -728,15 +728,15 @@ void trigger_aidoor_stayopen( gentity_t * ent, gentity_t * other, trace_t * trac
 			// TTimo: gcc: suggest parentheses around && within ||
 			//   woa this test gets a nasty look
 			if (
-				( door->grenadeFired > level.time ) ||
+				( G_ReadMisc( door )->grenadeFired > level.time ) ||
 				(
 					!(
 						( door->activator == other ) &&
-						( door->moverState != MOVER_POS1 ) &&
-						( door->moverState != MOVER_POS1ROTATE )
+						( G_Mover( door )->moverState != MOVER_POS1 ) &&
+						( G_Mover( door )->moverState != MOVER_POS1ROTATE )
 						)
-					&& ( door->moverState != MOVER_POS2ROTATE )
-					&& ( door->moverState != MOVER_POS2 )
+					&& ( G_Mover( door )->moverState != MOVER_POS2ROTATE )
+					&& ( G_Mover( door )->moverState != MOVER_POS2 )
 				)
 				) {
 				// if we aren't already heading for an ai_marker, look for one we can go to

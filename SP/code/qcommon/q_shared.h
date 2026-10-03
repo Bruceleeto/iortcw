@@ -184,6 +184,8 @@ typedef int intptr_t;
 #include <ctype.h>
 #include <limits.h>
 
+#include "q_fastmath.h"
+
 #ifdef _MSC_VER
   #include <io.h>
 

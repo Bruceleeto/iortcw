@@ -733,6 +733,7 @@ qboolean AICast_ScriptRun( cast_state_t *cs, qboolean force );
 //
 // ai_cast_soldier.c
 void    AIChar_spawn( gentity_t *ent );
+void    AICast_PreloadCast( void );
 //
 // other/external defines
 void    BotCheckAir( bot_state_t *bs );

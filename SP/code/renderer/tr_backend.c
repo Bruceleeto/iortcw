@@ -885,6 +885,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 #endif
 //GR - tessellation flag
 	int atiTess = 0, oldAtiTess;
+	profSection_t surfSection = PROF_WORLD;     // DC_PROF: the world's or an entity's
 
 	// save original time for entity shader offsets
 	originalTime = backEnd.refdef.floatTime;
@@ -915,7 +916,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			oldNumIndex = tess.numIndexes;
 #endif
 
+			PROF_BEGIN( surfSection );
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			PROF_END( surfSection );
 
 #ifndef NO_ZOMBIEFX
 			// RF, convert the newly created vertexes into dust particles, and overwrite
@@ -1061,7 +1064,10 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 #endif
 
 		// add the triangles for this surface
+		surfSection = entityNum == REFENTITYNUM_WORLD ? PROF_WORLD : PROF_MODELS;
+		PROF_BEGIN( surfSection );
 		rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+		PROF_END( surfSection );
 
 #ifndef NO_ZOMBIEFX
 		// RF, convert the newly created vertexes into dust particles, and overwrite
@@ -1094,14 +1100,18 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	if (r_drawSun->integer) {
+		PROF_BEGIN( PROF_SKY );
 		RB_DrawSun(0.2, tr.sunShader);
+		PROF_END( PROF_SKY );
 	}
 
 	// darken down any stencil shadows
 	RB_ShadowFinish();
 
 	// add light flares on lights that aren't obscured
+	PROF_BEGIN( PROF_FLARES );
 	RB_RenderFlares();
+	PROF_END( PROF_FLARES );
 }
 
 

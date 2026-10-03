@@ -619,6 +619,7 @@ void CL_Vid_Restart_f( void ) {
 		// fade up volume
 //		S_FadeAllSounds( 1, 0 );
 	}
+	LOAD_STEP( "vid_restart" );
 }
 
 /*
@@ -1100,6 +1101,7 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 	if ( !cls.rendererStarted ) {
 		cls.rendererStarted = qtrue;
 		CL_InitRenderer();
+		LOAD_STEP( "renderer start" );
 	}
 
 	if ( rendererOnly ) {
@@ -1109,6 +1111,7 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 	if ( !cls.soundStarted ) {
 		cls.soundStarted = qtrue;
 		S_Init();
+		LOAD_STEP( "sound start" );
 	}
 
 	if ( !cls.soundRegistered ) {
@@ -1122,7 +1125,15 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 
 	if ( !cls.uiStarted ) {
 		cls.uiStarted = qtrue;
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		// its menus and text in one read, not hundreds (tools/ui_blob.sh)
+		FS_LoadBlob( "ui.blob" );
+#endif
 		CL_InitUI();
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		FS_FreeBlob();
+#endif
+		LOAD_STEP( "ui start" );
 	}
 }
 

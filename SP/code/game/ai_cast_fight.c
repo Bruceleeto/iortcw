@@ -686,8 +686,8 @@ qboolean AICast_CheckAttack_real( cast_state_t *cs, int enemy, qboolean allowHit
 		traceDist = 8192;
 		mins = NULL;
 		maxs = NULL;
-		if ( mg42->mg42BaseEnt >= 0 ) {
-			passEnt = mg42->mg42BaseEnt;
+		if ( G_ReadMisc( mg42 )->mg42BaseEnt >= 0 ) {
+			passEnt = G_ReadMisc( mg42 )->mg42BaseEnt;
 		} else {
 			passEnt = cs->entityNum;
 		}

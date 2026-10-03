@@ -1045,7 +1045,7 @@ void checkpoint_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 	}
 
 	// Play a sound
-	G_AddEvent( self, EV_GENERAL_SOUND, self->soundPos1 );
+	G_AddEvent( self, EV_GENERAL_SOUND, G_Mover( self )->soundPos1 );
 
 	// Don't allow touch again until animation is finished
 	self->touch = 0;
@@ -1085,7 +1085,7 @@ void checkpoint_spawntouch( gentity_t *self, gentity_t *other, trace_t *trace ) 
 	}
 
 	// Play a sound
-	G_AddEvent( self, EV_GENERAL_SOUND, self->soundPos1 );
+	G_AddEvent( self, EV_GENERAL_SOUND, G_Mover( self )->soundPos1 );
 
 	// Don't allow touch again until animation is finished
 	self->touch = 0;
@@ -1149,7 +1149,7 @@ void SP_team_WOLF_checkpoint( gentity_t *ent ) {
 	}
 
 	G_SpawnString( "noise", "sound/movers/doors/door6_open.wav", &capture_sound );
-	ent->soundPos1  = G_SoundIndex( capture_sound );
+	G_Mover( ent )->soundPos1  = G_SoundIndex( capture_sound );
 
 	ent->clipmask   = CONTENTS_SOLID;
 	ent->r.contents = CONTENTS_SOLID;

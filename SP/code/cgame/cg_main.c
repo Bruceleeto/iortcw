@@ -1619,6 +1619,8 @@ CG_RegisterClients
 static void CG_RegisterClients( void ) {
 	int i;
 
+	CG_PreloadAIModels();
+
 	for ( i = 0 ; i < MAX_CLIENTS ; i++ ) {
 		const char      *clientInfo;
 

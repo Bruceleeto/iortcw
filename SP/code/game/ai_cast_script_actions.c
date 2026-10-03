@@ -3078,7 +3078,7 @@ qboolean AICast_ScriptAction_CatchFire( cast_state_t *cs, char *params ) {
 	gentity_t *ent = &g_entities[cs->entityNum];
 	//
 	ent->s.onFireEnd = level.time + 99999;  // make sure it goes for longer than they need to die
-	ent->flameBurnEnt = ENTITYNUM_WORLD;
+	G_Misc( ent )->flameBurnEnt = ENTITYNUM_WORLD;
 	// add to playerState for client-side effect
 	ent->client->ps.onFireStart = level.time;
 	//

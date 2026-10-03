@@ -37,7 +37,7 @@ alarmExplosion
 void alarmExplosion( gentity_t *ent ) {
 
 	// death sound
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 
 	G_AddEvent( ent, EV_ENTDEATH, ent->s.eType );
 
@@ -125,7 +125,7 @@ void alarmbox_updateparts( gentity_t *ent, qboolean matestoo ) {
 		{
 			// give the dlight the sound
 			if ( !Q_stricmp( t->classname, "dlight" ) ) {
-				t->soundLoop = ent->soundLoop;
+				G_Mover( t )->soundLoop = G_Mover( ent )->soundLoop;
 				t->r.svFlags |= SVF_BROADCAST;  // no pvs
 
 				if ( alarming ) {
@@ -168,7 +168,7 @@ void alarmbox_use( gentity_t *ent, gentity_t *other, gentity_t *foo ) {
 
 	alarmbox_updateparts( ent, qtrue );
 	if ( other->client ) {
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos3 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos3 );
 	}
 //	G_Printf("touched alarmbox\n");
 
@@ -255,14 +255,14 @@ void SP_alarm_box( gentity_t *ent ) {
 
 	// sound
 	if ( G_SpawnString( "noise", "0", &s ) ) {
-		ent->soundLoop = G_SoundIndex( s );
+		G_Mover( ent )->soundLoop = G_SoundIndex( s );
 	}
 
 	// activation sound
-	ent->soundPos3 = G_SoundIndex( "sound/world/alarmswitch.wav" );
+	G_Mover( ent )->soundPos3 = G_SoundIndex( "sound/world/alarmswitch.wav" );
 
 	// death sound
-	ent->sound1to2 = G_SoundIndex( "sound/world/alarmdeath.wav" );
+	G_Mover( ent )->sound1to2 = G_SoundIndex( "sound/world/alarmdeath.wav" );
 
 
 	G_SetOrigin( ent, ent->s.origin );

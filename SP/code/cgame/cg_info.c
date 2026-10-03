@@ -42,6 +42,15 @@ void CG_LoadingString( const char *s ) {
 	static int lastUpdate;
 	int now;
 
+#ifdef DC_PROF
+	{
+		// the step before this one has ended
+		static char step[64] = "start";
+
+		LOAD_STEP( va( "cg %s", step ) );
+		Q_strncpyz( step, s && s[0] ? s : "start", sizeof( step ) );
+	}
+#endif
 	Q_strncpyz( cg.infoScreenText, s, sizeof( cg.infoScreenText ) );
 
 	if ( s && s[0] != 0 ) {

@@ -1601,7 +1601,7 @@ void Cmd_Activate_f( gentity_t *ent ) {
 						traceEnt->active = qtrue;
 						ent->active = qtrue;
 						traceEnt->r.ownerNum = ent->s.number;
-						VectorCopy( traceEnt->s.angles, traceEnt->TargetAngles );
+						VectorCopy( traceEnt->s.angles, G_Mover( traceEnt )->TargetAngles );
 
 						if ( !( ent->r.svFlags & SVF_CASTAI ) ) {
 							G_UseTargets( traceEnt, ent );   //----(SA)	added for Mike so mounting an MG42 can be a trigger event (let me know if there's any issues with this)
@@ -1620,7 +1620,7 @@ void Cmd_Activate_f( gentity_t *ent ) {
 					ent->active = qtrue;
 					traceEnt->r.ownerNum = ent->s.number;
 					// Rafael fix for wierd mg42 movement
-					VectorCopy( traceEnt->s.angles, traceEnt->TargetAngles );
+					VectorCopy( traceEnt->s.angles, G_Mover( traceEnt )->TargetAngles );
 				}
 			}
 		}
@@ -1736,7 +1736,7 @@ int Cmd_WolfKick_f( gentity_t *ent ) {
 
 				AICast_AudibleEvent( ent->s.clientNum, tr.endpos, HEAR_RANGE_DOOR_KICKLOCKED ); // "someone kicked a locked door near me!"
 
-				G_AddEvent( traceEnt, EV_GENERAL_SOUND, traceEnt->soundPos3 );
+				G_AddEvent( traceEnt, EV_GENERAL_SOUND, G_Mover( traceEnt )->soundPos3 );
 
 				return 1;   //----(SA)	changed.  shows boot for locked doors
 			}
@@ -1753,7 +1753,7 @@ int Cmd_WolfKick_f( gentity_t *ent ) {
 					AICast_AudibleEvent( ent->s.clientNum, tr.endpos, HEAR_RANGE_DOOR_KICKLOCKED ); // "someone kicked a locked door near me!"
 
 					// player does not have key
-					G_AddEvent( traceEnt, EV_GENERAL_SOUND, traceEnt->soundPos3 );
+					G_AddEvent( traceEnt, EV_GENERAL_SOUND, G_Mover( traceEnt )->soundPos3 );
 
 					return 1;   //----(SA)	changed.  shows boot animation for locked doors
 				}
@@ -2000,19 +2000,19 @@ void ClientDamage( gentity_t *clent, int entnum, int enemynum, int id ) {
 
 			// now check the damageQuota to see if we should play a pain animation
 			// first reduce the current damageQuota with time
-			if ( ent->flameQuotaTime && ent->flameQuota > 0 ) {
-				ent->flameQuota -= (int)( ( (float)( level.time - ent->flameQuotaTime ) / 1000 ) * (float)damage / 2.0 );
-				if ( ent->flameQuota < 0 ) {
-					ent->flameQuota = 0;
+			if ( G_Misc( ent )->flameQuotaTime && G_Misc( ent )->flameQuota > 0 ) {
+				G_Misc( ent )->flameQuota -= (int)( ( (float)( level.time - G_Misc( ent )->flameQuotaTime ) / 1000 ) * (float)damage / 2.0 );
+				if ( G_Misc( ent )->flameQuota < 0 ) {
+					G_Misc( ent )->flameQuota = 0;
 				}
 			}
 
 			// add the new damage
-			ent->flameQuota += damage;
-			ent->flameQuotaTime = level.time;
+			G_Misc( ent )->flameQuota += damage;
+			G_Misc( ent )->flameQuotaTime = level.time;
 
 			// Ridah, make em burn
-			if ( ent->client && ( /*g_gametype.integer != GT_SINGLE_PLAYER ||*/ !( ent->r.svFlags & SVF_CASTAI ) || ent->health <= 0 || ent->flameQuota > FLAME_THRESHOLD ) ) {
+			if ( ent->client && ( /*g_gametype.integer != GT_SINGLE_PLAYER ||*/ !( ent->r.svFlags & SVF_CASTAI ) || ent->health <= 0 || G_Misc( ent )->flameQuota > FLAME_THRESHOLD ) ) {
 				if ( ent->s.onFireEnd < level.time ) {
 					ent->s.onFireStart = level.time;
 				}
@@ -2025,7 +2025,7 @@ void ClientDamage( gentity_t *clent, int entnum, int enemynum, int id ) {
 				} else {
 					ent->s.onFireEnd = level.time + 99999;  // make sure it goes for longer than they need to die
 				}
-				ent->flameBurnEnt = enemy->s.number;
+				G_Misc( ent )->flameBurnEnt = enemy->s.number;
 				// add to playerState for client-side effect
 				ent->client->ps.onFireStart = level.time;
 			}

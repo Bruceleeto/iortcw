@@ -956,6 +956,7 @@ void CL_InitCGame( void ) {
 			interpret = VMI_COMPILED;
 	}
 
+	LOAD_STEP( "to cgame" );
 	cgvm = VM_Create( "cgame", CL_CgameSystemCalls, interpret );
 	if ( !cgvm ) {
 		Com_Error( ERR_DROP, "VM_Create on cgame failed" );
@@ -981,6 +982,7 @@ void CL_InitCGame( void ) {
 	t2 = Sys_Milliseconds();
 
 	Com_Printf( "CL_InitCGame: %5.2f seconds\n", ( t2 - t1 ) / 1000.0 );
+	LOAD_STEP( "cgame (rest)" );
 	Com_MemoryReport( "map loaded" );
 
 	// have the renderer touch all its images, so they are present
@@ -1106,6 +1108,7 @@ void CL_FirstSnapshot( void ) {
 		return;
 	}
 	clc.state = CA_ACTIVE;
+	LOAD_DONE();
 
 	// set the timedelta so we are exactly on this first frame
 	cl.serverTimeDelta = cl.snap.serverTime - cls.realtime;

@@ -283,9 +283,9 @@ void Weapon_Engineer( gentity_t *ent ) {
 		if ( traceEnt->health >= 255 ) {
 			traceEnt->s.frame = 0;
 
-			if ( traceEnt->mg42BaseEnt > 0 ) {
-				g_entities[ traceEnt->mg42BaseEnt ].health = 100;
-				g_entities[ traceEnt->mg42BaseEnt ].takedamage = qtrue;
+			if ( G_ReadMisc( traceEnt )->mg42BaseEnt > 0 ) {
+				g_entities[ G_ReadMisc( traceEnt )->mg42BaseEnt ].health = 100;
+				g_entities[ G_ReadMisc( traceEnt )->mg42BaseEnt ].takedamage = qtrue;
 				traceEnt->health = 0;
 			} else {
 				traceEnt->health = 100;
@@ -816,7 +816,7 @@ void EmitterCheck( gentity_t *ent, gentity_t *attacker, trace_t *tr ) {
 	gentity_t *tent;
 	vec3_t origin;
 
-	if ( !ent->emitNum ) { // no emitters left for this entity.
+	if ( !G_ReadMisc( ent )->emitNum ) { // no emitters left for this entity.
 		return;
 	}
 
@@ -830,13 +830,13 @@ void EmitterCheck( gentity_t *ent, gentity_t *attacker, trace_t *tr ) {
 
 		tent = G_TempEntity( origin, EV_EMITTER );
 		VectorCopy( origin, tent->s.origin );
-		tent->s.time = ent->emitTime;
-		tent->s.density = ent->emitPressure;    // 'pressure'
-		tent->s.teamNum = ent->emitID;          // 'type'
+		tent->s.time = G_Misc( ent )->emitTime;
+		tent->s.density = G_Misc( ent )->emitPressure;    // 'pressure'
+		tent->s.teamNum = G_Misc( ent )->emitID;          // 'type'
 		VectorCopy( tr->plane.normal, tent->s.origin2 );
 	}
 
-	ent->emitNum--;
+	G_Misc( ent )->emitNum--;
 }
 
 
@@ -1220,7 +1220,7 @@ gentity_t *weapon_grenadelauncher_fire( gentity_t *ent, int grenType ) {
 //	VectorAdd( m->s.pos.trDelta, ent->client->ps.velocity, m->s.pos.trDelta );	// "real" physics
 
 	// let the AI know which grenade it has fired
-	ent->grenadeFired = m->s.number;
+	G_Misc( ent )->grenadeFired = m->s.number;
 
 	// Ridah, return the grenade so we can do some prediction before deciding if we really want to throw it or not
 	return m;
@@ -1471,19 +1471,19 @@ void Weapon_LightningFire( gentity_t *ent ) {
 
 		// now check the damageQuota to see if we should play a pain animation
 		// first reduce the current damageQuota with time
-		if ( traceEnt->flameQuotaTime && traceEnt->flameQuota > 0 ) {
-			traceEnt->flameQuota -= (int)( ( (float)( level.time - traceEnt->flameQuotaTime ) / 1000 ) * (float)damage / 2.0 );
-			if ( traceEnt->flameQuota < 0 ) {
-				traceEnt->flameQuota = 0;
+		if ( G_Misc( traceEnt )->flameQuotaTime && G_Misc( traceEnt )->flameQuota > 0 ) {
+			G_Misc( traceEnt )->flameQuota -= (int)( ( (float)( level.time - G_Misc( traceEnt )->flameQuotaTime ) / 1000 ) * (float)damage / 2.0 );
+			if ( G_Misc( traceEnt )->flameQuota < 0 ) {
+				G_Misc( traceEnt )->flameQuota = 0;
 			}
 		}
 
 		// add the new damage
-		traceEnt->flameQuota += damage;
-		traceEnt->flameQuotaTime = level.time;
+		G_Misc( traceEnt )->flameQuota += damage;
+		G_Misc( traceEnt )->flameQuotaTime = level.time;
 
 		// Ridah, make em burn
-		if ( traceEnt->client && ( traceEnt->health <= 0 || traceEnt->flameQuota > FLAME_THRESHOLD ) ) {
+		if ( traceEnt->client && ( traceEnt->health <= 0 || G_Misc( traceEnt )->flameQuota > FLAME_THRESHOLD ) ) {
 			if ( traceEnt->s.onFireEnd < level.time ) {
 				traceEnt->s.onFireStart = level.time;
 			}
@@ -1496,7 +1496,7 @@ void Weapon_LightningFire( gentity_t *ent ) {
 			} else {
 				traceEnt->s.onFireEnd = level.time + 99999; // make sure it goes for longer than they need to die
 			}
-			traceEnt->flameBurnEnt = ent->s.number;
+			G_Misc( traceEnt )->flameBurnEnt = ent->s.number;
 			// add to playerState for client-side effect
 			traceEnt->client->ps.onFireStart = level.time;
 		}

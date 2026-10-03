@@ -1938,6 +1938,7 @@ void CG_FreeEffectPools( void );
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, entityState_t *es, const vec3_t fireRiseDir );
 void CG_NewClientInfo( int clientNum );
+void CG_PreloadAIModels( void );
 sfxHandle_t CG_CustomSound( int clientNum, const char *soundName );
 
 // Rafael particles

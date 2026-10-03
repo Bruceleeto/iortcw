@@ -484,16 +484,16 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 
 	// alloc and copy the events into the gentity_t for this cast
 	if ( numEventItems > 0 ) {
-		ent->scriptEvents = G_Alloc( sizeof( g_script_event_t ) * numEventItems );
-		memcpy( ent->scriptEvents, g_temp_events, sizeof( g_script_event_t ) * numEventItems );
+		G_Script( ent )->scriptEvents = G_Alloc( sizeof( g_script_event_t ) * numEventItems );
+		memcpy( G_Script( ent )->scriptEvents, g_temp_events, sizeof( g_script_event_t ) * numEventItems );
 		// each event's actions, just as many as it has
 		for ( i = 0; i < numEventItems; i++ ) {
-			g_script_stack_t *stack = &ent->scriptEvents[i].stack;
+			g_script_stack_t *stack = &G_Script( ent )->scriptEvents[i].stack;
 
 			stack->items = G_Alloc( stack->numItems * sizeof( stack->items[0] ) );
 			memcpy( stack->items, g_temp_items[i], stack->numItems * sizeof( stack->items[0] ) );
 		}
-		ent->numScriptEvents = numEventItems;
+		G_Script( ent )->numScriptEvents = numEventItems;
 	}
 	G_FreeScriptParseItems();
 }
@@ -508,18 +508,18 @@ void G_Script_ScriptChange( gentity_t *ent, int newScriptNum ) {
 	g_script_status_t scriptStatusBackup;
 
 	// backup the current scripting
-	memcpy( &scriptStatusBackup, &ent->scriptStatus, sizeof( g_script_status_t ) );
+	memcpy( &scriptStatusBackup, &G_Script( ent )->scriptStatus, sizeof( g_script_status_t ) );
 
 	// set the new script to this cast, and reset script status
-	ent->scriptStatus.scriptEventIndex = newScriptNum;
-	ent->scriptStatus.scriptStackHead = 0;
-	ent->scriptStatus.scriptStackChangeTime = level.time;
-	ent->scriptStatus.scriptId = scriptStatusBackup.scriptId + 1;
+	G_Script( ent )->scriptStatus.scriptEventIndex = newScriptNum;
+	G_Script( ent )->scriptStatus.scriptStackHead = 0;
+	G_Script( ent )->scriptStatus.scriptStackChangeTime = level.time;
+	G_Script( ent )->scriptStatus.scriptId = scriptStatusBackup.scriptId + 1;
 
 	// try and run the script, if it doesn't finish, then abort the current script (discard backup)
 	if ( G_Script_ScriptRun( ent ) ) {
 		// completed successfully
-		memcpy( &ent->scriptStatus, &scriptStatusBackup, sizeof( g_script_status_t ) );
+		memcpy( &G_Script( ent )->scriptStatus, &scriptStatusBackup, sizeof( g_script_status_t ) );
 	}
 }
 
@@ -552,11 +552,14 @@ void G_Script_ScriptEvent( gentity_t *ent, char *eventStr, char *params ) {
 	}
 
 	// see if this entity has this event
-	for ( i = 0; i < ent->numScriptEvents; i++ )
+	if ( !ent->script ) {
+		return;
+	}
+	for ( i = 0; i < G_Script( ent )->numScriptEvents; i++ )
 	{
-		if ( ent->scriptEvents[i].eventNum == eventNum ) {
-			if (    ( !ent->scriptEvents[i].params )
-					||  ( !gScriptEvents[eventNum].eventMatch || gScriptEvents[eventNum].eventMatch( &ent->scriptEvents[i], params ) ) ) {
+		if ( G_Script( ent )->scriptEvents[i].eventNum == eventNum ) {
+			if (    ( !G_Script( ent )->scriptEvents[i].params )
+					||  ( !gScriptEvents[eventNum].eventMatch || gScriptEvents[eventNum].eventMatch( &G_Script( ent )->scriptEvents[i], params ) ) ) {
 				G_Script_ScriptChange( ent, i );
 				break;
 			}
@@ -587,58 +590,61 @@ qboolean G_Script_ScriptRun( gentity_t *ent ) {
 
 	trap_Cvar_Update( &g_scriptDebug );
 
-	if ( !ent->scriptEvents ) {
-		ent->scriptStatus.scriptEventIndex = -1;
+	if ( !ent->script ) {
+		return qtrue;
+	}
+	if ( !G_Script( ent )->scriptEvents ) {
+		G_Script( ent )->scriptStatus.scriptEventIndex = -1;
 		return qtrue;
 	}
 
 	// if we are still doing a gotomarker, process the movement
-	if ( ent->scriptStatus.scriptFlags & SCFL_GOING_TO_MARKER ) {
+	if ( G_Script( ent )->scriptStatus.scriptFlags & SCFL_GOING_TO_MARKER ) {
 		G_ScriptAction_GotoMarker( ent, NULL );
 	}
 
 	// if we are animating, do the animation
-	if ( ent->scriptStatus.scriptFlags & SCFL_ANIMATING ) {
-		G_ScriptAction_PlayAnim( ent, ent->scriptStatus.animatingParams );
+	if ( G_Script( ent )->scriptStatus.scriptFlags & SCFL_ANIMATING ) {
+		G_ScriptAction_PlayAnim( ent, G_Script( ent )->scriptStatus.animatingParams );
 	}
 
-	if ( ent->scriptStatus.scriptEventIndex < 0 ) {
+	if ( G_Script( ent )->scriptStatus.scriptEventIndex < 0 ) {
 		return qtrue;
 	}
 
-	stack = &ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack;
+	stack = &G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack;
 
 	if ( !stack->numItems ) {
-		ent->scriptStatus.scriptEventIndex = -1;
+		G_Script( ent )->scriptStatus.scriptEventIndex = -1;
 		return qtrue;
 	}
 	//
 	// show debugging info
-	if ( g_scriptDebug.integer && ent->scriptStatus.scriptStackChangeTime == level.time ) {
-		if ( ent->scriptStatus.scriptStackHead < stack->numItems ) {
-			G_Printf( "%i : (%s) GScript command: %s %s\n", level.time, ent->scriptName, stack->items[ent->scriptStatus.scriptStackHead].action->actionString, ( stack->items[ent->scriptStatus.scriptStackHead].params ? stack->items[ent->scriptStatus.scriptStackHead].params : "" ) );
+	if ( g_scriptDebug.integer && G_Script( ent )->scriptStatus.scriptStackChangeTime == level.time ) {
+		if ( G_Script( ent )->scriptStatus.scriptStackHead < stack->numItems ) {
+			G_Printf( "%i : (%s) GScript command: %s %s\n", level.time, ent->scriptName, stack->items[G_Script( ent )->scriptStatus.scriptStackHead].action->actionString, ( stack->items[G_Script( ent )->scriptStatus.scriptStackHead].params ? stack->items[G_Script( ent )->scriptStatus.scriptStackHead].params : "" ) );
 		}
 	}
 	//
-	while ( ent->scriptStatus.scriptStackHead < stack->numItems )
+	while ( G_Script( ent )->scriptStatus.scriptStackHead < stack->numItems )
 	{
-		if ( !stack->items[ent->scriptStatus.scriptStackHead].action->actionFunc( ent, stack->items[ent->scriptStatus.scriptStackHead].params ) ) {
+		if ( !stack->items[G_Script( ent )->scriptStatus.scriptStackHead].action->actionFunc( ent, stack->items[G_Script( ent )->scriptStatus.scriptStackHead].params ) ) {
 			return qfalse;
 		}
 		// move to the next action in the script
-		ent->scriptStatus.scriptStackHead++;
+		G_Script( ent )->scriptStatus.scriptStackHead++;
 		// record the time that this new item became active
-		ent->scriptStatus.scriptStackChangeTime = level.time;
+		G_Script( ent )->scriptStatus.scriptStackChangeTime = level.time;
 		//
 		// show debugging info
 		if ( g_scriptDebug.integer ) {
-			if ( ent->scriptStatus.scriptStackHead < stack->numItems ) {
-				G_Printf( "%i : (%s) GScript command: %s %s\n", level.time, ent->scriptName, stack->items[ent->scriptStatus.scriptStackHead].action->actionString, ( stack->items[ent->scriptStatus.scriptStackHead].params ? stack->items[ent->scriptStatus.scriptStackHead].params : "" ) );
+			if ( G_Script( ent )->scriptStatus.scriptStackHead < stack->numItems ) {
+				G_Printf( "%i : (%s) GScript command: %s %s\n", level.time, ent->scriptName, stack->items[G_Script( ent )->scriptStatus.scriptStackHead].action->actionString, ( stack->items[G_Script( ent )->scriptStatus.scriptStackHead].params ? stack->items[G_Script( ent )->scriptStatus.scriptStackHead].params : "" ) );
 			}
 		}
 	}
 
-	ent->scriptStatus.scriptEventIndex = -1;
+	G_Script( ent )->scriptStatus.scriptEventIndex = -1;
 
 	return qtrue;
 }
@@ -747,10 +753,10 @@ void SP_script_mover( gentity_t *ent ) {
 	ent->blocked = script_mover_blocked;
 
 	// first position at start
-	VectorCopy( ent->s.origin, ent->pos1 );
+	VectorCopy( ent->s.origin, G_Mover( ent )->pos1 );
 
 //	VectorCopy( ent->r.currentOrigin, ent->pos1 );
-	VectorCopy( ent->pos1, ent->pos2 ); // don't go anywhere just yet
+	VectorCopy( G_Mover( ent )->pos1, G_Mover( ent )->pos2 ); // don't go anywhere just yet
 
 	trap_SetBrushModel( ent, ent->model );
 

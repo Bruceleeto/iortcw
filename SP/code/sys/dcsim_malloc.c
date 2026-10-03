@@ -1,7 +1,7 @@
 /*
  * DCSIM: the Dreamcast's malloc (newlib's, dcsim_mallocr.inc) on an arena
  * the size of the RAM it has, from the end of the Dreamcast build's image
- * (DCSIM_HEAP_START, the .elf's _end) to the top of its 32MB less the
+ * (DCSIM_HEAP_START, the .elf's _end) to the top of its 16MB less the
  * kernel stack, as KallistiOS gives it out (mm_sbrk). Less DCSIM_KOS_BYTES,
  * what KallistiOS mallocs itself before the game starts. See dcsim.h.
  *
@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DC_MEM_TOP          ( 0x8c000000u + 32 * 1024 * 1024 - 64 * 1024 )
+#define DC_MEM_TOP          ( 0x8c000000u + 18 * 1024 * 1024 - 64 * 1024 )
 
 static unsigned char *arena;        // where DCSIM_HEAP_START is
 static uintptr_t sbrkBase;          // as a Dreamcast address
@@ -133,6 +133,11 @@ static void track( void *p, size_t size ) {
 		return;
 	}
 	n = backtrace( frames, TRACK_FRAMES + 2 );
+	if ( size >= 32 * 1024 && n > 3 ) {
+		// a big one: where it went, to tell what a hole was (DCSim_DumpHoles)
+		fprintf( stderr, "DCSIM: + %u K at %lu K: %p %p\n", (unsigned)( size / 1024 ),
+				(unsigned long)( (char *)p - (char *)arena ) / 1024, frames[2], frames[3] );
+	}
 	for ( i = slotFor( p ); tracked[i].p && tracked[i].p != (void *)1; i = ( i + 1 ) & ( TRACK_SLOTS - 1 ) ) {
 	}
 	tracked[i].p = p;
@@ -152,6 +157,10 @@ static void untrack( void *p ) {
 	}
 	for ( i = slotFor( p ); tracked[i].p; i = ( i + 1 ) & ( TRACK_SLOTS - 1 ) ) {
 		if ( tracked[i].p == p ) {
+			if ( tracked[i].size >= 32 * 1024 ) {
+				fprintf( stderr, "DCSIM: - %u K at %lu K\n", tracked[i].size / 1024,
+						(unsigned long)( (char *)p - (char *)arena ) / 1024 );
+			}
 			tracked[i].p = (void *)1;
 			return;
 		}
@@ -247,6 +256,76 @@ void *dcsim_realloc( void *p, size_t size ) {
 	p = dl_realloc( p, size );
 	track( p, size );
 	return p;
+}
+
+// the tracked block at q (a chunk), or NULL
+static track_t *trackedChunk( mchunkptr q ) {
+	void *p = chunk2mem( q );
+	unsigned i;
+
+	for ( i = slotFor( p ); tracked[i].p; i = ( i + 1 ) & ( TRACK_SLOTS - 1 ) ) {
+		if ( tracked[i].p == p ) {
+			return &tracked[i];
+		}
+	}
+	return NULL;
+}
+
+static void printNeighbour( const char *side, mchunkptr q ) {
+	track_t *t = trackedChunk( q );
+	int j;
+
+	fprintf( stderr, "DCSIM:   %s %lu bytes:", side, (unsigned long)chunksize( q ) );
+	for ( j = 0; t && j < TRACK_FRAMES && t->frames[j]; j++ ) {
+		fprintf( stderr, " %p", t->frames[j] );
+	}
+	fprintf( stderr, t ? "\n" : " (not tracked)\n" );
+}
+
+void DCSim_DumpHoles( const char *when ) {
+	unsigned long misalign;
+	mchunkptr p, prev = NULL;
+
+	if ( tracking <= 0 || sbrk_base == (char *)-1 ) {
+		return;
+	}
+	fprintf( stderr, "DCSIM: holes of 32K or more, %s:\n", when );
+	misalign = (unsigned long)chunk2mem( sbrk_base ) & MALLOC_ALIGN_MASK;
+	p = (mchunkptr)( sbrk_base + ( misalign ? MALLOC_ALIGNMENT - misalign : 0 ) );
+	for ( ; p < top && chunksize( p ); prev = p, p = next_chunk( p ) ) {
+		if ( inuse( p ) || chunksize( p ) < 32 * 1024 ) {
+			continue;
+		}
+		fprintf( stderr, "DCSIM: hole %lu K at %lu K\n", (unsigned long)chunksize( p ) / 1024,
+				(unsigned long)( (char *)p - (char *)arena ) / 1024 );
+		if ( prev ) {
+			printNeighbour( "before:", prev );
+		}
+		if ( next_chunk( p ) < top ) {
+			printNeighbour( "after: ", next_chunk( p ) );
+		}
+	}
+	fprintf( stderr, "DCSIM: top %lu K at %lu K\n", (unsigned long)chunksize( top ) / 1024,
+			(unsigned long)( (char *)top - (char *)arena ) / 1024 );
+}
+
+int DCSim_LargestFree( void ) {
+	// the top chunk and the RAM above it, or the biggest free chunk below
+	unsigned long largest = chunksize( top ) + ( DC_MEM_TOP - sbrkBase );
+	mbinptr b;
+	mchunkptr p;
+	int i;
+
+	init();
+	for ( i = 1; i < NAV; i++ ) {
+		b = bin_at( i );
+		for ( p = last( b ); p != b; p = p->bk ) {
+			if ( chunksize( p ) > largest ) {
+				largest = chunksize( p );
+			}
+		}
+	}
+	return largest;
 }
 
 void DCSim_Info( int *inUse, int *freeBytes ) {

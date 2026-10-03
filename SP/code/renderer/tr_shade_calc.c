@@ -31,28 +31,51 @@ If you have questions concerning this license or the applicable additional terms
 #include "tr_local.h"
 
 
-#define	WAVEVALUE( table, base, amplitude, phase, freq )  ( ( base ) + table[ ( ( int64_t ) ( ( ( phase ) + tess.shaderTime * ( freq ) ) * FUNCTABLE_SIZE ) ) & FUNCTABLE_MASK ] * ( amplitude ) )
+// a waveform at a FUNCTABLE_SIZE step of its cycle, worked out where tables
+// of them were (tr.squareTable ...)
+static float R_FuncValue( genFunc_t func, int i ) {
+	i &= FUNCTABLE_MASK;
+	switch ( func ) {
+	case GF_SIN:
+		return R_SinIndex( i );
+	case GF_SQUARE:
+		return i < FUNCTABLE_SIZE / 2 ? 1.0f : -1.0f;
+	case GF_TRIANGLE:
+		if ( i >= FUNCTABLE_SIZE / 2 ) {
+			return -R_FuncValue( GF_TRIANGLE, i - FUNCTABLE_SIZE / 2 );
+		}
+		if ( i >= FUNCTABLE_SIZE / 4 ) {
+			return 1.0f - (float)( i - FUNCTABLE_SIZE / 4 ) / ( FUNCTABLE_SIZE / 4 );
+		}
+		return (float)i / ( FUNCTABLE_SIZE / 4 );
+	case GF_SAWTOOTH:
+		return (float)i / FUNCTABLE_SIZE;
+	case GF_INVERSE_SAWTOOTH:
+		return 1.0f - (float)i / FUNCTABLE_SIZE;
+	default:
+		return 0.0f;
+	}
+}
 
-static float *TableForFunc( genFunc_t func ) {
+#define	WAVEVALUE( table, base, amplitude, phase, freq )  ( ( base ) + R_FuncValue( table, ( int64_t ) ( ( ( phase ) + tess.shaderTime * ( freq ) ) * FUNCTABLE_SIZE ) ) * ( amplitude ) )
+
+// the waveform, checked (R_FuncValue works it out; there were tables)
+static genFunc_t TableForFunc( genFunc_t func ) {
 	switch ( func )
 	{
 	case GF_SIN:
-		return tr.sinTable;
 	case GF_TRIANGLE:
-		return tr.triangleTable;
 	case GF_SQUARE:
-		return tr.squareTable;
 	case GF_SAWTOOTH:
-		return tr.sawToothTable;
 	case GF_INVERSE_SAWTOOTH:
-		return tr.inverseSawToothTable;
+		return func;
 	case GF_NONE:
 	default:
 		break;
 	}
 
 	ri.Error( ERR_DROP, "TableForFunc called with invalid function '%d' in shader '%s'", func, tess.shader->name );
-	return NULL;
+	return GF_NONE;
 }
 
 /*
@@ -61,7 +84,7 @@ static float *TableForFunc( genFunc_t func ) {
 ** Evaluates a given waveForm_t, referencing backEnd.refdef.time directly
 */
 static float EvalWaveForm( const waveForm_t *wf ) {
-	float   *table;
+	genFunc_t table;
 
 	table = TableForFunc( wf->func );
 
@@ -122,7 +145,7 @@ void RB_CalcDeformVertexes( deformStage_t *ds ) {
 	float scale;
 	float   *xyz = ( float * ) tess.xyz;
 	float   *normal = ( float * ) tess.normal;
-	float   *table;
+	genFunc_t table;
 
 	// Ridah
 	if ( ds->deformationWave.frequency < 0 ) {
@@ -264,7 +287,7 @@ void RB_CalcBulgeVertexes( deformStage_t *ds ) {
 
 		off = (float)( FUNCTABLE_SIZE / ( M_PI * 2 ) ) * ( st[0] * ds->bulgeWidth + now );
 
-		scale = tr.sinTable[ off & FUNCTABLE_MASK ] * ds->bulgeHeight;
+		scale = R_SinIndex( off & FUNCTABLE_MASK ) * ds->bulgeHeight;
 
 		xyz[0] += normal[0] * scale;
 		xyz[1] += normal[1] * scale;
@@ -283,7 +306,7 @@ A deformation that can move an entire surface along a wave path
 void RB_CalcMoveVertexes( deformStage_t *ds ) {
 	int i;
 	float       *xyz;
-	float       *table;
+	genFunc_t table;
 	float scale;
 	vec3_t offset;
 
@@ -1020,8 +1043,8 @@ void RB_CalcTurbulentTexCoords( const waveForm_t *wf, float *st ) {
 		float s = st[0];
 		float t = st[1];
 
-		st[0] = s + tr.sinTable[ ( ( int64_t ) ( ( ( tess.xyz[i][0] + tess.xyz[i][2] )* 1.0/128 * 0.125 + now ) * FUNCTABLE_SIZE ) ) & ( FUNCTABLE_MASK ) ] * wf->amplitude;
-		st[1] = t + tr.sinTable[ ( ( int64_t ) ( ( tess.xyz[i][1] * 1.0/128 * 0.125 + now ) * FUNCTABLE_SIZE ) ) & ( FUNCTABLE_MASK ) ] * wf->amplitude;
+		st[0] = s + R_SinIndex( ( ( int64_t ) ( ( ( tess.xyz[i][0] + tess.xyz[i][2] )* 1.0/128 * 0.125 + now ) * FUNCTABLE_SIZE ) ) & ( FUNCTABLE_MASK ) ) * wf->amplitude;
+		st[1] = t + R_SinIndex( ( ( int64_t ) ( ( tess.xyz[i][1] * 1.0/128 * 0.125 + now ) * FUNCTABLE_SIZE ) ) & ( FUNCTABLE_MASK ) ) * wf->amplitude;
 	}
 }
 
@@ -1090,8 +1113,8 @@ void RB_CalcRotateTexCoords( float degsPerSecond, float *st ) {
 	degs = -degsPerSecond * timeScale;
 	index = degs * ( FUNCTABLE_SIZE / 360.0f );
 
-	sinValue = tr.sinTable[ index & FUNCTABLE_MASK ];
-	cosValue = tr.sinTable[ ( index + FUNCTABLE_SIZE / 4 ) & FUNCTABLE_MASK ];
+	sinValue = R_SinIndex( index & FUNCTABLE_MASK );
+	cosValue = R_SinIndex( ( index + FUNCTABLE_SIZE / 4 ) & FUNCTABLE_MASK );
 
 	tmi.matrix[0][0] = cosValue;
 	tmi.matrix[1][0] = -sinValue;

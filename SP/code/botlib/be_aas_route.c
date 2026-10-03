@@ -1115,8 +1115,14 @@ int AAS_ReadRouteCache( void ) {
 	char filename[MAX_QPATH];
 	routecacheheader_t routecacheheader;
 	aas_routingcache_t *cache;
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	int fileLen, pos;
+#endif
 
 	Com_sprintf( filename, MAX_QPATH, "maps/%s.rcd", ( *aasworld ).mapname );
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	fileLen =
+#endif
 	botimport.FS_FOpenFile( filename, &fp, FS_READ );
 	if ( !fp ) {
 		return qfalse;
@@ -1181,16 +1187,16 @@ int AAS_ReadRouteCache( void ) {
 #if defined( _arch_dreamcast ) || defined( DCSIM )
 	// the routes worked out ahead (most of the file, 1.7MB for escape1) are
 	// left: they're worked out as they're needed, into the cache
-	// (max_routingcache). The visibility and waypoints are kept.
+	// (max_routingcache). The visibility and waypoints are kept. `make
+	// assets` leaves them out of the file (tools/rtcwconv/rcd.cpp); an
+	// .rcd with them still in has them skipped, a seek each
+	pos = sizeof( routecacheheader_t );
 	for ( i = 0; i < routecacheheader.numportalcache + routecacheheader.numareacache; i++ )
 	{
-		byte skip[1024];
-
 		botimport.FS_Read( &size, sizeof( size ), fp );
 		LL( size );
-		for ( size -= sizeof( size ); size > 0; size -= sizeof( skip ) ) {
-			botimport.FS_Read( skip, size < (int)sizeof( skip ) ? size : (int)sizeof( skip ), fp );
-		}
+		botimport.FS_Seek( fp, size - sizeof( size ), FS_SEEK_CUR );
+		pos += size;
 	}
 	routecacheheader.numportalcache = routecacheheader.numareacache = 0;
 #endif
@@ -1220,9 +1226,53 @@ int AAS_ReadRouteCache( void ) {
 	  // read the visareas
 	( *aasworld ).areavisibility = (byte **) GetClearedMemory( ( *aasworld ).numareas * sizeof( byte * ) );
 	( *aasworld ).decompressedvis = (byte *) GetClearedMemory( ( *aasworld ).numareas * sizeof( byte ) );
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// the rest of the file (each area's visibility, its size first, then
+	// the waypoints) in one read, a trip to the disc or dcload, and taken
+	// apart here: the visibility all in one block, not a malloc each, its
+	// size what's left without the sizes and the waypoints
+	{
+		int rest = fileLen - pos;
+		int total = rest - ( *aasworld ).numareas * ( sizeof( int ) + sizeof( vec3_t ) );
+		byte *buf, *p, *vis;
+
+		if ( total < 0 ) {
+			botimport.FS_FCloseFile( fp );
+			Com_Printf( "%s is cut short\n", filename );
+			return qfalse;
+		}
+		vis = ( *aasworld ).areavisdata = total ? (byte *) GetMemory( total ) : NULL;
+		( *aasworld ).areawaypoints = (vec3_t *) GetClearedMemory( ( *aasworld ).numareas * sizeof( vec3_t ) );
+		buf = (byte *) GetMemory( rest );     // after the blocks kept, so its hole is at the end
+		if ( botimport.FS_Read( buf, rest, fp ) != rest ) {
+			AAS_Error( "%s: cut short\n", filename );
+		} else {
+			p = buf;
+			for ( i = 0; i < ( *aasworld ).numareas; i++ )
+			{
+				memcpy( &size, p, sizeof( size ) );
+				LL( size );
+				p += sizeof( size );
+				if ( size < 0 || vis + size > ( *aasworld ).areavisdata + total ) {
+					AAS_Error( "%s: visibility past its end\n", filename );
+					break;
+				}
+				if ( size ) {
+					( *aasworld ).areavisibility[i] = vis;
+					memcpy( vis, p, size );
+					vis += size;
+					p += size;
+				}
+			}
+			memcpy( ( *aasworld ).areawaypoints, p, ( *aasworld ).numareas * sizeof( vec3_t ) );
+		}
+		FreeMemory( buf );
+	}
+#else
 	// all in one block, not a malloc each: the sizes first, then back for the data
 	{
-		int skipped = 0, total = 0;
+		int total = 0;
+		int skipped = 0;
 		byte *vis;
 
 		for ( i = 0; i < ( *aasworld ).numareas; i++ )
@@ -1239,6 +1289,10 @@ int AAS_ReadRouteCache( void ) {
 		{
 			botimport.FS_Read( &size, sizeof( size ), fp );
 			LL( size );
+			if ( size < 0 || vis + size > ( *aasworld ).areavisdata + total ) {
+				AAS_Error( "%s: visibility past its end\n", filename );
+				break;
+			}
 			if ( size ) {
 				( *aasworld ).areavisibility[i] = vis;
 				botimport.FS_Read( vis, size, fp );
@@ -1249,6 +1303,7 @@ int AAS_ReadRouteCache( void ) {
 	// read the area waypoints
 	( *aasworld ).areawaypoints = (vec3_t *) GetClearedMemory( ( *aasworld ).numareas * sizeof( vec3_t ) );
 	botimport.FS_Read( ( *aasworld ).areawaypoints, ( *aasworld ).numareas * sizeof( vec3_t ), fp );
+#endif
 	if ( 1 != LittleLong( 1 ) ) {
 		for ( i = 0; i < ( *aasworld ).numareas; i++ ) {
 			( *aasworld ).areawaypoints[i][0] = LittleFloat( ( *aasworld ).areawaypoints[i][0] );
@@ -1297,7 +1352,10 @@ void AAS_InitRouting( void ) {
 #endif
 	//
 	// Ridah, load or create the routing cache
-	if ( !AAS_ReadRouteCache() ) {
+	LOAD_STEP( "AAS routing init" );
+	if ( AAS_ReadRouteCache() ) {
+		LOAD_STEP( "AAS route cache read" );
+	} else {
 		( *aasworld ).initialized = qtrue;    // Hack, so routing can compute traveltimes
 		AAS_CreateVisibility();
 		AAS_CreateAllRoutingCache();

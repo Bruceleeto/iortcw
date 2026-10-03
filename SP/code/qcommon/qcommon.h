@@ -483,6 +483,10 @@ int     FS_Seek( fileHandle_t f, long offset, int origin );
 
 qboolean FS_FilenameCompare( const char *s1, const char *s2 );
 
+void FS_LoadBlob( const char *name );
+void FS_FreeBlob( void );
+// many small files in one, read in one go, served from RAM till freed
+
 const char *FS_LoadedPakNames( void );
 const char *FS_LoadedPakChecksums( void );
 const char *FS_LoadedPakPureChecksums( void );

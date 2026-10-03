@@ -117,6 +117,18 @@ struct AasStats {
  * structs, checked. False (with a message) if it isn't one or doesn't fit. */
 bool ConvertAas(const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasStats &st, const char *name);
 
+/* ---- rcd.cpp ---- */
+
+struct RcdStats {
+	int files;
+	long caches;                /* routes worked out ahead, left out */
+	size_t bytesIn, bytesOut;
+};
+
+/* .rcd -> the same without its routes worked out ahead. False (with a
+ * message) if it isn't one, laid out as the botlib writes it. */
+bool ConvertRcd(const std::vector<uint8_t> &in, std::vector<uint8_t> &out, RcdStats &st, const char *name);
+
 /* ---- col.cpp ---- */
 
 struct ColStats {

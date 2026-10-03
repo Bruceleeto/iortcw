@@ -207,6 +207,8 @@ typedef struct script_s
 
 //read a token from the script
 int PS_ReadToken( script_t *script, token_t *token );
+//copies a token: its string as far as it goes, not all MAX_TOKEN bytes of it
+void PS_CopyToken( token_t *dst, const token_t *src );
 //expect a certain token
 int PS_ExpectTokenString( script_t *script, char *string );
 //expect a certain token type

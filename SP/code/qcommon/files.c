@@ -277,11 +277,12 @@ typedef struct {
 	char path[MAX_OSPATH];              // c:\quake3
 	char fullpath[MAX_OSPATH];	    // c:\quake3\baseq3
 	char gamedir[MAX_OSPATH];           // baseq3
-	unsigned *index;                    // its files.idx's name hashes, sorted
+	struct dirIndex_s *index;           // its files.idx's names (hashed) and sizes, sorted
 	int numIndex;                       // (FS_LoadDirIndex), or NULL
 } directory_t;
 
-static qboolean FS_DirMayHave( const directory_t *dir, const char *filename );
+static int FS_DirFileSize( const directory_t *dir, const char *filename );
+#define FS_DirMayHave( dir, filename )  ( FS_DirFileSize( dir, filename ) != -2 )
 
 typedef struct searchpath_s {
 	struct searchpath_s *next;
@@ -309,6 +310,9 @@ static cvar_t      *fs_basegame;
 static cvar_t      *fs_gamedirvar;
 static searchpath_t    *fs_searchpaths;
 static int fs_readCount;                    // total bytes read
+#ifdef DC_PROF
+int fs_profOpens, fs_profProbes, fs_profReads, fs_profSeeks;    // for the LOAD lines (dc_prof.c)
+#endif
 static int fs_loadCount;                    // total files read
 static int fs_loadStack;                    // total files in memory
 static int fs_packFiles = 0;                // total number of files in packs
@@ -332,10 +336,36 @@ typedef struct {
 	int zipFilePos;
 	int zipFileLen;
 	qboolean zipFile;
+	const byte *mem;        // a file of the blob (FS_LoadBlob): its bytes, size, where
+	int memLen, memPos;     // it's read to; handleFiles is then NULL
 	char name[MAX_ZPATH];
 } fileHandleData_t;
 
 static fileHandleData_t fsh[MAX_FILE_HANDLES];
+
+typedef struct {
+	const char *name;
+	const byte *data;
+	int size;
+} blobFile_t;
+
+static struct {
+	directory_t *dir;           // the dir it's from: its files are that dir's
+	byte *buf;                  // the whole of it, read in one go
+	blobFile_t *files;
+	int numFiles;
+} fs_blob;                      // FS_LoadBlob
+
+static const blobFile_t *FS_BlobFile( const char *filename ) {
+	int i;
+
+	for ( i = 0; i < fs_blob.numFiles; i++ ) {
+		if ( !FS_FilenameCompare( fs_blob.files[i].name, filename ) ) {
+			return &fs_blob.files[i];
+		}
+	}
+	return NULL;
+}
 
 // TTimo - https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=540
 // wether we did a reorder on the current search path when joining the server
@@ -451,7 +481,7 @@ static fileHandle_t FS_HandleForFile( void ) {
 	int i;
 
 	for ( i = 1 ; i < MAX_FILE_HANDLES ; i++ ) {
-		if ( fsh[i].handleFiles.file.o == NULL ) {
+		if ( fsh[i].handleFiles.file.o == NULL && !fsh[i].mem ) {
 			return i;
 		}
 	}
@@ -512,6 +542,9 @@ long FS_filelength(fileHandle_t f)
 {
 	FILE	*h;
 
+	if ( fsh[f].mem ) {
+		return fsh[f].memLen;
+	}
 	h = FS_FileForHandle( f );
 
 	if(h == NULL)
@@ -1354,6 +1387,7 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 	char		*netpath;
 	FILE		*filep;
 	int			len;
+	int			indexSize;		// FS_DirFileSize
 
 	if(filename == NULL)
 		Com_Error(ERR_FATAL, "FS_FOpenFileRead: NULL 'filename' parameter passed");
@@ -1434,6 +1468,9 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 
 			if(filep)
 			{
+#ifdef DC_PROF
+				fs_profProbes++;
+#endif
 				len = FS_fplength(filep);
 				fclose(filep);
 
@@ -1569,7 +1606,21 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 
 		dir = search->dir;
 
-		if ( !FS_DirMayHave( dir, filename ) ) {
+		if ( fs_blob.dir == dir ) {
+			const blobFile_t *bf = FS_BlobFile( filename );
+
+			if ( bf ) {
+				Q_strncpyz( fsh[*file].name, filename, sizeof( fsh[*file].name ) );
+				fsh[*file].zipFile = qfalse;
+				fsh[*file].mem = bf->data;
+				fsh[*file].memLen = bf->size;
+				fsh[*file].memPos = 0;
+				return bf->size;
+			}
+		}
+
+		indexSize = FS_DirFileSize( dir, filename );
+		if ( indexSize == -2 ) {
 			*file = 0;
 			return -1;
 		}
@@ -1582,6 +1633,9 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 			*file = 0;
 			return -1;
 		}
+#ifdef DC_PROF
+		fs_profOpens++;
+#endif
 
 		Q_strncpyz(fsh[*file].name, filename, sizeof(fsh[*file].name));
 		fsh[*file].zipFile = qfalse;
@@ -1593,7 +1647,8 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 		}
 
 		fsh[*file].handleFiles.file.o = filep;
-		return FS_fplength(filep);
+		// the size files.idx has, if it has, not a seek to the end and back
+		return indexSize >= 0 ? indexSize : FS_fplength(filep);
 	}
 
 	*file = 0;
@@ -1808,8 +1863,20 @@ int FS_Read( void *buffer, int len, fileHandle_t f ) {
 		return 0;
 	}
 
+	if ( fsh[f].mem ) {
+		if ( len > fsh[f].memLen - fsh[f].memPos ) {
+			len = fsh[f].memLen - fsh[f].memPos;
+		}
+		Com_Memcpy( buffer, fsh[f].mem + fsh[f].memPos, len );
+		fsh[f].memPos += len;
+		return len;
+	}
+
 	buf = (byte *)buffer;
 	fs_readCount += len;
+#ifdef DC_PROF
+	fs_profReads++;
+#endif
 
 	if ( fsh[f].zipFile == qfalse ) {
 		remaining = len;
@@ -1944,9 +2011,24 @@ FS_Seek
 int FS_Seek( fileHandle_t f, long offset, int origin ) {
 	int _origin;
 
+#ifdef DC_PROF
+	fs_profSeeks++;
+#endif
+
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 		return -1;
+	}
+
+	if ( fsh[f].mem ) {
+		long pos = origin == FS_SEEK_CUR ? fsh[f].memPos + offset
+			: origin == FS_SEEK_END ? fsh[f].memLen + offset : offset;
+
+		if ( pos < 0 || pos > fsh[f].memLen ) {
+			return -1;
+		}
+		fsh[f].memPos = pos;
+		return 0;
 	}
 
 	if ( fsh[f].zipFile == qtrue ) {
@@ -3257,13 +3339,24 @@ static int QDECL paksort( const void *a, const void *b ) {
 FS_DirIndex
 
 `make disc` lists every file of the disc's game dir in its files.idx, one
-path a line. Its names' hashes, kept sorted, tell a file that isn't there
-without a look at the disc: a look for one is most of the looks a level
-load makes (each model's levels of detail, each texture's .tga and .jpg),
-and each on the Dreamcast is a walk of the iso9660 directory. 4 bytes a
-file; a name whose hash is there by chance is looked for as before.
+a line: its path, a tab and its size. Its names' hashes, kept sorted, tell
+a file that isn't there without a look at the disc: a look for one is most
+of the looks a level load makes (each model's levels of detail, each
+texture's .tga and .jpg), and each on the Dreamcast is a walk of the
+iso9660 directory. A name whose hash is there by chance is looked for as
+before.
+
+The size is a file's length when it's opened, in place of a seek to its
+end and back (each a trip to the disc, or over dcload). Two names with the
+same hash have none (-1), nor has a line without one: measured as before.
+8 bytes a file.
 ================
 */
+typedef struct dirIndex_s {
+	unsigned hash;
+	int size;                           // -1: not known
+} dirIndex_t;
+
 static unsigned FS_IndexHash( const char *name ) {
 	unsigned h = 2166136261u;
 	int c;
@@ -3278,7 +3371,7 @@ static unsigned FS_IndexHash( const char *name ) {
 }
 
 static int FS_IndexCompare( const void *a, const void *b ) {
-	unsigned x = *(const unsigned *)a, y = *(const unsigned *)b;
+	unsigned x = ( (const dirIndex_t *)a )->hash, y = ( (const dirIndex_t *)b )->hash;
 
 	return x < y ? -1 : x > y;
 }
@@ -3311,10 +3404,16 @@ static void FS_LoadDirIndex( directory_t *dir ) {
 		for ( e = s; *e && *e != '\n' && *e != '\r'; e++ ) {
 		}
 		if ( e > s ) {
-			char c = *e;
+			char c = *e, *tab;
 
 			*e = 0;
-			dir->index[n++] = FS_IndexHash( s );
+			tab = strchr( s, '\t' );
+			if ( tab ) {
+				*tab = 0;
+			}
+			dir->index[n].hash = FS_IndexHash( s );
+			dir->index[n].size = tab ? atoi( tab + 1 ) : -1;
+			n++;
 			*e = c;
 		}
 		while ( *e == '\n' || *e == '\r' ) {
@@ -3324,18 +3423,119 @@ static void FS_LoadDirIndex( directory_t *dir ) {
 	Z_Free( buf );
 	qsort( dir->index, n, sizeof( *dir->index ), FS_IndexCompare );
 	dir->numIndex = n;
+	// a hash two names have: neither's size
+	for ( n = 1; n < dir->numIndex; n++ ) {
+		if ( dir->index[n].hash == dir->index[n - 1].hash ) {
+			dir->index[n].size = dir->index[n - 1].size = -1;
+		}
+	}
 	Com_Printf( "%s: %d files\n", FS_BuildOSPath( dir->path, dir->gamedir, "files.idx" ), n );
 }
 
-/* qfalse: the dir's files.idx hasn't the file */
-static qboolean FS_DirMayHave( const directory_t *dir, const char *filename ) {
-	unsigned h;
+/* -2: the dir's files.idx hasn't the file; -1: it may have, its size not
+ * known (no files.idx, or none in it); else the size it has */
+static int FS_DirFileSize( const directory_t *dir, const char *filename ) {
+	dirIndex_t key, *found;
 
 	if ( !dir->index ) {
-		return qtrue;
+		return -1;
 	}
-	h = FS_IndexHash( filename );
-	return bsearch( &h, dir->index, dir->numIndex, sizeof( *dir->index ), FS_IndexCompare ) != NULL;
+	key.hash = FS_IndexHash( filename );
+	found = bsearch( &key, dir->index, dir->numIndex, sizeof( *dir->index ), FS_IndexCompare );
+	return found ? found->size : -2;
+}
+
+/*
+================
+FS_LoadBlob
+
+A blob (`make disc`, tools/ui_blob.sh) is many small files of a game dir
+in one: a line "DCBLOB <count>", a line "<size>\t<path>" a file, then the
+files one after another. Read whole in one go, it serves those files
+from RAM till FS_FreeBlob, in place of a trip to the disc for each (over
+dcload ~7ms). The files are in the dir as well: without the blob, or the
+RAM for it, they're read from there as before.
+================
+*/
+void FS_LoadBlob( const char *name ) {
+	searchpath_t *search;
+	fileHandle_t h;
+	long len = 0;
+	char *p, *e;
+	byte *data;
+	int i, n;
+
+	FS_FreeBlob();
+	// the first dir that has it (/pc/main or /cd/main; the sim's home dir
+	// hasn't): its files are served in that dir's place only
+	h = 0;
+	for ( search = fs_searchpaths; search; search = search->next ) {
+		if ( search->dir ) {
+			len = FS_FOpenFileReadDir( name, search, &h, qfalse, qfalse );
+			if ( h ) {
+				break;
+			}
+		}
+	}
+	if ( !h ) {
+		return;
+	}
+	fs_blob.buf = malloc( len + 1 );
+	if ( !fs_blob.buf || FS_Read( fs_blob.buf, len, h ) != len ) {
+		FS_FCloseFile( h );
+		Com_Printf( "%s: no RAM for it, or cut short\n", name );
+		FS_FreeBlob();
+		return;
+	}
+	FS_FCloseFile( h );
+	fs_blob.buf[len] = 0;
+
+	p = (char *)fs_blob.buf;
+	if ( strncmp( p, "DCBLOB ", 7 ) || ( n = atoi( p + 7 ) ) <= 0 || !( p = strchr( p, '\n' ) ) ) {
+		Com_Printf( "%s: not a blob\n", name );
+		FS_FreeBlob();
+		return;
+	}
+	fs_blob.files = malloc( n * sizeof( *fs_blob.files ) );
+	if ( !fs_blob.files ) {
+		FS_FreeBlob();
+		return;
+	}
+	for ( i = 0; i < n; i++ ) {
+		fs_blob.files[i].size = strtol( p + 1, &e, 10 );
+		if ( *e != '\t' || !( p = strchr( e, '\n' ) ) ) {
+			break;
+		}
+		*p = 0;
+		fs_blob.files[i].name = e + 1;
+	}
+	data = (byte *)p + 1;
+	for ( i = 0; p && i < n && data <= fs_blob.buf + len; i++ ) {
+		fs_blob.files[i].data = data;
+		data += fs_blob.files[i].size;
+	}
+	if ( i != n || data != fs_blob.buf + len ) {
+		Com_Printf( "%s: not as its list says\n", name );
+		FS_FreeBlob();
+		return;
+	}
+	fs_blob.numFiles = n;
+	fs_blob.dir = search->dir;
+}
+
+void FS_FreeBlob( void ) {
+	int i;
+
+	// a file of it left open: closed, as its bytes go
+	for ( i = 1; i < MAX_FILE_HANDLES; i++ ) {
+		if ( fsh[i].mem ) {
+			Com_Printf( "FS_FreeBlob: %s left open\n", fsh[i].name );
+			FS_FCloseFile( i );
+		}
+	}
+	free( fs_blob.files );
+	free( fs_blob.buf );
+	Com_Memset( &fs_blob, 0, sizeof( fs_blob ) );
 }
 
 /*
@@ -3648,6 +3848,7 @@ void FS_Shutdown( qboolean closemfp ) {
 			FS_FCloseFile( i );
 		}
 	}
+	FS_FreeBlob();
 
 	// free everything
 	for(p = fs_searchpaths; p; p = next)
@@ -4640,7 +4841,9 @@ int     FS_FOpenFileByMode( const char *qpath, fileHandle_t *f, fsMode_t mode ) 
 
 int     FS_FTell( fileHandle_t f ) {
 	int pos;
-	if ( fsh[f].zipFile == qtrue ) {
+	if ( fsh[f].mem ) {
+		pos = fsh[f].memPos;
+	} else if ( fsh[f].zipFile == qtrue ) {
 		pos = unztell( fsh[f].handleFiles.file.z );
 	} else {
 		pos = ftell( fsh[f].handleFiles.file.o );

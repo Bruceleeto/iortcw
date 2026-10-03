@@ -1018,6 +1018,16 @@ typedef struct {
 #define FUNCTABLE_SIZE2     10
 #define FUNCTABLE_MASK      ( FUNCTABLE_SIZE - 1 )
 
+// sin at a FUNCTABLE_SIZE step of its cycle, worked out where a table of it
+// was (tr.sinTable): sh4zam's, the SH4's fsca, which takes a 16 bit angle
+// (R_FuncValue's the rest of the waveforms)
+static ID_INLINE float R_SinIndex( int i ) {
+#ifdef USE_SH4ZAM
+	return shz_sincosu16( (uint16_t)( ( i & FUNCTABLE_MASK ) * ( 65536 / FUNCTABLE_SIZE ) ) ).sin;
+#else
+	return sin( ( i & FUNCTABLE_MASK ) * ( 2 * M_PI / FUNCTABLE_SIZE ) );
+#endif
+}
 
 // the renderer front end should never modify glstate_t
 typedef struct {
@@ -1162,11 +1172,6 @@ typedef struct {
 	int numSkins;
 	skin_t                  *skins[MAX_SKINS];
 
-	float sinTable[FUNCTABLE_SIZE];
-	float squareTable[FUNCTABLE_SIZE];
-	float triangleTable[FUNCTABLE_SIZE];
-	float sawToothTable[FUNCTABLE_SIZE];
-	float inverseSawToothTable[FUNCTABLE_SIZE];
 	float fogTable[FOG_TABLE_SIZE];
 
 	// RF, temp var used while parsing shader only

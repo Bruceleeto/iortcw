@@ -243,7 +243,7 @@ define assets_pk3
 $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2) tools/rtcwconv/mapedits.txt
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
-	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' \
+	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' '*.rcd' \
 	  '*.shader' '*.skin' '*.menu' '*.txt' '*.cfg' '*.script' '*.ai' '*.camera' '*.sounds' '*.md3' '*.dat' '*.h' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
@@ -259,9 +259,11 @@ $(eval $(call assets_pk3,sp,$(SP_PAKS)))
 # Dreamcast), in the order the game loads them so the same file wins: no
 # zip directories in RAM, no inflating, no seeking through big zips. Then
 # every original that a converted file replaces is taken out
-# (tools/prune_disc.sh), and what's left listed in main/files.idx, so the
+# (tools/prune_disc.sh), and what's left listed (with sizes) in main/files.idx, so the
 # game knows a file isn't there without a look at the disc (FS_LoadDirIndex
-# in files.c); the sim runs from the same dir
+# in files.c). The UI's menus and text are packed into main/ui.blob as well
+# (tools/ui_blob.sh), read in one go as the UI starts; the sim runs from the
+# same dir
 #############################################################################
 
 MKDCDISC  ?= mkdcdisc
@@ -280,7 +282,8 @@ disc:
 	$(Q)for f in $(DISC_PAKS); do unzip -qq -o "$$f" -d $(DISC_DIR)/main || exit 1; done
 	$(Q)for f in $(DISC_FILES); do cp "$$f" $(DISC_DIR)/main/scripts/; done
 	$(Q)tools/prune_disc.sh $(DISC_DIR)/main
-	$(Q)cd $(DISC_DIR)/main && find . -type f ! -name files.idx | sed 's|^\./||' | LC_ALL=C sort > files.idx
+	$(Q)tools/ui_blob.sh $(DISC_DIR)/main
+	$(Q)cd $(DISC_DIR)/main && find . -type f ! -name files.idx -printf '%P\t%s\n' | LC_ALL=C sort > files.idx
 	$(Q)$(MKDCDISC) -e $(BUILD_DIR)/sp-sh4/iowolfsp.elf -D $(DISC_DIR) -o $(DISC_CDI) \
 	  -n "Return to Castle Wolfenstein" -N
 

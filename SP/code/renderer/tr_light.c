@@ -248,9 +248,9 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		// decode Y as sin( lat ) * sin( long )
 		// decode Z as cos( long )
 
-		normal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
-		normal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-		normal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+		normal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
+		normal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+		normal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
 
 		VectorMA( direction, factor, normal, direction );
 	}

@@ -698,9 +698,9 @@ static void LerpMeshVertexes_scalar(md3Surface_t *surf, float backlerp)
 			// decode Y as sin( lat ) * sin( long )
 			// decode Z as cos( long )
 
-			outNormal[0] = tr.sinTable[(lat+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK] * tr.sinTable[lng];
-			outNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-			outNormal[2] = tr.sinTable[(lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK];
+			outNormal[0] = R_SinIndex( (lat+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK ) * R_SinIndex( lng );
+			outNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+			outNormal[2] = R_SinIndex( (lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK );
 		}
 	} else {
 		//
@@ -729,18 +729,18 @@ static void LerpMeshVertexes_scalar(md3Surface_t *surf, float backlerp)
 			lng = ( newNormals[0] & 0xff );
 			lat *= 4;
 			lng *= 4;
-			uncompressedNewNormal[0] = tr.sinTable[(lat+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK] * tr.sinTable[lng];
-			uncompressedNewNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-			uncompressedNewNormal[2] = tr.sinTable[(lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK];
+			uncompressedNewNormal[0] = R_SinIndex( (lat+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK ) * R_SinIndex( lng );
+			uncompressedNewNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+			uncompressedNewNormal[2] = R_SinIndex( (lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK );
 
 			lat = ( oldNormals[0] >> 8 ) & 0xff;
 			lng = ( oldNormals[0] & 0xff );
 			lat *= 4;
 			lng *= 4;
 
-			uncompressedOldNormal[0] = tr.sinTable[(lat+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK] * tr.sinTable[lng];
-			uncompressedOldNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-			uncompressedOldNormal[2] = tr.sinTable[(lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK];
+			uncompressedOldNormal[0] = R_SinIndex( (lat+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK ) * R_SinIndex( lng );
+			uncompressedOldNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+			uncompressedOldNormal[2] = R_SinIndex( (lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK );
 
 			outNormal[0] = uncompressedOldNormal[0] * oldNormalScale + uncompressedNewNormal[0] * newNormalScale;
 			outNormal[1] = uncompressedOldNormal[1] * oldNormalScale + uncompressedNewNormal[1] * newNormalScale;
@@ -830,9 +830,9 @@ void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
 	// decode Y as sin( lat ) * sin( long )
 	// decode Z as cos( long )
 
-	outNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
-	outNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-	outNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+	outNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
+	outNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+	outNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
 }
 
 /*
@@ -1060,9 +1060,9 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 				lat *= 4;
 				lng *= 4;
 
-				outNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
-				outNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-				outNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+				outNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
+				outNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+				outNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
 			}
 		}
 	} else {
@@ -1107,9 +1107,9 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 				lat *= 4;
 				lng *= 4;
 
-				uncompressedNewNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
-				uncompressedNewNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-				uncompressedNewNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+				uncompressedNewNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
+				uncompressedNewNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+				uncompressedNewNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
 			}
 
 			if ( hasComp && *oldComp >= 0 ) {
@@ -1122,9 +1122,9 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 				lat *= 4;
 				lng *= 4;
 
-				uncompressedOldNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
-				uncompressedOldNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-				uncompressedOldNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+				uncompressedOldNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
+				uncompressedOldNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+				uncompressedOldNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
 			}
 
 			outNormal[0] = uncompressedOldNormal[0] * oldNormalScale + uncompressedNewNormal[0] * newNormalScale;

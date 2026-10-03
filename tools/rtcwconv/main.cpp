@@ -26,6 +26,9 @@
  *          and an empty maps/<map>_b1.aasc for a map with no big characters
  *          (the only ones that use the second world), which the botlib
  *          then doesn't load
+ *   .rcd   bot route cache dump -> the same without its routes worked out
+ *          ahead (rcd.cpp), which the Dreamcast botlib doesn't keep: only
+ *          the visibility and waypoints
  *   .shader  the shaders anything names -> scripts/dc.shaders
  *          (shaders.cpp), which the renderer loads in place of them all;
  *          the names are looked for in every file and in -n's
@@ -181,6 +184,7 @@ int main( int argc, char **argv ) {
 	MdsStats mds = {};
 	TexStats tex = {};
 	AasStats aas = {};
+	RcdStats rcd = {};
 	ColStats col = {};
 	WldStats wld = {};
 	MdcStats mdc = {};
@@ -201,7 +205,7 @@ int main( int argc, char **argv ) {
 		/* what may name a shader: all but images and sounds (a .bsp's
 		 * entities and shader names, below) */
 		if ( strcasecmp( ext.c_str(), ".tga" ) && strcasecmp( ext.c_str(), ".jpg" ) && strcasecmp( ext.c_str(), ".wav" ) &&
-			 strcasecmp( ext.c_str(), ".bsp" ) && strcasecmp( ext.c_str(), ".aas" ) ) {
+			 strcasecmp( ext.c_str(), ".bsp" ) && strcasecmp( ext.c_str(), ".aas" ) && strcasecmp( ext.c_str(), ".rcd" ) ) {
 			std::vector<uint8_t> in;
 			if ( !ReadFile( e.path(), in ) ) {
 				failed++;
@@ -260,6 +264,11 @@ int main( int argc, char **argv ) {
 			std::vector<uint8_t> in, out;
 			if ( !ReadFile( e.path(), in ) || !ConvertAas( in, out, aas, rel.c_str() ) ||
 				 !WriteFile( ( outDir / rel ).concat( "c" ), out ) ) {
+				failed++;
+			}
+		} else if ( !strcasecmp( ext.c_str(), ".rcd" ) ) {
+			std::vector<uint8_t> in, out;
+			if ( !ReadFile( e.path(), in ) || !ConvertRcd( in, out, rcd, rel.c_str() ) || !WriteFile( outDir / rel, out ) ) {
 				failed++;
 			}
 		} else if ( !texOpt.pvrtex.empty() &&
@@ -435,6 +444,10 @@ int main( int argc, char **argv ) {
 		printf( "aas: %d files, %.1f MB -> %.1f MB; %ld of %ld faces, %ld of %ld planes kept; %d maps with no big characters, their second world left out\n",
 				aas.files, aas.bytesIn / 1048576.0, aas.bytesOut / 1048576.0, aas.facesOut, aas.facesIn,
 				aas.planesOut, aas.planesIn, aas.skipped );
+	}
+	if ( rcd.files ) {
+		printf( "rcd: %d files, %.1f MB -> %.1f MB; %ld routes worked out ahead left out\n",
+				rcd.files, rcd.bytesIn / 1048576.0, rcd.bytesOut / 1048576.0, rcd.caches );
 	}
 	if ( tex.files ) {
 		printf( "tex: %d files, %.1f MB of 16 bit texels -> %.1f MB of .dt\n",

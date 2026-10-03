@@ -297,13 +297,16 @@ int Export_BotLibLoadMap( const char *mapname ) {
 	//
 	botimport.Print( PRT_MESSAGE, "------------ Map Loading ------------\n" );
 	//startup AAS for the current map, model and sound index
+	LOAD_STEP( "game init (to AAS)" );
 	errnum = AAS_LoadMap( mapname );
 	if ( errnum != BLERR_NOERROR ) {
 		return errnum;
 	}
+	LOAD_STEP( "AAS load" );
 	//initialize the items in the level
 	BotInitLevelItems();        //be_ai_goal.h
 	BotSetBrushModelTypes();    //be_ai_move.h
+	LOAD_STEP( "bot items" );
 	// the map's entities are read only above
 	AAS_FreeBSPEntities();
 	//

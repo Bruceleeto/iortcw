@@ -175,6 +175,84 @@ void G_Script_ScriptEvent( gentity_t *ent, char *eventStr, char *params );
 
 #define CFOFS( x ) ( (size_t)&( ( (gclient_t *)0 )->x ) )
 
+/*
+What only some entities use, kept apart from gentity_t so the rest don't
+carry it (each gentity_t is the size of every field, and a map has hundreds):
+attached the first time one of its fields is wanted, G_Mover( ent )->pos1 and
+the like, and let go with the entity (G_FreeEntity). From pools a level long
+(g_utils.c).
+*/
+// doors, plats, trains, script movers
+typedef struct {
+	moverState_t moverState;
+	int soundPos1;
+	int sound1to2;
+	int sound2to1;
+	int soundPos2;
+	int soundLoop;
+	int sound2to3;
+	int sound3to2;
+	int soundPos3;
+	int soundKicked;
+	int soundKickedEnd;
+	int soundSoftopen;
+	int soundSoftendo;
+	int soundSoftclose;
+	int soundSoftendc;
+	vec3_t pos1;
+	vec3_t pos2;
+	vec3_t pos3;
+	float closespeed;           // for movers that close at a different speed than they open
+	int gDuration;
+	int gDurationBack;
+	vec3_t gDelta;
+	vec3_t gDeltaBack;
+	int TargetFlag;
+	vec3_t TargetAngles;
+} gMover_t;
+
+// entities with a script (scriptName)
+typedef struct {
+	int numScriptEvents;
+	g_script_event_t *scriptEvents;  // contains a list of actions to perform for each event type
+	g_script_status_t scriptStatus;     // current status of scripting
+	g_script_status_t scriptStatusBackup;
+	int scriptAccumBuffer[G_MAX_SCRIPT_ACCUM_BUFFERS];
+	g_script_status_t scriptStatusCurrent;      // had to go down here to keep savegames compatible
+} gScript_t;
+
+// what a few kinds each use: dlights, mg42s, emitters, props, flames ...
+typedef struct {
+	char *targetShaderName;
+	char *targetShaderNewName;
+	int pain_debounce_time;
+	int fly_sound_debounce_time;            // wind tunnel
+	int last_move_time;
+	vec3_t dl_color;
+	int dl_atten;
+	float harc;
+	float varc;
+	float activateArc;              // right now just for mg42, but available for setting what angle this ent can be touched/killed from
+	int props_frame_state;
+	int start_size;
+	int end_size;
+	int mg42BaseEnt;
+	int flameQuota;
+	int flameQuotaTime;
+	int flameBurnEnt;
+	int grenadeExplodeTime;         // we've caught a grenade, which was due to explode at this time
+	int grenadeFired;               // the grenade entity we last fired
+	int mg42ClampTime;              // time to wait before an AI decides to ditch the mg42
+	qboolean AASblocking;
+	float accuracy;
+	float headshotDamageScale;
+	int emitID;                 //----(SA)	added
+	int emitNum;                //----(SA)	added
+	int emitPressure;           //----(SA)	added
+	int emitTime;               //----(SA)	added
+} gMisc_t;
+
+
 struct gentity_s {
 	entityState_t s;                // communicated by server to clients
 	entityShared_t r;               // shared by both the server system and game
@@ -211,31 +289,15 @@ struct gentity_s {
 									// players, for instance
 
 	// movers
-	moverState_t moverState;
-	int soundPos1;
-	int sound1to2;
-	int sound2to1;
-	int soundPos2;
-	int soundLoop;
 	// JOSEPH 1-26-00
-	int sound2to3;
-	int sound3to2;
-	int soundPos3;
 	// END JOSEPH
 
-	int soundKicked;
-	int soundKickedEnd;
 
-	int soundSoftopen;
-	int soundSoftendo;
-	int soundSoftclose;
-	int soundSoftendc;
 
 	gentity_t   *parent;
 	gentity_t   *nextTrain;
 	gentity_t   *prevTrain;
 	// JOSEPH 1-26-00
-	vec3_t pos1, pos2, pos3;
 	// END JOSEPH
 
 	char        *message;
@@ -247,18 +309,11 @@ struct gentity_s {
 	char        *targetdeath;   // fire this on death exclusively //----(SA)	added
 	char        *targetname;
 	char        *team;
-	char        *targetShaderName;
-	char        *targetShaderNewName;
 	gentity_t   *target_ent;
 
 	float speed;
-	float closespeed;           // for movers that close at a different speed than they open
 	vec3_t movedir;
 
-	int gDuration;
-	int gDurationBack;
-	vec3_t gDelta;
-	vec3_t gDeltaBack;
 
 	int nextthink;
 	void ( *think )( gentity_t *self );
@@ -269,9 +324,6 @@ struct gentity_s {
 	void ( *pain )( gentity_t *self, gentity_t *attacker, int damage, vec3_t point );
 	void ( *die )( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod );
 
-	int pain_debounce_time;
-	int fly_sound_debounce_time;            // wind tunnel
-	int last_move_time;
 
 	int health;
 
@@ -306,10 +358,8 @@ struct gentity_s {
 	float delay;
 
 	// JOSEPH 10-11-99
-	int TargetFlag;
 	float duration;
 	vec3_t rotate;
-	vec3_t TargetAngles;
 	// END JOSEPH
 
 	gitem_t     *item;          // for bonus items
@@ -326,10 +376,8 @@ struct gentity_s {
 	char        *aiSkin;
 	char        *aihSkin;
 
-	vec3_t dl_color;
 	char        *dl_stylestring;
 	char        *dl_shader;
-	int dl_atten;
 
 
 	int key;                    // used by:  target_speaker->nopvs,
@@ -338,13 +386,9 @@ struct gentity_s {
 	qboolean botDelayBegin;
 
 	// Rafael - mg42
-	float harc;
-	float varc;
 
 	//----(SA)	added
-	float activateArc;              // right now just for mg42, but available for setting what angle this ent can be touched/killed from
 
-	int props_frame_state;
 
 	// Ridah
 	int missionLevel;                   // highest mission level completed (for previous level de-briefings)
@@ -360,14 +404,11 @@ struct gentity_s {
 	qboolean is_dead;
 	// done
 
-	int start_size;
-	int end_size;
 
 	// Rafael props
 
 	qboolean isProp;
 
-	int mg42BaseEnt;
 
 	gentity_t   *melee;
 
@@ -375,45 +416,68 @@ struct gentity_s {
 
 	qboolean nopickup;
 
-	int flameQuota, flameQuotaTime, flameBurnEnt;
 
 	int count2;
 
-	int grenadeExplodeTime;         // we've caught a grenade, which was due to explode at this time
-	int grenadeFired;               // the grenade entity we last fired
 
-	int mg42ClampTime;              // time to wait before an AI decides to ditch the mg42
 
 	char        *track;
 
 	// entity scripting system
 	char                *scriptName;
 
-	int numScriptEvents;
-	g_script_event_t    *scriptEvents;  // contains a list of actions to perform for each event type
-	g_script_status_t scriptStatus;     // current status of scripting
-	g_script_status_t scriptStatusBackup;
 	// the accumulation buffer
-	int scriptAccumBuffer[G_MAX_SCRIPT_ACCUM_BUFFERS];
 
-	qboolean AASblocking;
-	float accuracy;
 
 	char        *tagName;       // name of the tag we are attached to
 	gentity_t   *tagParent;
 
-	float headshotDamageScale;
 
-	g_script_status_t scriptStatusCurrent;      // had to go down here to keep savegames compatible
 
-	int emitID;                 //----(SA)	added
-	int emitNum;                //----(SA)	added
-	int emitPressure;           //----(SA)	added
-	int emitTime;               //----(SA)	added
 
 	// -------------------------------------------------------------------------------------------
 	// if working on a post release patch, new variables should ONLY be inserted after this point
+
+	// the parts only some have (gMover_t ...): NULL until one of their
+	// fields is wanted (G_Mover ...)
+	gMover_t    *mover;
+	gScript_t   *script;
+	gMisc_t     *misc;
 };
+
+// an entity's parts, attached as one's wanted (g_utils.c)
+gMover_t *G_AttachMover( gentity_t *ent );
+gScript_t *G_AttachScript( gentity_t *ent );
+gMisc_t *G_AttachMisc( gentity_t *ent );
+void G_FreeParts( gentity_t *ent );
+void G_InitParts( void );
+int G_PartsInUse( int *movers, int *scripts, int *miscs );
+
+static ID_INLINE gMover_t *G_Mover( gentity_t *ent ) {
+	return ent->mover ? ent->mover : G_AttachMover( ent );
+}
+static ID_INLINE gScript_t *G_Script( gentity_t *ent ) {
+	return ent->script ? ent->script : G_AttachScript( ent );
+}
+static ID_INLINE gMisc_t *G_Misc( gentity_t *ent ) {
+	return ent->misc ? ent->misc : G_AttachMisc( ent );
+}
+
+// to read one that may not have it, which then reads as it starts (not
+// attaching it for that)
+extern const gMover_t g_noMover;
+extern const gScript_t g_noScript;
+extern const gMisc_t g_noMisc;
+
+static ID_INLINE const gMover_t *G_ReadMover( gentity_t *ent ) {
+	return ent->mover ? ent->mover : &g_noMover;
+}
+static ID_INLINE const gScript_t *G_ReadScript( gentity_t *ent ) {
+	return ent->script ? ent->script : &g_noScript;
+}
+static ID_INLINE const gMisc_t *G_ReadMisc( gentity_t *ent ) {
+	return ent->misc ? ent->misc : &g_noMisc;
+}
 
 // Ridah
 #include "ai_cast_global.h"
@@ -929,6 +993,8 @@ void AddScore( gentity_t *ent, int score );
 void CalculateRanks( void );
 qboolean SpotWouldTelefrag( gentity_t *spot );
 qboolean G_GetModelInfo( int clientNum, char *modelName, animModelInfo_t **modelInfo );
+void G_PreloadModelInfo( char *modelName );
+void G_PreloadModelInfoDone( void );
 
 //
 // g_svcmds.c

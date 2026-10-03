@@ -693,36 +693,36 @@ void SetMoverState( gentity_t *ent, moverState_t moverState, int time ) {
 		soft = qfalse;
 	}
 
-	ent->moverState     = moverState;
+	G_Mover( ent )->moverState     = moverState;
 	ent->s.pos.trTime   = time;
 	ent->s.apos.trTime  = time;
 	switch ( moverState ) {
 	case MOVER_POS1:
-		VectorCopy( ent->pos1, ent->s.pos.trBase );
+		VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
 		ent->s.pos.trType = TR_STATIONARY;
 		ent->active = qfalse;
 		break;
 	case MOVER_POS2:
-		VectorCopy( ent->pos2, ent->s.pos.trBase );
+		VectorCopy( G_Mover( ent )->pos2, ent->s.pos.trBase );
 		ent->s.pos.trType = TR_STATIONARY;
 		break;
 
 		// JOSEPH 1-26-00
 	case MOVER_POS3:
-		VectorCopy( ent->pos3, ent->s.pos.trBase );
+		VectorCopy( G_Mover( ent )->pos3, ent->s.pos.trBase );
 		ent->s.pos.trType = TR_STATIONARY;
 		break;
 
 	case MOVER_2TO3:
-		VectorCopy( ent->pos2, ent->s.pos.trBase );
-		VectorSubtract( ent->pos3, ent->pos2, delta );
+		VectorCopy( G_Mover( ent )->pos2, ent->s.pos.trBase );
+		VectorSubtract( G_Mover( ent )->pos3, G_Mover( ent )->pos2, delta );
 		f = 1000.0 / ent->s.pos.trDuration;
 		VectorScale( delta, f, ent->s.pos.trDelta );
 		ent->s.pos.trType = TR_LINEAR_STOP;
 		break;
 	case MOVER_3TO2:
-		VectorCopy( ent->pos3, ent->s.pos.trBase );
-		VectorSubtract( ent->pos2, ent->pos3, delta );
+		VectorCopy( G_Mover( ent )->pos3, ent->s.pos.trBase );
+		VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos3, delta );
 		f = 1000.0 / ent->s.pos.trDuration;
 		VectorScale( delta, f, ent->s.pos.trDelta );
 		ent->s.pos.trType = TR_LINEAR_STOP;
@@ -730,22 +730,22 @@ void SetMoverState( gentity_t *ent, moverState_t moverState, int time ) {
 		// END JOSEPH
 
 	case MOVER_1TO2:        // opening
-		VectorCopy( ent->pos1, ent->s.pos.trBase );
-		VectorSubtract( ent->pos2, ent->pos1, delta );
+		VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
+		VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, delta );
 //----(SA)	numerous changes start here
-		ent->s.pos.trDuration = ent->gDuration;
+		ent->s.pos.trDuration = G_Mover( ent )->gDuration;
 		f = 1000.0 / ent->s.pos.trDuration;
 		VectorScale( delta, f, ent->s.pos.trDelta );
 		ent->s.pos.trType = TR_LINEAR_STOP;
 		break;
 	case MOVER_2TO1:        // closing
-		VectorCopy( ent->pos2, ent->s.pos.trBase );
-		VectorSubtract( ent->pos1, ent->pos2, delta );
-		if ( ent->closespeed ) {                        //----(SA)	handle doors with different close speeds
-			ent->s.pos.trDuration = ent->gDurationBack;
-			f = 1000.0 / ent->gDurationBack;
+		VectorCopy( G_Mover( ent )->pos2, ent->s.pos.trBase );
+		VectorSubtract( G_Mover( ent )->pos1, G_Mover( ent )->pos2, delta );
+		if ( G_Mover( ent )->closespeed ) {                        //----(SA)	handle doors with different close speeds
+			ent->s.pos.trDuration = G_Mover( ent )->gDurationBack;
+			f = 1000.0 / G_Mover( ent )->gDurationBack;
 		} else {
-			ent->s.pos.trDuration = ent->gDuration;
+			ent->s.pos.trDuration = G_Mover( ent )->gDuration;
 			f = 1000.0 / ent->s.pos.trDuration;
 		}
 		VectorScale( delta, f, ent->s.pos.trDelta );
@@ -765,15 +765,15 @@ void SetMoverState( gentity_t *ent, moverState_t moverState, int time ) {
 		VectorClear( ent->s.apos.trBase );              // set base to start position {0,0,0}
 
 		if ( kicked ) {
-			f = 2000.0 / ent->gDuration;        // double speed when kicked open
-			ent->s.apos.trDuration = ent->gDuration / 2.0;
+			f = 2000.0 / G_Mover( ent )->gDuration;        // double speed when kicked open
+			ent->s.apos.trDuration = G_Mover( ent )->gDuration / 2.0;
 		} else if ( soft ) {
-			f = 500.0 / ent->gDuration;         // 1/2 speed when soft opened
-			ent->s.apos.trDuration = ent->gDuration * 2;
+			f = 500.0 / G_Mover( ent )->gDuration;         // 1/2 speed when soft opened
+			ent->s.apos.trDuration = G_Mover( ent )->gDuration * 2;
 		} else {
-			f = 1000.0 / ent->gDuration;
+			f = 1000.0 / G_Mover( ent )->gDuration;
 //				ent->s.apos.trDuration = ent->gDurationBack;	// (SA) durationback?
-			ent->s.apos.trDuration = ent->gDuration;
+			ent->s.apos.trDuration = G_Mover( ent )->gDuration;
 		}
 		VectorScale( ent->rotate, f * ent->angle, ent->s.apos.trDelta );
 		ent->s.apos.trType = TR_LINEAR_STOP;
@@ -782,8 +782,8 @@ void SetMoverState( gentity_t *ent, moverState_t moverState, int time ) {
 		VectorScale( ent->rotate, ent->angle, ent->s.apos.trBase );     // set base to end position
 		// (kicked closes same as normally opened)
 		// (soft closes at 1/2 speed)
-		f = 1000.0 / ent->gDuration;
-		ent->s.apos.trDuration = ent->gDuration;
+		f = 1000.0 / G_Mover( ent )->gDuration;
+		ent->s.apos.trDuration = G_Mover( ent )->gDuration;
 		if ( soft ) {
 			ent->s.apos.trDuration *= 2;
 			f *= 0.5f;
@@ -799,7 +799,7 @@ void SetMoverState( gentity_t *ent, moverState_t moverState, int time ) {
 	if ( !( ent->r.svFlags & SVF_NOCLIENT ) || ( ent->r.contents ) ) {    // RF, added this for bats, but this is safe for all movers, since if they aren't solid, and aren't visible to the client, they don't need to be linked
 		trap_LinkEntity( ent );
 		// if this entity is blocking AAS, then update it
-		if ( ent->AASblocking && ent->s.pos.trType == TR_STATIONARY ) {
+		if ( G_Misc( ent )->AASblocking && ent->s.pos.trType == TR_STATIONARY ) {
 			// reset old blocking areas
 			G_SetAASBlockingEntity( ent, qfalse );
 			// set new areas
@@ -866,11 +866,11 @@ void ReturnToPos1( gentity_t *ent ) {
 	MatchTeam( ent, MOVER_2TO1, level.time );
 
 	// play starting sound
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 );
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 );
 
 	ent->s.loopSound = 0;
 	// set looping sound
-	ent->s.loopSound = ent->sound3to2;
+	ent->s.loopSound = G_Mover( ent )->sound3to2;
 
 }
 
@@ -885,10 +885,10 @@ void ReturnToPos2( gentity_t *ent ) {
 
 	ent->s.loopSound = 0;
 	// looping sound
-	ent->s.loopSound = ent->soundLoop;
+	ent->s.loopSound = G_Mover( ent )->soundLoop;
 
 	// starting sound
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound3to2 );
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound3to2 );
 }
 
 /*
@@ -901,10 +901,10 @@ void GotoPos3( gentity_t *ent ) {
 
 	ent->s.loopSound = 0;
 	// looping sound
-	ent->s.loopSound = ent->soundLoop;
+	ent->s.loopSound = G_Mover( ent )->soundLoop;
 
 	// starting sound
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to3 );
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to3 );
 }
 // END JOSEPH
 
@@ -930,13 +930,13 @@ void ReturnToPos1Rotate( gentity_t *ent ) {
 	if ( inPVS ) {
 //		if( (ent->flags & FL_SOFTACTIVATE) &! (ent->flags & FL_DOORNOISE) )
 		if ( ( ent->flags & FL_SOFTACTIVATE ) && !( ent->flags & FL_DOORNOISE ) ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftclose );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftclose );
 		} else {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 );
 		}
 	}
 
-	ent->s.loopSound = ent->sound3to2;
+	ent->s.loopSound = G_Mover( ent )->sound3to2;
 }
 
 /*
@@ -960,15 +960,15 @@ void Reached_BinaryMover( gentity_t *ent ) {
 		kicked = soft = qfalse;
 	}
 
-	if ( ent->moverState == MOVER_1TO2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_1TO2 ) {
 		// reached pos2
 		SetMoverState( ent, MOVER_POS2, level.time );
 
 		// play sound
 		if ( soft ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftendo );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftendo );
 		} else {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos2 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos2 );
 		}
 
 		// fire targets
@@ -992,32 +992,32 @@ void Reached_BinaryMover( gentity_t *ent ) {
 			ent->nextthink = level.time + ent->wait;
 		}
 		// END JOSEPH
-	} else if ( ent->moverState == MOVER_2TO1 ) {
+	} else if ( G_Mover( ent )->moverState == MOVER_2TO1 ) {
 		// reached pos1
 		SetMoverState( ent, MOVER_POS1, level.time );
 
 		// play sound
 		if ( soft ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftendc );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftendc );
 		} else {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos1 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos1 );
 		}
 
 		// close areaportals
 		if ( ent->teammaster == ent || !ent->teammaster ) {
 			trap_AdjustAreaPortalState( ent, qfalse );
 		}
-	} else if ( ent->moverState == MOVER_1TO2ROTATE )   {
+	} else if ( G_Mover( ent )->moverState == MOVER_1TO2ROTATE )   {
 		// reached pos2
 		SetMoverState( ent, MOVER_POS2ROTATE, level.time );
 
 		// play sound
 		if ( kicked ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundKickedEnd );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundKickedEnd );
 		} else if ( soft ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftendo );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftendo );
 		} else {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos2 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos2 );
 		}
 
 		// fire targets
@@ -1039,7 +1039,7 @@ void Reached_BinaryMover( gentity_t *ent ) {
 			ent->nextthink = level.time + ent->wait;
 		}
 
-	} else if ( ent->moverState == MOVER_2TO1ROTATE )   {
+	} else if ( G_Mover( ent )->moverState == MOVER_2TO1ROTATE )   {
 		// reached pos1
 		SetMoverState( ent, MOVER_POS1ROTATE, level.time );
 
@@ -1057,9 +1057,9 @@ void Reached_BinaryMover( gentity_t *ent ) {
 			// play sound
 			if ( inPVS ) {
 				if ( soft ) {
-					G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftendc );
+					G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftendc );
 				} else {
-					G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos1 );
+					G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos1 );
 				}
 			}
 		}
@@ -1156,9 +1156,9 @@ Reached_TrinaryMover
 void Reached_TrinaryMover( gentity_t *ent ) {
 
 	// stop the looping sound
-	ent->s.loopSound = ent->soundLoop;
+	ent->s.loopSound = G_Mover( ent )->soundLoop;
 
-	if ( ent->moverState == MOVER_1TO2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_1TO2 ) {
 		// reached pos2
 		SetMoverState( ent, MOVER_POS2, level.time );
 
@@ -1167,24 +1167,24 @@ void Reached_TrinaryMover( gentity_t *ent ) {
 		ent->nextthink = level.time + 1000; //FRAMETIME;
 
 		// play sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos2 );
-	} else if ( ent->moverState == MOVER_2TO1 ) {
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos2 );
+	} else if ( G_Mover( ent )->moverState == MOVER_2TO1 ) {
 		// reached pos1
 		SetMoverState( ent, MOVER_POS1, level.time );
 
 		// play sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos1 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos1 );
 
 		// close areaportals
 		if ( ent->teammaster == ent || !ent->teammaster ) {
 			trap_AdjustAreaPortalState( ent, qfalse );
 		}
-	} else if ( ent->moverState == MOVER_2TO3 )   {
+	} else if ( G_Mover( ent )->moverState == MOVER_2TO3 )   {
 		// reached pos3
 		SetMoverState( ent, MOVER_POS3, level.time );
 
 		// play sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos3 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos3 );
 
 		// return to pos2 after a delay
 		if ( ent->wait != -1000 ) {
@@ -1197,7 +1197,7 @@ void Reached_TrinaryMover( gentity_t *ent ) {
 			ent->activator = ent;
 		}
 		G_UseTargets( ent, ent->activator );
-	} else if ( ent->moverState == MOVER_3TO2 )   {
+	} else if ( G_Mover( ent )->moverState == MOVER_3TO2 )   {
 		// reached pos2
 		SetMoverState( ent, MOVER_POS2, level.time );
 
@@ -1206,7 +1206,7 @@ void Reached_TrinaryMover( gentity_t *ent ) {
 		ent->nextthink = level.time + 1000; //FRAMETIME;
 
 		// play sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos3 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos3 );
 	} else {
 		G_Error( "Reached_BinaryMover: bad moverState" );
 	}
@@ -1230,10 +1230,10 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 		MatchTeamReverseAngleOnSlaves( ent, MOVER_1TO2ROTATE, level.time + 50 );
 
 		// starting sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 
 		// looping sound
-		ent->s.loopSound = ent->soundLoop;
+		ent->s.loopSound = G_Mover( ent )->soundLoop;
 
 		// open areaportal
 		if ( ent->teammaster == ent || !ent->teammaster ) {
@@ -1250,17 +1250,17 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 
 	ent->activator = activator;
 
-	if ( ent->moverState == MOVER_POS1 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS1 ) {
 
 		// start moving 50 msec later, becase if this was player
 		// triggered, level.time hasn't been advanced yet
 		MatchTeam( ent, MOVER_1TO2, level.time + 50 );
 
 		// starting sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 
 		// looping sound
-		ent->s.loopSound = ent->soundLoop;
+		ent->s.loopSound = G_Mover( ent )->soundLoop;
 
 		// open areaportal
 		if ( ent->teammaster == ent || !ent->teammaster ) {
@@ -1269,23 +1269,23 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 		return;
 	}
 
-	if ( ent->moverState == MOVER_POS2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS2 ) {
 
 		// start moving 50 msec later, becase if this was player
 		// triggered, level.time hasn't been advanced yet
 		MatchTeam( ent, MOVER_2TO3, level.time + 50 );
 
 		// starting sound
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to3 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to3 );
 
 		// looping sound
-		ent->s.loopSound = ent->soundLoop;
+		ent->s.loopSound = G_Mover( ent )->soundLoop;
 
 		return;
 	}
 
 	// if all the way up, just delay before coming down
-	if ( ent->moverState == MOVER_POS3 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS3 ) {
 		if ( ent->wait != -1000 ) {
 			ent->nextthink = level.time + ent->wait;
 		}
@@ -1293,7 +1293,7 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 	}
 
 	// only partway down before reversing
-	if ( ent->moverState == MOVER_2TO1 ) {
+	if ( G_Mover( ent )->moverState == MOVER_2TO1 ) {
 		total = ent->s.pos.trDuration;
 		partial = level.time - ent->s.time;
 		if ( partial > total ) {
@@ -1302,11 +1302,11 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 
 		MatchTeam( ent, MOVER_1TO2, level.time - ( total - partial ) );
 
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 		return;
 	}
 
-	if ( ent->moverState == MOVER_3TO2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_3TO2 ) {
 		total = ent->s.pos.trDuration;
 		partial = level.time - ent->s.time;
 		if ( partial > total ) {
@@ -1315,12 +1315,12 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 
 		MatchTeam( ent, MOVER_2TO3, level.time - ( total - partial ) );
 
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to3 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to3 );
 		return;
 	}
 
 	// only partway up before reversing
-	if ( ent->moverState == MOVER_1TO2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_1TO2 ) {
 		total = ent->s.pos.trDuration;
 		partial = level.time - ent->s.time;
 		if ( partial > total ) {
@@ -1330,14 +1330,14 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 		MatchTeam( ent, MOVER_2TO1, level.time - ( total - partial ) );
 
 		if ( ent->flags & FL_SOFTACTIVATE ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftclose );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftclose );
 		} else {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 );
 		}
 		return;
 	}
 
-	if ( ent->moverState == MOVER_2TO3 ) {
+	if ( G_Mover( ent )->moverState == MOVER_2TO3 ) {
 		total = ent->s.pos.trDuration;
 		partial = level.time - ent->s.time;
 		if ( partial > total ) {
@@ -1346,7 +1346,7 @@ void Use_TrinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 
 		MatchTeam( ent, MOVER_3TO2, level.time - ( total - partial ) );
 
-		G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound3to2 );
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound3to2 );
 		return;
 	}
 }
@@ -1394,7 +1394,7 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 	}
 
 	// only check for blocking when opening, otherwise the door has no choice
-	if ( ent->moverState == MOVER_POS1 || ent->moverState == MOVER_POS1ROTATE ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS1 || G_Mover( ent )->moverState == MOVER_POS1ROTATE ) {
 		isblocked = IsBinaryMoverBlocked( ent, other, activator );
 	}
 
@@ -1412,14 +1412,14 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 				if ( activator ) {
 					AICast_AudibleEvent( activator->s.number, ent->s.origin, HEAR_RANGE_DOOR_KICKOPEN );
 				}
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundKicked );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundKicked );
 			} else if ( soft ) {
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftopen );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftopen );
 			} else {
 				if ( activator ) {
 					AICast_AudibleEvent( activator->s.number, ent->s.origin, HEAR_RANGE_DOOR_OPEN );
 				}
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 			}
 		}
 
@@ -1427,9 +1427,9 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 
 		// looping sound
 		if ( !nosound ) {
-			ent->s.loopSound = ent->sound2to3;
+			ent->s.loopSound = G_Mover( ent )->sound2to3;
 		} else if ( !nosound ) {
-			ent->s.loopSound = ent->soundLoop;
+			ent->s.loopSound = G_Mover( ent )->soundLoop;
 		}
 
 		// open areaportal
@@ -1447,7 +1447,7 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 		return;
 	}
 
-	if ( ent->moverState == MOVER_POS1 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS1 ) {
 
 		// start moving 50 msec later, becase if this was player
 		// triggered, level.time hasn't been advanced yet
@@ -1455,14 +1455,14 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 
 		// play starting sound
 		if ( !nosound ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 		}
 
 		ent->s.loopSound = 0;
 
 		// set looping sound
 		if ( !nosound ) {
-			ent->s.loopSound = ent->sound2to3;
+			ent->s.loopSound = G_Mover( ent )->sound2to3;
 		}
 
 		// open areaportal
@@ -1472,7 +1472,7 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 		return;
 	}
 
-	if ( ent->moverState == MOVER_POS1ROTATE ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS1ROTATE ) {
 
 		// start moving 50 msec later, becase if this was player
 		// triggered, level.time hasn't been advanced yet
@@ -1484,21 +1484,21 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 				if ( activator ) {
 					AICast_AudibleEvent( activator->s.number, ent->s.origin, HEAR_RANGE_DOOR_KICKOPEN );
 				}
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundKicked );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundKicked );
 			} else if ( soft ) {
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftopen );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftopen );
 			} else {
 				if ( activator ) {
 					AICast_AudibleEvent( activator->s.number, ent->s.origin, HEAR_RANGE_DOOR_OPEN );
 				}
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 			}
 		}
 
 		ent->s.loopSound = 0;
 		// set looping sound
 		if ( !nosound ) {
-			ent->s.loopSound = ent->sound2to3;
+			ent->s.loopSound = G_Mover( ent )->sound2to3;
 		}
 
 		// open areaportal
@@ -1510,7 +1510,7 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 
 	// if all the way up, just delay before coming down
 	// JOSEPH 1-27-00
-	if ( ent->moverState == MOVER_POS2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS2 ) {
 		if ( ent->flags & FL_TOGGLE ) {
 			ent->nextthink = level.time + 50;
 			return;
@@ -1524,7 +1524,7 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 	// END JOSEPH
 
 	// if all the way up, just delay before coming down
-	if ( ent->moverState == MOVER_POS2ROTATE ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS2ROTATE ) {
 		if ( ent->flags & FL_TOGGLE ) {
 			ent->nextthink = level.time + 50;   // do it *now* for toggles
 		} else {
@@ -1534,44 +1534,44 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 	}
 
 	// only partway down before reversing
-	if ( ent->moverState == MOVER_2TO1 ) {
+	if ( G_Mover( ent )->moverState == MOVER_2TO1 ) {
 		Blocked_Door( ent, NULL );
 
 		if ( !nosound ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 		}
 		return;
 	}
 
 	// only partway up before reversing
-	if ( ent->moverState == MOVER_1TO2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_1TO2 ) {
 		Blocked_Door( ent, NULL );
 
 		if ( !nosound ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 );
 		}
 		return;
 	}
 
 	// only partway closed before reversing
-	if ( ent->moverState == MOVER_2TO1ROTATE ) {
+	if ( G_Mover( ent )->moverState == MOVER_2TO1ROTATE ) {
 		Blocked_DoorRotate( ent, NULL );
 
 		if ( !nosound ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound1to2 );
 		}
 		return;
 	}
 
 	// only partway open before reversing
-	if ( ent->moverState == MOVER_1TO2ROTATE ) {
+	if ( G_Mover( ent )->moverState == MOVER_1TO2ROTATE ) {
 		Blocked_DoorRotate( ent, NULL );
 
 		if ( !nosound ) {
 			if ( soft ) {
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundSoftclose );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundSoftclose );
 			} else {
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 );
 			}
 		}
 		return;
@@ -1646,18 +1646,18 @@ void InitMover( gentity_t *ent ) {
 	}
 	// END JOSEPH
 
-	ent->moverState = MOVER_POS1;
+	G_Mover( ent )->moverState = MOVER_POS1;
 	ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
 	ent->s.eType = ET_MOVER;
 
-	VectorCopy( ent->pos1, ent->r.currentOrigin );
+	VectorCopy( G_Mover( ent )->pos1, ent->r.currentOrigin );
 	trap_LinkEntity( ent );
 
 	ent->s.pos.trType = TR_STATIONARY;
-	VectorCopy( ent->pos1, ent->s.pos.trBase );
+	VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
 
 	// calculate time to reach second position from speed
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	distance = VectorLength( move );
 	if ( !ent->speed ) {
 		ent->speed = 100;
@@ -1666,19 +1666,19 @@ void InitMover( gentity_t *ent ) {
 //----(SA)	changes
 	// open time based on speed
 //	VectorScale( move, ent->speed, ent->s.pos.trDelta );
-	VectorScale( move, ent->speed, ent->gDelta );
+	VectorScale( move, ent->speed, G_Mover( ent )->gDelta );
 	ent->s.pos.trDuration = distance * 1000 / ent->speed;
 	if ( ent->s.pos.trDuration <= 0 ) {
 		ent->s.pos.trDuration = 1;
 	}
-	ent->gDurationBack = ent->gDuration = ent->s.pos.trDuration;
+	G_Mover( ent )->gDurationBack = G_Mover( ent )->gDuration = ent->s.pos.trDuration;
 
 	// close time based on speed
-	if ( ent->closespeed ) {
-		VectorScale( move, ent->closespeed, ent->gDelta );
-		ent->gDurationBack = distance * 1000 / ent->closespeed;
-		if ( ent->gDurationBack <= 0 ) {
-			ent->gDurationBack = 1;
+	if ( G_Mover( ent )->closespeed ) {
+		VectorScale( move, G_Mover( ent )->closespeed, G_Mover( ent )->gDelta );
+		G_Mover( ent )->gDurationBack = distance * 1000 / G_Mover( ent )->closespeed;
+		if ( G_Mover( ent )->gDurationBack <= 0 ) {
+			G_Mover( ent )->gDurationBack = 1;
 //----(SA) end
 		}
 	}
@@ -1736,18 +1736,18 @@ void InitMoverRotate( gentity_t *ent ) {
 		ent->reached = Reached_BinaryMover;
 	}
 
-	ent->moverState = MOVER_POS1ROTATE;
+	G_Mover( ent )->moverState = MOVER_POS1ROTATE;
 	ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
 	ent->s.eType = ET_MOVER;
 	VectorCopy( ent->s.origin, ent->s.pos.trBase );
-	VectorCopy( ent->pos1, ent->r.currentOrigin );
+	VectorCopy( G_Mover( ent )->pos1, ent->r.currentOrigin );
 	trap_LinkEntity( ent );
 
 	ent->s.pos.trType = TR_STATIONARY;
-	VectorCopy( ent->pos1, ent->s.pos.trBase );
+	VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
 
 	// calculate time to reach second position from speed
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	if ( !ent->speed ) {
 		ent->speed = 100;
 	}
@@ -1759,7 +1759,7 @@ void InitMoverRotate( gentity_t *ent ) {
 		ent->s.apos.trDuration = 1;
 	}
 
-	ent->gDuration = ent->gDurationBack = ent->s.apos.trDuration;   // (SA) store 'real' durations so doors can be opened/closed at different speeds
+	G_Mover( ent )->gDuration = G_Mover( ent )->gDurationBack = ent->s.apos.trDuration;   // (SA) store 'real' durations so doors can be opened/closed at different speeds
 }
 
 
@@ -1820,7 +1820,7 @@ void Blocked_Door( gentity_t *ent, gentity_t *other ) {
 //		time = level.time - slave->s.pos.trTime;
 		time = level.time - ( slave->s.pos.trDuration - ( level.time - slave->s.pos.trTime ) );
 
-		if ( slave->moverState == MOVER_1TO2 ) {
+		if ( G_Mover( slave )->moverState == MOVER_1TO2 ) {
 			SetMoverState( slave, MOVER_2TO1, time );
 		} else {
 			SetMoverState( slave, MOVER_1TO2, time );
@@ -1889,18 +1889,18 @@ void Blocked_DoorRotate( gentity_t *ent, gentity_t *other ) {
 	}
 
 	// RF, set this timer, so AI know not to try and open the door immediately
-	ent->grenadeFired = level.time + 2000;
+	G_Misc( ent )->grenadeFired = level.time + 2000;
 
 	for ( slave = ent ; slave ; slave = slave->teamchain )
 	{
 		// RF, set this timer, so AI know not to try and open the door immediately
-		slave->grenadeFired = level.time + 2000;
+		G_Misc( slave )->grenadeFired = level.time + 2000;
 
 		// RF, trying to fix "stuck in door" bug
 		time = level.time - ( slave->s.apos.trDuration - ( level.time - slave->s.apos.trTime ) );
 		//time = level.time - slave->s.apos.trTime;
 
-		if ( slave->moverState == MOVER_1TO2ROTATE ) {
+		if ( G_Mover( slave )->moverState == MOVER_1TO2ROTATE ) {
 			SetMoverState( slave, MOVER_2TO1ROTATE, time );
 		} else
 		{
@@ -1921,11 +1921,11 @@ Touch_DoorTrigger
 void Touch_DoorTrigger( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 	if ( other->client && other->client->sess.sessionTeam == TEAM_SPECTATOR ) {
 		// if the door is not open and not opening
-		if ( ent->parent->moverState != MOVER_1TO2 &&
-			 ent->parent->moverState != MOVER_POS2 ) {
+		if ( G_Mover( ent->parent )->moverState != MOVER_1TO2 &&
+			 G_Mover( ent->parent )->moverState != MOVER_POS2 ) {
 			Touch_DoorTriggerSpectator( ent, other, trace );
 		}
-	} else if ( ent->parent->moverState != MOVER_1TO2 )   {
+	} else if ( G_Mover( ent->parent )->moverState != MOVER_1TO2 )   {
 		Use_BinaryMover( ent->parent, ent, other );
 	}
 }
@@ -1980,11 +1980,11 @@ void Think_SpawnNewDoorTrigger( gentity_t *ent ) {
 	other->touch = Touch_DoorTrigger;
 	trap_LinkEntity( other );
 
-	MatchTeam( ent, ent->moverState, level.time );
+	MatchTeam( ent, G_Mover( ent )->moverState, level.time );
 }
 
 void Think_MatchTeam( gentity_t *ent ) {
-	MatchTeam( ent, ent->moverState, level.time );
+	MatchTeam( ent, G_Mover( ent )->moverState, level.time );
 }
 
 
@@ -2085,26 +2085,26 @@ Door_reverse_sounds
 void Door_reverse_sounds( gentity_t *ent ) {
 	int stemp;
 
-	stemp = ent->sound1to2;
-	ent->sound1to2 = ent->sound2to1;
-	ent->sound2to1 = stemp;
+	stemp = G_Mover( ent )->sound1to2;
+	G_Mover( ent )->sound1to2 = G_Mover( ent )->sound2to1;
+	G_Mover( ent )->sound2to1 = stemp;
 
-	stemp = ent->soundPos1;
-	ent->soundPos1 = ent->soundPos2;
-	ent->soundPos2 = stemp;
+	stemp = G_Mover( ent )->soundPos1;
+	G_Mover( ent )->soundPos1 = G_Mover( ent )->soundPos2;
+	G_Mover( ent )->soundPos2 = stemp;
 
-	stemp = ent->sound2to3;
-	ent->sound2to3 = ent->sound3to2;
-	ent->sound3to2 = stemp;
+	stemp = G_Mover( ent )->sound2to3;
+	G_Mover( ent )->sound2to3 = G_Mover( ent )->sound3to2;
+	G_Mover( ent )->sound3to2 = stemp;
 
 
-	stemp = ent->soundSoftopen;
-	ent->soundSoftopen = ent->soundSoftclose;
-	ent->soundSoftclose = stemp;
+	stemp = G_Mover( ent )->soundSoftopen;
+	G_Mover( ent )->soundSoftopen = G_Mover( ent )->soundSoftclose;
+	G_Mover( ent )->soundSoftclose = stemp;
 
-	stemp = ent->soundSoftendo;
-	ent->soundSoftendo = ent->soundSoftendc;
-	ent->soundSoftendc = stemp;
+	stemp = G_Mover( ent )->soundSoftendo;
+	G_Mover( ent )->soundSoftendo = G_Mover( ent )->soundSoftendc;
+	G_Mover( ent )->soundSoftendc = stemp;
 
 }
 
@@ -2117,23 +2117,23 @@ DoorSetSounds
 ==============
 */
 void DoorSetSounds( gentity_t *ent, int doortype, qboolean isRotating ) {
-	ent->sound1to2 = G_SoundIndex( va( "door%i_open", doortype ) );      // opening
-	ent->soundPos2 = G_SoundIndex( va( "door%i_endo", doortype ) );      // open
-	ent->sound2to1 = G_SoundIndex( va( "door%i_close", doortype ) ); // closing
-	ent->soundPos1 = G_SoundIndex( va( "door%i_endc", doortype ) );      // closed
-	ent->sound2to3 = G_SoundIndex( va( "door%i_loopo", doortype ) ); // loopopen
-	ent->sound3to2 = G_SoundIndex( va( "door%i_loopc", doortype ) ); // loopclosed
-	ent->soundPos3 = G_SoundIndex( va( "door%i_locked", doortype ) );    // locked
+	G_Mover( ent )->sound1to2 = G_SoundIndex( va( "door%i_open", doortype ) );      // opening
+	G_Mover( ent )->soundPos2 = G_SoundIndex( va( "door%i_endo", doortype ) );      // open
+	G_Mover( ent )->sound2to1 = G_SoundIndex( va( "door%i_close", doortype ) ); // closing
+	G_Mover( ent )->soundPos1 = G_SoundIndex( va( "door%i_endc", doortype ) );      // closed
+	G_Mover( ent )->sound2to3 = G_SoundIndex( va( "door%i_loopo", doortype ) ); // loopopen
+	G_Mover( ent )->sound3to2 = G_SoundIndex( va( "door%i_loopc", doortype ) ); // loopclosed
+	G_Mover( ent )->soundPos3 = G_SoundIndex( va( "door%i_locked", doortype ) );    // locked
 
 
-	ent->soundSoftopen  = G_SoundIndex( va( "door%i_openq", doortype ) );    // opening quietly
-	ent->soundSoftendo  = G_SoundIndex( va( "door%i_endoq", doortype ) );    // open quietly
-	ent->soundSoftclose = G_SoundIndex( va( "door%i_closeq", doortype ) );   // closing quietly
-	ent->soundSoftendc  = G_SoundIndex( va( "door%i_endcq", doortype ) );    // closed quietly
+	G_Mover( ent )->soundSoftopen  = G_SoundIndex( va( "door%i_openq", doortype ) );    // opening quietly
+	G_Mover( ent )->soundSoftendo  = G_SoundIndex( va( "door%i_endoq", doortype ) );    // open quietly
+	G_Mover( ent )->soundSoftclose = G_SoundIndex( va( "door%i_closeq", doortype ) );   // closing quietly
+	G_Mover( ent )->soundSoftendc  = G_SoundIndex( va( "door%i_endcq", doortype ) );    // closed quietly
 
 	if ( isRotating ) {
-		ent->soundKicked    = G_SoundIndex( va( "door%i_kicked", doortype ) );
-		ent->soundKickedEnd = G_SoundIndex( va( "door%i_kickedend", doortype ) );
+		G_Mover( ent )->soundKicked    = G_SoundIndex( va( "door%i_kicked", doortype ) );
+		G_Mover( ent )->soundKickedEnd = G_SoundIndex( va( "door%i_kickedend", doortype ) );
 	}
 
 }
@@ -2167,7 +2167,7 @@ void G_TryDoor( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 				if ( !walking && activator ) { // only send audible event if not trying to open slowly
 					AICast_AudibleEvent( activator->s.clientNum, ent->s.origin, HEAR_RANGE_DOOR_LOCKED );   // "someone tried locked door near me!"
 				}
-				G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos3 );
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos3 );
 				return;
 			}
 
@@ -2179,7 +2179,7 @@ void G_TryDoor( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 							AICast_AudibleEvent( activator->s.clientNum, ent->s.origin, HEAR_RANGE_DOOR_LOCKED );   // "someone tried locked door near me!"
 						}
 						// player does not have key
-						G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos3 );
+						G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos3 );
 						return;
 					}
 				}
@@ -2317,7 +2317,7 @@ void SP_func_door( gentity_t *ent ) {
 	G_SpawnInt( "dmg", "2", &ent->damage );
 
 	// first position at start
-	VectorCopy( ent->s.origin, ent->pos1 );
+	VectorCopy( ent->s.origin, G_Mover( ent )->pos1 );
 
 	// calculate second position
 	trap_SetBrushModel( ent, ent->model );
@@ -2327,21 +2327,21 @@ void SP_func_door( gentity_t *ent ) {
 	abs_movedir[2] = fabs( ent->movedir[2] );
 	VectorSubtract( ent->r.maxs, ent->r.mins, size );
 	distance = DotProduct( abs_movedir, size ) - lip;
-	VectorMA( ent->pos1, distance, ent->movedir, ent->pos2 );
+	VectorMA( G_Mover( ent )->pos1, distance, ent->movedir, G_Mover( ent )->pos2 );
 
 	if ( ent->spawnflags & 1 ) {    // START_OPEN - reverse position 1 and 2
 		vec3_t temp;
 		int tempi;
 
-		VectorCopy( ent->pos2, temp );
-		VectorCopy( ent->s.origin, ent->pos2 );
-		VectorCopy( temp, ent->pos1 );
+		VectorCopy( G_Mover( ent )->pos2, temp );
+		VectorCopy( ent->s.origin, G_Mover( ent )->pos2 );
+		VectorCopy( temp, G_Mover( ent )->pos1 );
 
 		// swap speeds if door has 'closespeed'
-		if ( ent->closespeed ) {
+		if ( G_Mover( ent )->closespeed ) {
 			tempi = ent->speed;
-			ent->speed = ent->closespeed;
-			ent->closespeed = tempi;
+			ent->speed = G_Mover( ent )->closespeed;
+			G_Mover( ent )->closespeed = tempi;
 		}
 
 		// swap sounds
@@ -2394,8 +2394,8 @@ void SP_func_secret( gentity_t *ent ) {
 	float lip;
 	int key;
 
-	ent->sound1to2 = ent->sound2to1 = ent->sound2to3 = G_SoundIndex( "sound/movers/doors/dr1_strt.wav" );
-	ent->soundPos1 = ent->soundPos3 = G_SoundIndex( "sound/movers/doors/dr1_end.wav" );
+	G_Mover( ent )->sound1to2 = G_Mover( ent )->sound2to1 = G_Mover( ent )->sound2to3 = G_SoundIndex( "sound/movers/doors/dr1_strt.wav" );
+	G_Mover( ent )->soundPos1 = G_Mover( ent )->soundPos3 = G_SoundIndex( "sound/movers/doors/dr1_end.wav" );
 
 	ent->blocked = Blocked_Door;
 
@@ -2431,7 +2431,7 @@ void SP_func_secret( gentity_t *ent ) {
 	G_SpawnInt( "dmg", "2", &ent->damage );
 
 	// first position at start
-	VectorCopy( ent->s.origin, ent->pos1 );
+	VectorCopy( ent->s.origin, G_Mover( ent )->pos1 );
 
 	VectorCopy( ent->s.angles, angles2 );
 
@@ -2449,7 +2449,7 @@ void SP_func_secret( gentity_t *ent ) {
 	abs_movedir[2] = fabs( ent->movedir[2] );
 	VectorSubtract( ent->r.maxs, ent->r.mins, size );
 	distance = DotProduct( abs_movedir, size ) - lip;
-	VectorMA( ent->pos1, distance, ent->movedir, ent->pos2 );
+	VectorMA( G_Mover( ent )->pos1, distance, ent->movedir, G_Mover( ent )->pos2 );
 
 	// calculate third position
 	G_SetMovedir( angles2, ent->movedir );
@@ -2458,7 +2458,7 @@ void SP_func_secret( gentity_t *ent ) {
 	abs_movedir[2] = fabs( ent->movedir[2] );
 	VectorSubtract( ent->r.maxs, ent->r.mins, size );
 	distance = DotProduct( abs_movedir, size ) - lip;
-	VectorMA( ent->pos2, distance, ent->movedir, ent->pos3 );
+	VectorMA( G_Mover( ent )->pos2, distance, ent->movedir, G_Mover( ent )->pos3 );
 
 	// if "start_open", reverse position 1 and 3
 	/*if ( ent->spawnflags & 1 ) {
@@ -2506,7 +2506,7 @@ void Touch_Plat( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 	}
 
 	// delay return-to-pos1 by one second
-	if ( ent->moverState == MOVER_POS2 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS2 ) {
 		ent->nextthink = level.time + 1000;
 	}
 }
@@ -2523,7 +2523,7 @@ void Touch_PlatCenterTrigger( gentity_t *ent, gentity_t *other, trace_t *trace )
 		return;
 	}
 
-	if ( ent->parent->moverState == MOVER_POS1 ) {
+	if ( G_Mover( ent->parent )->moverState == MOVER_POS1 ) {
 		Use_BinaryMover( ent->parent, ent, other );
 	}
 }
@@ -2549,20 +2549,20 @@ void SpawnPlatTrigger( gentity_t *ent ) {
 	trigger->r.contents = CONTENTS_TRIGGER;
 	trigger->parent = ent;
 
-	tmin[0] = ent->pos1[0] + ent->r.mins[0] + 33;
-	tmin[1] = ent->pos1[1] + ent->r.mins[1] + 33;
-	tmin[2] = ent->pos1[2] + ent->r.mins[2];
+	tmin[0] = G_Mover( ent )->pos1[0] + ent->r.mins[0] + 33;
+	tmin[1] = G_Mover( ent )->pos1[1] + ent->r.mins[1] + 33;
+	tmin[2] = G_Mover( ent )->pos1[2] + ent->r.mins[2];
 
-	tmax[0] = ent->pos1[0] + ent->r.maxs[0] - 33;
-	tmax[1] = ent->pos1[1] + ent->r.maxs[1] - 33;
-	tmax[2] = ent->pos1[2] + ent->r.maxs[2] + 8;
+	tmax[0] = G_Mover( ent )->pos1[0] + ent->r.maxs[0] - 33;
+	tmax[1] = G_Mover( ent )->pos1[1] + ent->r.maxs[1] - 33;
+	tmax[2] = G_Mover( ent )->pos1[2] + ent->r.maxs[2] + 8;
 
 	if ( tmax[0] <= tmin[0] ) {
-		tmin[0] = ent->pos1[0] + ( ent->r.mins[0] + ent->r.maxs[0] ) * 0.5;
+		tmin[0] = G_Mover( ent )->pos1[0] + ( ent->r.mins[0] + ent->r.maxs[0] ) * 0.5;
 		tmax[0] = tmin[0] + 1;
 	}
 	if ( tmax[1] <= tmin[1] ) {
-		tmin[1] = ent->pos1[1] + ( ent->r.mins[1] + ent->r.maxs[1] ) * 0.5;
+		tmin[1] = G_Mover( ent )->pos1[1] + ( ent->r.mins[1] + ent->r.maxs[1] ) * 0.5;
 		tmax[1] = tmin[1] + 1;
 	}
 
@@ -2587,8 +2587,8 @@ Plats are always drawn in the extended position so they will light correctly.
 void SP_func_plat( gentity_t *ent ) {
 	float lip, height;
 
-	ent->sound1to2 = ent->sound2to1 = G_SoundIndex( "sound/movers/plats/pt1_strt.wav" );
-	ent->soundPos1 = ent->soundPos2 = G_SoundIndex( "sound/movers/plats/pt1_end.wav" );
+	G_Mover( ent )->sound1to2 = G_Mover( ent )->sound2to1 = G_SoundIndex( "sound/movers/plats/pt1_strt.wav" );
+	G_Mover( ent )->soundPos1 = G_Mover( ent )->soundPos2 = G_SoundIndex( "sound/movers/plats/pt1_end.wav" );
 
 	VectorClear( ent->s.angles );
 
@@ -2607,9 +2607,9 @@ void SP_func_plat( gentity_t *ent ) {
 	}
 
 	// pos1 is the rest (bottom) position, pos2 is the top
-	VectorCopy( ent->s.origin, ent->pos2 );
-	VectorCopy( ent->pos2, ent->pos1 );
-	ent->pos1[2] -= height;
+	VectorCopy( ent->s.origin, G_Mover( ent )->pos2 );
+	VectorCopy( G_Mover( ent )->pos2, G_Mover( ent )->pos1 );
+	G_Mover( ent )->pos1[2] -= height;
 
 	InitMover( ent );
 
@@ -2647,7 +2647,7 @@ void Touch_Button( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 		return;
 	}
 
-	if ( ent->moverState == MOVER_POS1 ) {
+	if ( G_Mover( ent )->moverState == MOVER_POS1 ) {
 		Use_BinaryMover( ent, other, other );
 	}
 }
@@ -2672,7 +2672,7 @@ void SP_func_button( gentity_t *ent ) {
 	vec3_t size;
 	float lip;
 
-	ent->sound1to2 = G_SoundIndex( "sound/movers/switches/butn2.wav" );
+	G_Mover( ent )->sound1to2 = G_SoundIndex( "sound/movers/switches/butn2.wav" );
 
 	if ( !ent->speed ) {
 		ent->speed = 40;
@@ -2684,7 +2684,7 @@ void SP_func_button( gentity_t *ent ) {
 	ent->wait *= 1000;
 
 	// first position
-	VectorCopy( ent->s.origin, ent->pos1 );
+	VectorCopy( ent->s.origin, G_Mover( ent )->pos1 );
 
 	// calculate second position
 	trap_SetBrushModel( ent, ent->model );
@@ -2697,7 +2697,7 @@ void SP_func_button( gentity_t *ent ) {
 	abs_movedir[2] = fabs( ent->movedir[2] );
 	VectorSubtract( ent->r.maxs, ent->r.mins, size );
 	distance = abs_movedir[0] * size[0] + abs_movedir[1] * size[1] + abs_movedir[2] * size[2] - lip;
-	VectorMA( ent->pos1, distance, ent->movedir, ent->pos2 );
+	VectorMA( G_Mover( ent )->pos1, distance, ent->movedir, G_Mover( ent )->pos2 );
 
 	if ( ent->health ) {
 		// shootable button
@@ -2769,8 +2769,8 @@ void Reached_Train( gentity_t *ent ) {
 		next->count = 1;
 	}
 
-	VectorCopy( next->s.origin, ent->pos1 );
-	VectorCopy( next->nextTrain->s.origin, ent->pos2 );
+	VectorCopy( next->s.origin, G_Mover( ent )->pos1 );
+	VectorCopy( next->nextTrain->s.origin, G_Mover( ent )->pos2 );
 
 	// if the path_corner has a speed, use that
 	if ( next->speed ) {
@@ -2788,11 +2788,11 @@ void Reached_Train( gentity_t *ent ) {
 	}
 
 	// calculate duration
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	length = VectorLength( move );
 
 	ent->s.pos.trDuration = length * 1000 / speed;
-	ent->gDuration = ent->s.pos.trDuration;
+	G_Mover( ent )->gDuration = ent->s.pos.trDuration;
 
 	// Tequila comment: Be sure to send to clients after any fast move case
 	ent->r.svFlags &= ~SVF_NOCLIENT;
@@ -2814,7 +2814,7 @@ void Reached_Train( gentity_t *ent ) {
 	}
 
 	// looping sound
-	ent->s.loopSound = next->soundLoop;
+	ent->s.loopSound = G_Mover( next )->soundLoop;
 
 	// start it going
 	SetMoverState( ent, MOVER_1TO2, level.time );
@@ -3347,8 +3347,8 @@ void Reached_Train_rotating( gentity_t *ent ) {
 
 	// set the new trajectory
 	ent->nextTrain = next->nextTrain;
-	VectorCopy( next->s.origin, ent->pos1 );
-	VectorCopy( next->nextTrain->s.origin, ent->pos2 );
+	VectorCopy( next->s.origin, G_Mover( ent )->pos1 );
+	VectorCopy( next->nextTrain->s.origin, G_Mover( ent )->pos2 );
 
 	// if the path_corner has a speed, use that
 	if ( next->speed ) {
@@ -3366,7 +3366,7 @@ void Reached_Train_rotating( gentity_t *ent ) {
 	ent->rotate[2] = next->rotate[1];
 
 	// calculate duration
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	length = VectorLength( move );
 
 	if ( next->duration ) {
@@ -3384,11 +3384,11 @@ void Reached_Train_rotating( gentity_t *ent ) {
 
 	ent->s.apos.trType = TR_LINEAR;
 
-	if ( ent->TargetFlag ) {
-		VectorCopy( ent->TargetAngles, ent->r.currentAngles );
+	if ( G_Mover( ent )->TargetFlag ) {
+		VectorCopy( G_Mover( ent )->TargetAngles, ent->r.currentAngles );
 		VectorCopy( ent->r.currentAngles, ent->s.angles );
 		VectorCopy( ent->s.angles, ent->s.apos.trBase );
-		ent->TargetFlag = 0;
+		G_Mover( ent )->TargetFlag = 0;
 	}
 
 	//G_Printf( "Train angles %s\n",
@@ -3417,14 +3417,14 @@ void Reached_Train_rotating( gentity_t *ent ) {
 	}
 
 	// looping sound
-	ent->s.loopSound = next->soundLoop;
+	ent->s.loopSound = G_Mover( next )->soundLoop;
 
-	ent->TargetFlag = 1;
-	ent->TargetAngles[0] = ent->r.currentAngles[0] + ent->rotate[0];
+	G_Mover( ent )->TargetFlag = 1;
+	G_Mover( ent )->TargetAngles[0] = ent->r.currentAngles[0] + ent->rotate[0];
 	//ent->TargetAngles[0] = AngleNormalize360 (ent->TargetAngles[0]);
-	ent->TargetAngles[1] = ent->r.currentAngles[1] + ent->rotate[1];
+	G_Mover( ent )->TargetAngles[1] = ent->r.currentAngles[1] + ent->rotate[1];
 	//ent->TargetAngles[1] = AngleNormalize360 (ent->TargetAngles[1]);
-	ent->TargetAngles[2] = ent->r.currentAngles[2] + ent->rotate[2];
+	G_Mover( ent )->TargetAngles[2] = ent->r.currentAngles[2] + ent->rotate[2];
 	//ent->TargetAngles[2] = AngleNormalize360 (ent->TargetAngles[2]);
 
 	// start it going
@@ -3457,8 +3457,8 @@ void Think_SetupTrainTargets_rotating( gentity_t *ent ) {
 	}
 
 	VectorCopy( ent->s.angles, ent->s.apos.trBase );
-	VectorCopy( ent->s.angles, ent->TargetAngles );
-	ent->TargetFlag = 1;
+	VectorCopy( ent->s.angles, G_Mover( ent )->TargetAngles );
+	G_Mover( ent )->TargetFlag = 1;
 
 	start = NULL;
 	for ( path = ent->nextTrain ; path != start ; path = next ) {
@@ -3592,7 +3592,7 @@ void Static_Pain( gentity_t *ent, gentity_t *attacker, int damage, vec3_t point 
 				  || attacker->client->ps.persistant[PERS_HWEAPON_USE] ) ) {
 
 			VectorCopy( ent->r.currentOrigin, temp );
-			VectorCopy( ent->pos3, ent->r.currentOrigin );
+			VectorCopy( G_Mover( ent )->pos3, ent->r.currentOrigin );
 			Spawn_Shard( ent, attacker, 3, ent->count );
 			VectorCopy( temp, ent->r.currentOrigin );
 		}
@@ -3642,27 +3642,27 @@ void SP_func_leaky( gentity_t *ent ) {
 	VectorCopy( ent->s.origin, ent->r.currentOrigin );
 
 	// (SA) this is not ideal, but gets us finished.
-	G_SpawnInt( "type", "0", &ent->emitID );
-	if ( !ent->emitID ) {
-		G_SpawnInt( "leaktype", "0", &ent->emitID );
+	G_SpawnInt( "type", "0", &G_Misc( ent )->emitID );
+	if ( !G_Misc( ent )->emitID ) {
+		G_SpawnInt( "leaktype", "0", &G_Misc( ent )->emitID );
 	}
 
-	G_SpawnInt( "leakpressure", "30", &ent->emitPressure );
+	G_SpawnInt( "leakpressure", "30", &G_Misc( ent )->emitPressure );
 
 // hacks
-	if ( ent->emitID == 2 ) {  // no water
-		ent->emitID = 3;    // make it steam
+	if ( G_Misc( ent )->emitID == 2 ) {  // no water
+		G_Misc( ent )->emitID = 3;    // make it steam
 
 	}
-	if ( ent->emitID == 3 ) {  // steam
-		ent->emitPressure = 100;
+	if ( G_Misc( ent )->emitID == 3 ) {  // steam
+		G_Misc( ent )->emitPressure = 100;
 	}
 
 // end hacks
 
-	G_SpawnInt( "leaktime", "10", &ent->emitTime );
-	ent->emitTime *= 1000;  // make ms
-	G_SpawnInt( "leakcount", "10", &ent->emitNum );
+	G_SpawnInt( "leaktime", "10", &G_Misc( ent )->emitTime );
+	G_Misc( ent )->emitTime *= 1000;  // make ms
+	G_SpawnInt( "leakcount", "10", &G_Misc( ent )->emitNum );
 	ent->s.eType = ET_LEAKY;
 	trap_LinkEntity( ent );
 }
@@ -4641,7 +4641,7 @@ void use_invisible_user( gentity_t *ent, gentity_t *other, gentity_t *activator 
 		//----(SA)	play 'off' sound
 		//----(SA)	I think this is where this goes.  Raf, let me know if it's wrong.  I need someone to tell me what a test map is for this (I'll ask Dan tomorrow)
 		// not usable by player.  turned off.
-		G_Sound( ent, ent->soundPos1 );
+		G_Sound( ent, G_Mover( ent )->soundPos1 );
 		return;
 	}
 
@@ -4662,15 +4662,15 @@ void func_invisible_user( gentity_t *ent ) {
 	char    *sound;
 	char    *cursorhint;
 
-	VectorCopy( ent->s.origin, ent->pos1 );
+	VectorCopy( ent->s.origin, G_Mover( ent )->pos1 );
 	trap_SetBrushModel( ent, ent->model );
 
 	// InitMover (ent);
-	VectorCopy( ent->pos1, ent->r.currentOrigin );
+	VectorCopy( G_Mover( ent )->pos1, ent->r.currentOrigin );
 	trap_LinkEntity( ent );
 
 	ent->s.pos.trType = TR_STATIONARY;
-	VectorCopy( ent->pos1, ent->s.pos.trBase );
+	VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
 
 	ent->r.contents = CONTENTS_TRIGGER;
 
@@ -4696,9 +4696,9 @@ void func_invisible_user( gentity_t *ent ) {
 
 	if ( !( ent->spawnflags & 4 ) ) {    // !NO_OFF_NOISE
 		if ( G_SpawnString( "offnoise", "0", &sound ) ) {
-			ent->soundPos1 = G_SoundIndex( sound );
+			G_Mover( ent )->soundPos1 = G_SoundIndex( sound );
 		} else {
-			ent->soundPos1 = G_SoundIndex( "sound/movers/invis_user_off.wav" );
+			G_Mover( ent )->soundPos1 = G_SoundIndex( "sound/movers/invis_user_off.wav" );
 		}
 	}
 

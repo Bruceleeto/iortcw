@@ -125,6 +125,10 @@ typedef struct directive_s
 #define TOKEN_HEAP_SIZE     4096
 
 int numtokens;
+//tokens freed, kept for the next PC_CopyToken in place of a malloc and a free
+//each (a define's tokens are copied for each use of it); given back as a
+//source is freed (FreeSource), so they hold no RAM after
+static token_t *freetokens;
 /*
 int tokenheapinitialized;				//true when the token heap is initialized
 token_t token_heap[TOKEN_HEAP_SIZE];	//heap with tokens
@@ -274,9 +278,12 @@ void PC_InitTokenHeap( void ) {
 token_t *PC_CopyToken( token_t *token ) {
 	token_t *t;
 
-//	t = (token_t *) malloc(sizeof(token_t));
-	t = (token_t *) GetMemory( sizeof( token_t ) );
-//	t = freetokens;
+	if ( freetokens ) {
+		t = freetokens;
+		freetokens = freetokens->next;
+	} else {
+		t = (token_t *) GetMemory( sizeof( token_t ) );
+	}
 	if ( !t ) {
 #ifdef BSPC
 		Error( "out of token space" );
@@ -285,8 +292,7 @@ token_t *PC_CopyToken( token_t *token ) {
 #endif
 		return NULL;
 	} //end if
-//	freetokens = freetokens->next;
-	memcpy( t, token, sizeof( token_t ) );
+	PS_CopyToken( t, token );
 	t->next = NULL;
 	numtokens++;
 	return t;
@@ -298,12 +304,22 @@ token_t *PC_CopyToken( token_t *token ) {
 // Changes Globals:		-
 //============================================================================
 void PC_FreeToken( token_t *token ) {
-	//free(token);
-	FreeMemory( token );
-//	token->next = freetokens;
-//	freetokens = token;
+	token->next = freetokens;
+	freetokens = token;
 	numtokens--;
 } //end of the function PC_FreeToken
+//============================================================================
+// the kept tokens given back
+//============================================================================
+static void PC_FreeFreeTokens( void ) {
+	token_t *t;
+
+	while ( freetokens ) {
+		t = freetokens;
+		freetokens = freetokens->next;
+		FreeMemory( t );
+	} //end while
+} //end of the function PC_FreeFreeTokens
 //============================================================================
 //
 // Parameter:				-
@@ -342,7 +358,7 @@ int PC_ReadSourceToken( source_t *source, token_t *token ) {
 		FreeScript( script );
 	} //end while
 	  //copy the already available token
-	memcpy( token, source->tokens, sizeof( token_t ) );
+	PS_CopyToken( token, source->tokens );
 	//free the read token
 	t = source->tokens;
 	source->tokens = source->tokens->next;
@@ -1408,6 +1424,7 @@ void PC_RemoveAllGlobalDefines( void ) {
 		globaldefines = globaldefines->next;
 		PC_FreeDefine( define );
 	} //end for
+	PC_FreeFreeTokens();
 } //end of the function PC_RemoveAllGlobalDefines
 //============================================================================
 //
@@ -2753,7 +2770,7 @@ int PC_ReadToken( source_t *source, token_t *token ) {
 			} //end if
 		} //end if
 		  //copy token for unreading
-		memcpy( &source->token, token, sizeof( token_t ) );
+		PS_CopyToken( &source->token, token );
 		//found a token
 		return qtrue;
 	} //end while
@@ -2902,7 +2919,7 @@ int PC_CheckTokenType( source_t *source, int type, int subtype, token_t *token )
 	//if the type matches
 	if ( tok.type == type &&
 		 ( tok.subtype & subtype ) == subtype ) {
-		memcpy( token, &tok, sizeof( token_t ) );
+		PS_CopyToken( token, &tok );
 		return qtrue;
 	} //end if
 	  //
@@ -3103,6 +3120,7 @@ void FreeSource( source_t *source ) {
 #endif //DEFINEHASHING
 	   //free the source itself
 	FreeMemory( source );
+	PC_FreeFreeTokens();
 } //end of the function FreeSource
 //============================================================================
 //

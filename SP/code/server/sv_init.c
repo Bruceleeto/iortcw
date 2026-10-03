@@ -773,6 +773,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	Com_Printf( "------ Server Initialization ------\n" );
 	Com_Printf( "Server: %s\n",server );
+	LOAD_START();
 
 	// if not running a dedicated server CL_MapLoading will connect the client to the server
 	// also print some status stuff
@@ -780,6 +781,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	// make sure all the client stuff is unloaded
 	CL_ShutdownAll(qfalse);
+	LOAD_STEP( "client shutdown" );
 
 	// clear the whole hunk because we're (re)loading the server
 	Hunk_Clear();
@@ -877,8 +879,10 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	sv.checksumFeed = ( ( (unsigned int)rand() << 16 ) ^ (unsigned int)rand() ) ^ Com_Milliseconds();
 
 	FS_Restart( sv.checksumFeed );
+	LOAD_STEP( "fs restart" );
 
 	CM_LoadMap( va( "maps/%s.bsp", server ), qfalse, &checksum );
+	LOAD_STEP( "collision map" );
 
 	// set serverinfo visible name
 	Cvar_Set( "mapname", server );
@@ -900,6 +904,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	// load and spawn all other entities
 	SV_InitGameProgs();
+	LOAD_STEP( "game init (rest)" );
 
 	// don't allow a map_restart if game is modified
 	sv_gametype->modified = qfalse;
@@ -912,6 +917,8 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 		sv.time += 100;
 		svs.time += 100;
 	}
+
+	LOAD_STEP( "game settle frames" );
 
 	// create a baseline for more efficient communications
 	SV_CreateBaseline();
@@ -1008,6 +1015,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 
 	Hunk_SetMark();
+	LOAD_STEP( "server (rest)" );
 
 /*
 #ifndef DEDICATED

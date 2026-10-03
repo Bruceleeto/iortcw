@@ -94,11 +94,22 @@ typedef enum {
 	F_ANGLEHACK
 } fieldtype_t;
 
+// where a field is: the entity, or one of its parts (gMover_t ...)
+typedef enum {
+	P_ENTITY,
+	P_MOVER,
+	P_MISC
+} fieldpart_t;
+
+#define MOVEROFS( x ) ( (size_t)&( ( (gMover_t *)0 )->x ) )
+#define MISCOFS( x ) ( (size_t)&( ( (gMisc_t *)0 )->x ) )
+
 typedef struct
 {
 	char    *name;
 	size_t	ofs;
 	fieldtype_t type;
+	fieldpart_t part;
 } field_t;
 
 field_t fields[] = {
@@ -108,7 +119,7 @@ field_t fields[] = {
 	{"model2",       FOFS( model2 ),       F_STRING},
 	{"spawnflags",   FOFS( spawnflags ),   F_INT},
 	{"speed",        FOFS( speed ),        F_FLOAT},
-	{"closespeed",   FOFS( closespeed ),   F_FLOAT},   //----(SA)	added
+	{"closespeed",   MOVEROFS( closespeed ),   F_FLOAT, P_MOVER},   //----(SA)	added
 	{"target",       FOFS( target ),       F_STRING},
 	{"targetname",   FOFS( targetname ),   F_STRING},
 	{"targetdeath",  FOFS( targetdeath ),      F_STRING}, //----(SA)	added
@@ -143,8 +154,8 @@ field_t fields[] = {
 	//----(SA) done
 
 	// (SA) dlight lightstyles (made all these unique variables for testing)
-	{"_color",       FOFS( dl_color ),     F_VECTOR},      // color of the light	(the underscore is inserted by the color picker in QER)
-	{"color",        FOFS( dl_color ),     F_VECTOR},      // color of the light
+	{"_color",       MISCOFS( dl_color ),     F_VECTOR, P_MISC},      // color of the light	(the underscore is inserted by the color picker in QER)
+	{"color",        MISCOFS( dl_color ),     F_VECTOR, P_MISC},      // color of the light
 	{"stylestring",  FOFS( dl_stylestring ), F_STRING},   // user defined stylestring "fffndlsfaaaaaa" for example
 	// done
 
@@ -160,8 +171,8 @@ field_t fields[] = {
 	// (SA)	end
 
 	// Rafael - mg42
-	{"harc",     FOFS( harc ),         F_FLOAT},
-	{"varc",     FOFS( varc ),         F_FLOAT},
+	{"harc",     MISCOFS( harc ),         F_FLOAT, P_MISC},
+	{"varc",     MISCOFS( varc ),         F_FLOAT, P_MISC},
 	// done.
 
 	// Rafael - sniper
@@ -172,8 +183,8 @@ field_t fields[] = {
 //	{"missionlevel",	FOFS(missionObjectives),	F_INT},
 
 	// Rafel
-	{"start_size", FOFS( start_size ), F_INT},
-	{"end_size", FOFS( end_size ), F_INT},
+	{"start_size", MISCOFS( start_size ), F_INT, P_MISC},
+	{"end_size", MISCOFS( end_size ), F_INT, P_MISC},
 
 	{"shard", FOFS( count ), F_INT},
 
@@ -777,7 +788,13 @@ void G_ParseField( const char *key, const char *value, gentity_t *ent ) {
 	for ( f = fields ; f->name ; f++ ) {
 		if ( !Q_stricmp( f->name, key ) ) {
 			// found it
-			b = (byte *)ent;
+			if ( f->part == P_MOVER ) {
+				b = (byte *)G_Mover( ent );
+			} else if ( f->part == P_MISC ) {
+				b = (byte *)G_Misc( ent );
+			} else {
+				b = (byte *)ent;
+			}
 
 			switch ( f->type ) {
 			case F_STRING:

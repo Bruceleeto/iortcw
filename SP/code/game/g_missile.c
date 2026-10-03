@@ -760,8 +760,8 @@ void G_RunSpit( gentity_t *ent ) {
 
 		smoke = G_Spawn();
 		VectorCopy( tr.endpos, smoke->s.origin );
-		smoke->start_size = 4;
-		smoke->end_size = 8;
+		G_Misc( smoke )->start_size = 4;
+		G_Misc( smoke )->end_size = 8;
 		smoke->spawnflags |= 4;
 		smoke->speed = 500; // 5 seconds
 		smoke->duration = 100;

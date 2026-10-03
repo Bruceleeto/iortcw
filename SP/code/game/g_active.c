@@ -82,8 +82,8 @@ void P_DamageFeedback( gentity_t *player ) {
 	}
 
 	// play an apropriate pain sound
-	if ( ( level.time > player->pain_debounce_time ) && !( player->flags & FL_GODMODE ) && !( player->r.svFlags & SVF_CASTAI ) ) {
-		player->pain_debounce_time = level.time + 700;
+	if ( ( level.time > G_Misc( player )->pain_debounce_time ) && !( player->flags & FL_GODMODE ) && !( player->r.svFlags & SVF_CASTAI ) ) {
+		G_Misc( player )->pain_debounce_time = level.time + 700;
 		G_AddEvent( player, EV_PAIN, player->health );
 	}
 
@@ -158,7 +158,7 @@ void P_WorldEffects( gentity_t *ent ) {
 					}
 
 					// don't play a normal pain sound
-					ent->pain_debounce_time = level.time + 200;
+					G_Misc( ent )->pain_debounce_time = level.time + 200;
 
 					G_Damage( ent, NULL, NULL, NULL, NULL,
 							  ent->damage, DAMAGE_NO_ARMOR, MOD_WATER );
@@ -177,7 +177,7 @@ void P_WorldEffects( gentity_t *ent ) {
 		 ( ent->watertype & CONTENTS_LAVA ) ) { //----(SA)	modified since slime is no longer deadly
 //		(ent->watertype&(CONTENTS_LAVA|CONTENTS_SLIME)) ) {
 		if ( ent->health > 0
-			 && ent->pain_debounce_time <= level.time    ) {
+			 && G_Misc( ent )->pain_debounce_time <= level.time    ) {
 
 			if ( envirosuit ) {
 				G_AddEvent( ent, EV_POWERUP_BATTLESUIT, 0 );
@@ -204,7 +204,7 @@ void P_WorldEffects( gentity_t *ent ) {
 		gentity_t *attacker;
 
 		if ( ent->health > 0 ) {
-			attacker = g_entities + ent->flameBurnEnt;
+			attacker = g_entities + G_Misc( ent )->flameBurnEnt;
 			if ( g_gametype.integer == GT_SINGLE_PLAYER ) { // JPW NERVE
 				if ( ent->r.svFlags & SVF_CASTAI ) {
 					G_Damage( ent, attacker, attacker, NULL, NULL, 2, DAMAGE_NO_KNOCKBACK, MOD_FLAMETHROWER );
@@ -637,7 +637,7 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 				VectorClear( ent->client->ps.velocity );
 			}
 
-			ent->pain_debounce_time = level.time + 200; // no normal pain sound
+			G_Misc( ent )->pain_debounce_time = level.time + 200; // no normal pain sound
 			G_Damage( ent, NULL, NULL, NULL, NULL, damage, 0, MOD_FALLING );
 			// falls through to FALL_SHORT
 

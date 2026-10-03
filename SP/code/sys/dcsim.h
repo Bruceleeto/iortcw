@@ -17,6 +17,11 @@ void *dcsim_memalign( size_t align, size_t size );
 void dcsim_free( void *p );
 // what the Dreamcast reports: malloc in use, and free (in the heap and above it)
 void DCSim_Info( int *inUse, int *freeBytes );
+// the most one malloc can have now: the free RAM isn't all in one piece
+int DCSim_LargestFree( void );
+// with DCSIM_ALLOCS set: each free piece of 32K or more, and who has the
+// blocks either side of it, printed
+void DCSim_DumpHoles( const char *when );
 // with DCSIM_ALLOCS set: the blocks in use, and who made them, to a file
 void DCSim_DumpAllocs( const char *when );
 

@@ -104,6 +104,13 @@ void _UI_Refresh( int realtime );
 qboolean _UI_IsFullscreen( void );
 void UI_ReloadMenus( void );
 void UI_ConnectMenus( void );
+
+/*
+The menus, near 1MB, are let go while a level is loaded and played, the
+loading screen's alone kept while one loads, and loaded again when one is
+brought up
+*/
+static enum { MENUS_ALL, MENUS_NONE, MENUS_CONNECT } menusLoaded;
 qboolean UI_Loading( void );
 
 Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11  ) {
@@ -885,7 +892,8 @@ void UI_Report( void ) {
 }
 
 void QDECL Com_DPrintf( const char *fmt, ... ) __attribute__ ( ( format ( printf, 1, 2 ) ) );
-void UI_ParseMenu( const char *menuFile ) {
+// the menu file's assetGlobalDef (fonts, cursor ...) alone, with assetsOnly
+static void UI_ParseMenuFile( const char *menuFile, qboolean assetsOnly ) {
 	int handle;
 	pc_token_t token;
 
@@ -925,11 +933,18 @@ void UI_ParseMenu( const char *menuFile ) {
 		}
 
 		if ( Q_stricmp( token.string, "menudef" ) == 0 ) {
+			if ( assetsOnly ) {
+				break;
+			}
 			// start a new menu
 			Menu_New( handle );
 		}
 	}
 	trap_PC_FreeSource( handle );
+}
+
+void UI_ParseMenu( const char *menuFile ) {
+	UI_ParseMenuFile( menuFile, qfalse );
 }
 
 qboolean Load_Menu( int handle ) {
@@ -957,6 +972,7 @@ qboolean Load_Menu( int handle ) {
 		}
 
 		UI_ParseMenu( token.string );
+		LOAD_STEP( va( "ui %s", token.string ) );
 	}
 	return qfalse;
 }
@@ -5484,9 +5500,12 @@ void _UI_Init( qboolean inGameLoad ) {
 	// loading a level: only the menus a level has (the rest, the main menu's,
 	// when it goes back to them, UI_LoadNonIngame)
 	uiInfo.inGameLoad = inGameLoad;
+	LOAD_STEP( "ui to init" );
 
 	UI_RegisterCvars();
+	LOAD_STEP( "ui cvars" );
 	UI_InitMemory();
+	LOAD_STEP( "ui memory freed" );
 
 	// cache redundant calulations
 	trap_GetGlconfig( &uiInfo.uiDC.glconfig );
@@ -5583,6 +5602,7 @@ void _UI_Init( qboolean inGameLoad ) {
 	uiInfo.uiDC.runCinematicFrame = &UI_RunCinematicFrame;
 
 	Init_Display( &uiInfo.uiDC );
+	LOAD_STEP( "ui to strings" );
 
 	String_Init();
 
@@ -5592,7 +5612,9 @@ void _UI_Init( qboolean inGameLoad ) {
 //	uiInfo.uiDC.cursor	= trap_R_RegisterShaderNoMip( "menu/art/3_cursor3" );
 	uiInfo.uiDC.whiteShader = trap_R_RegisterShaderNoMip( "white" );
 
+	LOAD_STEP( "ui strings" );
 	AssetCache();
+	LOAD_STEP( "ui assets" );
 
 	uiInfo.teamCount = 0;
 	uiInfo.characterCount = 0;
@@ -5613,21 +5635,31 @@ void _UI_Init( qboolean inGameLoad ) {
 	}
 
 	if ( uiInfo.inGameLoad ) {
-		UI_LoadMenus( "ui/ingame.txt", qtrue );
-		// the one main menu a level opens (cgame's "briefing" popup)
-		UI_ParseMenu( "ui/briefing.menu" );
+		// a level loading: the loading screen's alone, the rest when one's
+		// brought up (UI_ReloadMenus)
+		menusLoaded = MENUS_NONE;
+		UI_ConnectMenus();
+		// their fonts are in the in-game menus'
+		UI_ParseMenuFile( "ui/ingame.menu", qtrue );
 	} else {
 		UI_LoadMenus( menuSet, qtrue );
 		UI_LoadMenus( "ui/ingame.txt", qfalse );
+		menusLoaded = MENUS_ALL;
 	}
 
 	Menus_CloseAll();
+	LOAD_STEP( "ui menus (rest)" );
 
 //#ifdef MISSIONPACK			// NERVE - SMF - enabled for multiplayer
 	UI_LoadBestScores( uiInfo.mapList[0].mapLoadName, uiInfo.gameTypes[ui_gameType.integer].gtEnum );
 //#endif	// #ifdef MISSIONPACK
 
+#if !defined( _arch_dreamcast ) && !defined( DCSIM )
+	// (multiplayer heads: their icon_*.tga aren't on the Dreamcast's disc,
+	// only .dt, so it found none, after a walk of each models/players dir)
 	UI_BuildQ3Model_List();
+#endif
+	LOAD_STEP( "ui model list" );
 #ifdef MISSIONPACK
 	UI_LoadBots();
 #endif  // #ifdef MISSIONPACK
@@ -5933,12 +5965,6 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 	}
 }
 
-/*
-The menus, near 1MB, are let go while a level is loaded and played, the
-loading screen's alone kept while one loads, and loaded again when one is
-brought up
-*/
-static enum { MENUS_ALL, MENUS_NONE, MENUS_CONNECT } menusLoaded;
 
 static void UI_UnloadMenus( void ) {
 	String_Init();

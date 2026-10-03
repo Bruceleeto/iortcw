@@ -958,7 +958,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 
 	// shootable doors / buttons don't actually have any health
 	if ( targ->s.eType == ET_MOVER && !( targ->aiName ) && !( targ->isProp ) && !targ->scriptName ) {
-		if ( targ->use && targ->moverState == MOVER_POS1 ) {
+		if ( targ->use && G_ReadMover( targ )->moverState == MOVER_POS1 ) {
 			targ->use( targ, inflictor, attacker );
 		}
 		return;
@@ -1195,7 +1195,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			// RF, allow headshot damage multiplier (helmets, etc)
 			// yes, headshotDamageScale of 0 gives no damage, thats because
 			// the bullet hit the head which is fully protected.
-			take *= targ->headshotDamageScale;
+			take *= G_ReadMisc( targ )->headshotDamageScale;
 
 			// player only code
 			if ( !attacker->aiCharacter ) {
@@ -1333,10 +1333,10 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		} else if ( targ->pain ) {
 			if ( dir ) {  // Ridah, had to add this to fix NULL dir crash
 				VectorCopy( dir, targ->rotate );
-				VectorCopy( point, targ->pos3 ); // this will pass loc of hit
+				VectorCopy( point, G_Mover( targ )->pos3 ); // this will pass loc of hit
 			} else {
 				VectorClear( targ->rotate );
-				VectorClear( targ->pos3 );
+				VectorClear( G_Mover( targ )->pos3 );
 			}
 
 			targ->pain( targ, attacker, take, point );

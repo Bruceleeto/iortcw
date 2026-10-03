@@ -67,14 +67,14 @@ qboolean G_ScriptAction_GotoMarker( gentity_t *ent, char *params ) {
 	vec3_t diff;
 	vec3_t angles;
 
-	if ( params && ( ent->scriptStatus.scriptFlags & SCFL_GOING_TO_MARKER ) ) {
+	if ( params && ( G_Script( ent )->scriptStatus.scriptFlags & SCFL_GOING_TO_MARKER ) ) {
 		// we can't process a new movement until the last one has finished
 		return qfalse;
 	}
 
-	if ( !params || ent->scriptStatus.scriptStackChangeTime < level.time ) {          // we are waiting for it to reach destination
+	if ( !params || G_Script( ent )->scriptStatus.scriptStackChangeTime < level.time ) {          // we are waiting for it to reach destination
 		if ( ent->s.pos.trTime + ent->s.pos.trDuration <= level.time ) {  // we made it
-			ent->scriptStatus.scriptFlags &= ~SCFL_GOING_TO_MARKER;
+			G_Script( ent )->scriptStatus.scriptFlags &= ~SCFL_GOING_TO_MARKER;
 
 			// set the angles at the destination
 			BG_EvaluateTrajectory( &ent->s.apos, ent->s.apos.trTime + ent->s.apos.trDuration, ent->s.angles );
@@ -142,10 +142,10 @@ qboolean G_ScriptAction_GotoMarker( gentity_t *ent, char *params ) {
 		if ( ent->s.eType == ET_MOVER ) {
 
 			VectorCopy( vec, ent->movedir );
-			VectorCopy( ent->r.currentOrigin, ent->pos1 );
-			VectorCopy( target->r.currentOrigin, ent->pos2 );
+			VectorCopy( ent->r.currentOrigin, G_Mover( ent )->pos1 );
+			VectorCopy( target->r.currentOrigin, G_Mover( ent )->pos2 );
 			ent->speed = speed;
-			dist = VectorDistance( ent->pos1, ent->pos2 );
+			dist = VectorDistance( G_Mover( ent )->pos1, G_Mover( ent )->pos2 );
 			// setup the movement with the new parameters
 			InitMover( ent );
 
@@ -230,7 +230,7 @@ qboolean G_ScriptAction_GotoMarker( gentity_t *ent, char *params ) {
 			}
 
 			// set the goto flag, so we can keep processing the move until we reach the destination
-			ent->scriptStatus.scriptFlags |= SCFL_GOING_TO_MARKER;
+			G_Script( ent )->scriptStatus.scriptFlags |= SCFL_GOING_TO_MARKER;
 			return qtrue;   // continue to next command
 		}
 
@@ -262,7 +262,7 @@ qboolean G_ScriptAction_Wait( gentity_t *ent, char *params ) {
 	}
 	duration = atoi( token );
 
-	return ( ent->scriptStatus.scriptStackChangeTime + duration < level.time );
+	return ( G_Script( ent )->scriptStatus.scriptStackChangeTime + duration < level.time );
 }
 
 /*
@@ -303,10 +303,10 @@ qboolean G_ScriptAction_Trigger( gentity_t *ent, char *params ) {
 	// look for an entity
 	trent = G_Find( &g_entities[MAX_CLIENTS], FOFS( scriptName ), name );
 	if ( trent ) {
-		oldId = trent->scriptStatus.scriptId;
+		oldId = G_Script( trent )->scriptStatus.scriptId;
 		G_Script_ScriptEvent( trent, "trigger", trigger );
 		// if the script changed, return false so we don't muck with it's variables
-		return ( ( trent != ent ) || ( oldId == trent->scriptStatus.scriptId ) );
+		return ( ( trent != ent ) || ( oldId == G_Script( trent )->scriptStatus.scriptId ) );
 	}
 
 	G_Error( "G_Scripting: trigger has unknown name: %s\n", name );
@@ -488,9 +488,9 @@ qboolean G_ScriptAction_PlayAnim( gentity_t *ent, char *params ) {
 	int startframe, endframe, idealframe;
 	int rate = 20;
 
-	if ( ( ent->scriptStatus.scriptFlags & SCFL_ANIMATING ) && ( ent->scriptStatus.scriptStackChangeTime == level.time ) ) {
+	if ( ( G_Script( ent )->scriptStatus.scriptFlags & SCFL_ANIMATING ) && ( G_Script( ent )->scriptStatus.scriptStackChangeTime == level.time ) ) {
 		// this is a new call, so cancel the previous animation
-		ent->scriptStatus.scriptFlags &= ~SCFL_ANIMATING;
+		G_Script( ent )->scriptStatus.scriptFlags &= ~SCFL_ANIMATING;
 	}
 
 	pString = params;
@@ -526,12 +526,12 @@ qboolean G_ScriptAction_PlayAnim( gentity_t *ent, char *params ) {
 					endtime = 0;
 				}
 			} else if ( !Q_strcasecmp( token, "forever" ) ) {
-				ent->scriptStatus.animatingParams = params;
-				ent->scriptStatus.scriptFlags |= SCFL_ANIMATING;
+				G_Script( ent )->scriptStatus.animatingParams = params;
+				G_Script( ent )->scriptStatus.scriptFlags |= SCFL_ANIMATING;
 				endtime = level.time + 100;     // we don't care when it ends, since we are going forever!
 				forever = qtrue;
 			} else {
-				endtime = ent->scriptStatus.scriptStackChangeTime + atoi( token );
+				endtime = G_Script( ent )->scriptStatus.scriptStackChangeTime + atoi( token );
 			}
 
 			token = COM_ParseExt( &pString, qfalse );
@@ -546,11 +546,11 @@ qboolean G_ScriptAction_PlayAnim( gentity_t *ent, char *params ) {
 		}
 
 		if ( !looping ) {
-			endtime = ent->scriptStatus.scriptStackChangeTime + ( ( endframe - startframe ) * ( 1000 / 20 ) );
+			endtime = G_Script( ent )->scriptStatus.scriptStackChangeTime + ( ( endframe - startframe ) * ( 1000 / 20 ) );
 		}
 	}
 
-	idealframe = startframe + (int)floor( (float)( level.time - ent->scriptStatus.scriptStackChangeTime ) / ( 1000.0 / (float)rate ) );
+	idealframe = startframe + (int)floor( (float)( level.time - G_Script( ent )->scriptStatus.scriptStackChangeTime ) / ( 1000.0 / (float)rate ) );
 	if ( looping ) {
 		ent->s.frame = startframe + ( idealframe - startframe ) % ( endframe - startframe );
 		ent->s.eFlags |= EF_MOVER_ANIMATE;
@@ -662,75 +662,75 @@ qboolean G_ScriptAction_Accum( gentity_t *ent, char *params ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		ent->scriptAccumBuffer[bufferIndex] += atoi( token );
+		G_Script( ent )->scriptAccumBuffer[bufferIndex] += atoi( token );
 	} else if ( !Q_stricmp( lastToken, "abort_if_less_than" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		if ( ent->scriptAccumBuffer[bufferIndex] < atoi( token ) ) {
+		if ( G_Script( ent )->scriptAccumBuffer[bufferIndex] < atoi( token ) ) {
 			// abort the current script
-			ent->scriptStatus.scriptStackHead = ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack.numItems;
+			G_Script( ent )->scriptStatus.scriptStackHead = G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack.numItems;
 		}
 	} else if ( !Q_stricmp( lastToken, "abort_if_greater_than" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		if ( ent->scriptAccumBuffer[bufferIndex] > atoi( token ) ) {
+		if ( G_Script( ent )->scriptAccumBuffer[bufferIndex] > atoi( token ) ) {
 			// abort the current script
-			ent->scriptStatus.scriptStackHead = ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack.numItems;
+			G_Script( ent )->scriptStatus.scriptStackHead = G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack.numItems;
 		}
 	} else if ( !Q_stricmp( lastToken, "abort_if_not_equal" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		if ( ent->scriptAccumBuffer[bufferIndex] != atoi( token ) ) {
+		if ( G_Script( ent )->scriptAccumBuffer[bufferIndex] != atoi( token ) ) {
 			// abort the current script
-			ent->scriptStatus.scriptStackHead = ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack.numItems;
+			G_Script( ent )->scriptStatus.scriptStackHead = G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack.numItems;
 		}
 	} else if ( !Q_stricmp( lastToken, "abort_if_equal" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		if ( ent->scriptAccumBuffer[bufferIndex] == atoi( token ) ) {
+		if ( G_Script( ent )->scriptAccumBuffer[bufferIndex] == atoi( token ) ) {
 			// abort the current script
-			ent->scriptStatus.scriptStackHead = ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack.numItems;
+			G_Script( ent )->scriptStatus.scriptStackHead = G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack.numItems;
 		}
 	} else if ( !Q_stricmp( lastToken, "bitset" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		ent->scriptAccumBuffer[bufferIndex] |= ( 1 << atoi( token ) );
+		G_Script( ent )->scriptAccumBuffer[bufferIndex] |= ( 1 << atoi( token ) );
 	} else if ( !Q_stricmp( lastToken, "bitreset" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		ent->scriptAccumBuffer[bufferIndex] &= ~( 1 << atoi( token ) );
+		G_Script( ent )->scriptAccumBuffer[bufferIndex] &= ~( 1 << atoi( token ) );
 	} else if ( !Q_stricmp( lastToken, "abort_if_bitset" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		if ( ent->scriptAccumBuffer[bufferIndex] & ( 1 << atoi( token ) ) ) {
+		if ( G_Script( ent )->scriptAccumBuffer[bufferIndex] & ( 1 << atoi( token ) ) ) {
 			// abort the current script
-			ent->scriptStatus.scriptStackHead = ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack.numItems;
+			G_Script( ent )->scriptStatus.scriptStackHead = G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack.numItems;
 		}
 	} else if ( !Q_stricmp( lastToken, "abort_if_not_bitset" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		if ( !( ent->scriptAccumBuffer[bufferIndex] & ( 1 << atoi( token ) ) ) ) {
+		if ( !( G_Script( ent )->scriptAccumBuffer[bufferIndex] & ( 1 << atoi( token ) ) ) ) {
 			// abort the current script
-			ent->scriptStatus.scriptStackHead = ent->scriptEvents[ent->scriptStatus.scriptEventIndex].stack.numItems;
+			G_Script( ent )->scriptStatus.scriptStackHead = G_Script( ent )->scriptEvents[G_Script( ent )->scriptStatus.scriptEventIndex].stack.numItems;
 		}
 	} else if ( !Q_stricmp( lastToken, "set" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		ent->scriptAccumBuffer[bufferIndex] = atoi( token );
+		G_Script( ent )->scriptAccumBuffer[bufferIndex] = atoi( token );
 	} else if ( !Q_stricmp( lastToken, "random" ) ) {
 		if ( !token[0] ) {
 			G_Error( "Scripting: accum %s requires a parameter\n", lastToken );
 		}
-		ent->scriptAccumBuffer[bufferIndex] = rand() % atoi( token );
+		G_Script( ent )->scriptAccumBuffer[bufferIndex] = rand() % atoi( token );
 	} else {
 		G_Error( "Scripting: accum: \"%s\": unknown command\n", params );
 	}
@@ -875,7 +875,7 @@ qboolean G_ScriptAction_FaceAngles( gentity_t *ent, char *params ) {
 		G_Error( "G_Scripting: syntax: faceangles <pitch> <yaw> <roll> <duration/GOTOTIME>\n" );
 	}
 
-	if ( ent->scriptStatus.scriptStackChangeTime == level.time ) {
+	if ( G_Script( ent )->scriptStatus.scriptStackChangeTime == level.time ) {
 		pString = params;
 		for ( i = 0; i < 3; i++ ) {
 			token = COM_Parse( &pString );
@@ -960,7 +960,7 @@ G_ScriptAction_ResetScript
 ===================
 */
 qboolean G_ScriptAction_ResetScript( gentity_t *ent, char *params ) {
-	if ( level.time == ent->scriptStatus.scriptStackChangeTime ) {
+	if ( level.time == G_Script( ent )->scriptStatus.scriptStackChangeTime ) {
 		return qfalse;
 	}
 
@@ -1018,8 +1018,8 @@ G_ScriptAction_Halt
 ====================
 */
 qboolean G_ScriptAction_Halt( gentity_t *ent, char *params ) {
-	if ( level.time == ent->scriptStatus.scriptStackChangeTime ) {
-		ent->scriptStatus.scriptFlags &= ~SCFL_GOING_TO_MARKER;
+	if ( level.time == G_Script( ent )->scriptStatus.scriptStackChangeTime ) {
+		G_Script( ent )->scriptStatus.scriptFlags &= ~SCFL_GOING_TO_MARKER;
 
 		// stop the angles
 		BG_EvaluateTrajectory( &ent->s.apos, level.time, ent->s.angles );
@@ -1454,11 +1454,11 @@ qboolean G_ScriptAction_BackupScript( gentity_t *ent, char *params ) {
 //		G_Printf( "ENTITY SCRIPT: WARNING: backupscript not at start of event, possibly harmful.\n");
 //	}
 
-	if ( !( ent->scriptStatus.scriptFlags & SCFL_WAITING_RESTORE ) ) {
+	if ( !( G_Script( ent )->scriptStatus.scriptFlags & SCFL_WAITING_RESTORE ) ) {
 
 		// if we are moving, stop here
-		if ( ent->scriptStatus.scriptFlags & SCFL_GOING_TO_MARKER ) {
-			ent->scriptStatus.scriptFlags &= ~SCFL_GOING_TO_MARKER;
+		if ( G_Script( ent )->scriptStatus.scriptFlags & SCFL_GOING_TO_MARKER ) {
+			G_Script( ent )->scriptStatus.scriptFlags &= ~SCFL_GOING_TO_MARKER;
 
 			// set the angles at the destination
 			BG_EvaluateTrajectory( &ent->s.apos, level.time, ent->s.angles );
@@ -1481,8 +1481,8 @@ qboolean G_ScriptAction_BackupScript( gentity_t *ent, char *params ) {
 			script_linkentity( ent );
 		}
 
-		ent->scriptStatusBackup = ent->scriptStatusCurrent;
-		ent->scriptStatus.scriptFlags |= SCFL_WAITING_RESTORE;
+		G_Script( ent )->scriptStatusBackup = G_Script( ent )->scriptStatusCurrent;
+		G_Script( ent )->scriptStatus.scriptFlags |= SCFL_WAITING_RESTORE;
 	}
 
 	return qtrue;
@@ -1497,8 +1497,8 @@ G_ScriptAction_RestoreScript
 */
 qboolean G_ScriptAction_RestoreScript( gentity_t *ent, char *params ) {
 
-	ent->scriptStatus = ent->scriptStatusBackup;
-	ent->scriptStatus.scriptStackChangeTime = level.time;       // start moves again
+	G_Script( ent )->scriptStatus = G_Script( ent )->scriptStatusBackup;
+	G_Script( ent )->scriptStatus.scriptStackChangeTime = level.time;       // start moves again
 	return qfalse;  // dont continue scripting until next frame
 
 }

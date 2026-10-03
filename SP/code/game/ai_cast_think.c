@@ -1180,7 +1180,7 @@ void AICast_PredictMovement( cast_state_t *cs, int numframes, float frametime, a
 					move->stopevent = PREDICTSTOP_HITENT;
 					goto done;
 				} else if ( pm.touchents[i] < MAX_CLIENTS ||
-							( pm.touchents[i] != ENTITYNUM_WORLD && ( g_entities[pm.touchents[i]].s.eType != ET_MOVER || g_entities[pm.touchents[i]].moverState != MOVER_POS1 ) ) ) {
+							( pm.touchents[i] != ENTITYNUM_WORLD && ( g_entities[pm.touchents[i]].s.eType != ET_MOVER || G_ReadMover( &g_entities[pm.touchents[i]] )->moverState != MOVER_POS1 ) ) ) {
 					// we have hit another entity, so abort
 					move->stopevent = PREDICTSTOP_HITCLIENT;
 					goto done;

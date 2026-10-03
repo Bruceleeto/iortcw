@@ -171,6 +171,7 @@ typedef int intptr_t;
 #include <time.h>
 #include <ctype.h>
 #include <limits.h>
+#include "../qcommon/q_fastmath.h"
 
 #ifdef _MSC_VER
   #include <io.h>

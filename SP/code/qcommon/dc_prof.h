@@ -20,7 +20,15 @@ typedef enum {
 	PROF_CGAME,         // the client game module
 	PROF_UI,            // the menus
 	PROF_SCENE,         // the renderer's front end: RE_RenderScene
-	PROF_DRAW,          // its back end: the render commands, to the PVR's lists
+	PROF_DRAW,          // its back end: the render commands, to the PVR's lists;
+						// what the ones below don't have (2D, sorting, state)
+	PROF_WORLD,         //   the world's surfaces into tess (rb_surfaceTable)
+	PROF_MODELS,        //   entities' surfaces into tess: model lerp, MDS skinning
+	PROF_SHADE,         //   a shader's stages: colours, texcoords, deforms
+	PROF_SKY,           //   the sky's (RB_StageIteratorSky) and the sun
+	PROF_FLARES,        //   RB_RenderFlares
+	PROF_PVR,           //   pvr_gl: transform, clip, PVR vertices into the lists
+	PROF_SUBMIT,        //   pvr_gl: the lists to the PVR at the end of the frame
 	PROF_GPU,           // waiting for the PVR to finish the frame before
 	PROF_SOUND,         // S_Update
 	PROF_IDLE,          // Com_Frame waiting for its next frame (com_maxfps)
@@ -35,6 +43,26 @@ void Com_ProfEnd( profSection_t section );
 #else
 #define PROF_BEGIN( section )
 #define PROF_END( section )
+#endif
+
+/*
+ * A map load's steps: LOAD_START when one begins (SV_SpawnServer), then
+ * LOAD_STEP( what ) after each, printing what that step took and the total
+ * so far, until LOAD_DONE (the first snapshot, in the game):
+ *
+ *   LOAD collision map            412 ms  (total   1530)
+ */
+#ifdef DC_PROF
+void Com_LoadStart( void );
+void Com_LoadStep( const char *what );
+void Com_LoadDone( void );
+#define LOAD_START()        Com_LoadStart()
+#define LOAD_STEP( what )   Com_LoadStep( what )
+#define LOAD_DONE()         Com_LoadDone()
+#else
+#define LOAD_START()
+#define LOAD_STEP( what )
+#define LOAD_DONE()
 #endif
 
 #endif

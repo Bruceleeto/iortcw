@@ -355,12 +355,12 @@ void SP_props_sparks( gentity_t *ent ) {
 		ent->wait *= 1000;
 	}
 
-	if ( !ent->start_size ) {
-		ent->start_size = 8;
+	if ( !G_Misc( ent )->start_size ) {
+		G_Misc( ent )->start_size = 8;
 	}
 
-	if ( !ent->end_size ) {
-		ent->end_size = 8;
+	if ( !G_Misc( ent )->end_size ) {
+		G_Misc( ent )->end_size = 8;
 	}
 
 	if ( !ent->speed ) {
@@ -606,7 +606,7 @@ void InitProp( gentity_t *ent ) {
 
 	ent->isProp = qtrue;
 
-	ent->moverState = MOVER_POS1;
+	G_Mover( ent )->moverState = MOVER_POS1;
 	ent->s.eType = ET_MOVER;
 
 	G_SetOrigin( ent, ent->s.origin );
@@ -2500,8 +2500,8 @@ void flippy_table_use( gentity_t *ent, gentity_t *other, gentity_t *activator ) 
 			slave->think = ent->think;
 			slave->nextthink = ent->nextthink;
 
-			VectorCopy( ent->pos1, slave->pos1 );
-			VectorCopy( ent->pos2, slave->pos2 );
+			VectorCopy( G_Mover( ent )->pos1, G_Mover( slave )->pos1 );
+			VectorCopy( G_Mover( ent )->pos2, G_Mover( slave )->pos2 );
 
 			slave->speed = ent->speed;
 
@@ -2811,7 +2811,7 @@ void props_snowGenerator_think( gentity_t *ent ) {
 
 	for ( i = 0; i < ent->count; i++ )
 	{
-		VectorCopy( ent->pos1, point );
+		VectorCopy( G_Mover( ent )->pos1, point );
 
 		// we need to randomize to the extent of the brush
 		point[0] += crandom() * ( deep * 0.5 );
@@ -2852,7 +2852,7 @@ void SP_props_snowGenerator( gentity_t *ent ) {
 	VectorAdd( ent->r.absmin, ent->r.absmax, center );
 	VectorScale( center, 0.5, center );
 
-	VectorCopy( center, ent->pos1 );
+	VectorCopy( center, G_Mover( ent )->pos1 );
 
 	if ( !ent->target ) {
 		G_Printf( "snowGenerator at loc %s does not have a target\n", vtos( center ) );
@@ -2975,12 +2975,12 @@ void propsFireColumnUse( gentity_t *ent, gentity_t *other, gentity_t *activator 
 		VectorCopy( start, tent->r.currentOrigin );
 	}
 
-	if ( ent->start_size ) {
-		tent->s.angles[1] = ent->start_size;
+	if ( G_Misc( ent )->start_size ) {
+		tent->s.angles[1] = G_Misc( ent )->start_size;
 	}
 
-	if ( ent->end_size ) {
-		tent->s.angles[2] = ent->end_size;
+	if ( G_Misc( ent )->end_size ) {
+		tent->s.angles[2] = G_Misc( ent )->end_size;
 	}
 
 	if ( ent->count ) {
@@ -3153,7 +3153,7 @@ void props_decoration_animate( gentity_t *ent ) {
 
 	if ( ent->s.frame > ent->count2 ) {
 		if ( ent->spawnflags & 32 || ent->spawnflags & 64 ) {
-			ent->s.frame = ent->props_frame_state;
+			ent->s.frame = G_Misc( ent )->props_frame_state;
 
 			if ( !( ent->spawnflags & 64 ) ) {
 				ent->takedamage = qfalse;
@@ -3247,7 +3247,7 @@ void SP_props_decoration( gentity_t *ent ) {
 	}
 
 	if ( ( ent->spawnflags & 32 ) && G_SpawnString( "loop", "100", &loop ) ) {
-		ent->props_frame_state = atoi( loop );
+		G_Misc( ent )->props_frame_state = atoi( loop );
 	}
 
 	// if the "color" or "light" keys are set, setup constantLight
@@ -3974,7 +3974,7 @@ void SP_props_footlocker( gentity_t *self ) {
 	}
 
 	if ( G_SpawnString( "locknoise", "NOSOUND", &locked ) ) {
-		self->soundPos1 = G_SoundIndex( locked );
+		G_Mover( self )->soundPos1 = G_SoundIndex( locked );
 	}
 
 	if ( !( self->wait ) ) {
@@ -4149,7 +4149,7 @@ void SP_props_flamethrower( gentity_t *ent ) {
 	if ( !dsize ) {
 		dsize = 1;
 	}
-	ent->accuracy = dsize;
+	G_Misc( ent )->accuracy = dsize;
 
 	if ( ent->spawnflags & 2 ) { // SILENT
 		ent->s.density = 1;

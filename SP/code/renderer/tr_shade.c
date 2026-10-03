@@ -1680,7 +1680,17 @@ void RB_EndSurface( void ) {
 	//
 	// call off to shader specific tess end function
 	//
+#ifdef DC_PROF
+	{
+		profSection_t section = tess.currentStageIteratorFunc == RB_StageIteratorSky ? PROF_SKY : PROF_SHADE;
+
+		PROF_BEGIN( section );
+		tess.currentStageIteratorFunc();
+		PROF_END( section );
+	}
+#else
 	tess.currentStageIteratorFunc();
+#endif
 
 	//
 	// draw debugging stuff

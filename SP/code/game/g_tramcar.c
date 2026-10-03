@@ -180,19 +180,19 @@ void InitTramcar( gentity_t *ent ) {
 	ent->use = Use_BinaryMover;
 //	ent->reached = Reached_BinaryMover;
 
-	ent->moverState = MOVER_POS1;
+	G_Mover( ent )->moverState = MOVER_POS1;
 	ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
 	ent->s.eType = ET_MOVER;
 
-	VectorCopy( ent->pos1, ent->r.currentOrigin );
+	VectorCopy( G_Mover( ent )->pos1, ent->r.currentOrigin );
 
 	trap_LinkEntity( ent );
 
 	ent->s.pos.trType = TR_STATIONARY;
-	VectorCopy( ent->pos1, ent->s.pos.trBase );
+	VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
 
 	// calculate time to reach second position from speed
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	distance = VectorLength( move );
 	if ( !ent->speed ) {
 		ent->speed = 100;
@@ -371,8 +371,8 @@ void Reached_Tramcar( gentity_t *ent ) {
 		//	ent->s.apos.trDuration = 1000;
 
 		{
-			VectorCopy( next->s.origin, ent->pos1 );
-			VectorCopy( next->nextTrain->s.origin, ent->pos2 );
+			VectorCopy( next->s.origin, G_Mover( ent )->pos1 );
+			VectorCopy( next->nextTrain->s.origin, G_Mover( ent )->pos2 );
 
 			// if the path_corner has a speed, use that
 			if ( next->speed ) {
@@ -386,14 +386,14 @@ void Reached_Tramcar( gentity_t *ent ) {
 			}
 
 			// calculate duration
-			VectorSubtract( ent->pos2, ent->pos1, move );
+			VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 			length = VectorLength( move );
 
 			ent->s.apos.trDuration = length * 1000 / speed;
 
 //testing
 // ent->gDuration = ent->s.apos.trDuration;
-			ent->gDurationBack = ent->gDuration = ent->s.apos.trDuration;
+			G_Mover( ent )->gDurationBack = G_Mover( ent )->gDuration = ent->s.apos.trDuration;
 // ent->gDeltaBack = ent->gDelta =
 
 		}
@@ -420,11 +420,11 @@ void Reached_Tramcar( gentity_t *ent ) {
 			float diff;
 
 			if ( next->spawnflags & 4 ) { // reverse
-				ent->props_frame_state = truck_reverse;
+				G_Misc( ent )->props_frame_state = truck_reverse;
 				VectorSubtract( ent->r.currentOrigin, ent->nextTrain->nextTrain->s.origin, vec );
 			} else
 			{
-				ent->props_frame_state = truck_moving;
+				G_Misc( ent )->props_frame_state = truck_moving;
 				VectorSubtract( ent->nextTrain->nextTrain->s.origin, ent->r.currentOrigin, vec );
 			}
 
@@ -442,7 +442,7 @@ void Reached_Tramcar( gentity_t *ent ) {
 			}
 
 //testing
-			ent->gDuration = ent->s.pos.trDuration;
+			G_Mover( ent )->gDuration = ent->s.pos.trDuration;
 
 			VectorClear( ent->s.apos.trDelta );
 
@@ -453,18 +453,18 @@ void Reached_Tramcar( gentity_t *ent ) {
 		}
 
 		if ( next->wait == -1 ) {
-			ent->props_frame_state = truck_idle;
+			G_Misc( ent )->props_frame_state = truck_idle;
 		}
 
 		if ( next->count2 == 1 ) {
-			ent->props_frame_state = truck_gear1;
+			G_Misc( ent )->props_frame_state = truck_gear1;
 		} else if ( next->count2 == 2 ) {
-			ent->props_frame_state = truck_gear2;
+			G_Misc( ent )->props_frame_state = truck_gear2;
 		} else if ( next->count2 == 3 ) {
-			ent->props_frame_state = truck_gear3;
+			G_Misc( ent )->props_frame_state = truck_gear3;
 		}
 
-		switch ( ent->props_frame_state )
+		switch ( G_Misc( ent )->props_frame_state )
 		{
 		case truck_idle: ent->s.loopSound = truck_idle_snd; break;
 		case truck_gear1: ent->s.loopSound = truck_gear1_snd; break;
@@ -497,8 +497,8 @@ void Reached_Tramcar( gentity_t *ent ) {
 		next->count = 1;
 	}
 
-	VectorCopy( next->s.origin, ent->pos1 );
-	VectorCopy( next->nextTrain->s.origin, ent->pos2 );
+	VectorCopy( next->s.origin, G_Mover( ent )->pos1 );
+	VectorCopy( next->nextTrain->s.origin, G_Mover( ent )->pos2 );
 
 	// if the path_corner has a speed, use that
 	if ( next->speed ) {
@@ -512,19 +512,19 @@ void Reached_Tramcar( gentity_t *ent ) {
 	}
 
 	// calculate duration
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	length = VectorLength( move );
 
 	ent->s.pos.trDuration = length * 1000 / speed;
 
 //testing
 // ent->gDuration = ent->s.pos.trDuration;
-	ent->gDurationBack = ent->gDuration = ent->s.pos.trDuration;
+	G_Mover( ent )->gDurationBack = G_Mover( ent )->gDuration = ent->s.pos.trDuration;
 // ent->gDeltaBack = ent->gDelta = ;
 
 	// looping sound
-	if ( next->soundLoop ) {
-		ent->s.loopSound = next->soundLoop;
+	if ( G_Mover( next )->soundLoop ) {
+		ent->s.loopSound = G_Mover( next )->soundLoop;
 	}
 
 	// start it going
@@ -576,8 +576,8 @@ void Tramcar_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, in
 		slave->think = self->think;
 		slave->nextthink = self->nextthink;
 
-		VectorCopy( self->pos1, slave->pos1 );
-		VectorCopy( self->pos2, slave->pos2 );
+		VectorCopy( G_Mover( self )->pos1, G_Mover( slave )->pos1 );
+		VectorCopy( G_Mover( self )->pos2, G_Mover( slave )->pos2 );
 
 		slave->speed = self->speed;
 
@@ -936,7 +936,7 @@ void props_me109_pain( gentity_t *self, gentity_t *attacker, int damage, vec3_t 
 	G_Printf( "pain: health = %i\n", self->health );
 
 	VectorCopy( self->r.currentOrigin, temp );
-	VectorCopy( self->pos3, self->r.currentOrigin );
+	VectorCopy( G_Mover( self )->pos3, self->r.currentOrigin );
 	Spawn_Shard( self, NULL, 6, 999 );
 	VectorCopy( temp, self->r.currentOrigin );
 
@@ -1040,22 +1040,22 @@ void props_me109_think( gentity_t *self ) {
 		tent->s.angles2[1] = 48;
 		tent->s.angles2[2] = 10;
 
-		self->props_frame_state = plane_choke;
+		G_Misc( self )->props_frame_state = plane_choke;
 		self->health--;
 	}
 
 	if ( self->health > 0 ) {
 		self->nextthink = level.time + 50;
 
-		if ( self->props_frame_state == plane_choke ) {
+		if ( G_Misc( self )->props_frame_state == plane_choke ) {
 			self->melee->s.loopSound = self->melee->noise_index = fpchoke_snd;
-		} else if ( self->props_frame_state == plane_startup )     {
+		} else if ( G_Misc( self )->props_frame_state == plane_startup )     {
 			self->melee->s.loopSound = self->melee->noise_index = fpstartup_snd;
-		} else if ( self->props_frame_state == plane_idle )     {
+		} else if ( G_Misc( self )->props_frame_state == plane_idle )     {
 			self->melee->s.loopSound = self->melee->noise_index = fpidle_snd;
-		} else if ( self->props_frame_state == plane_flyby1 )     {
+		} else if ( G_Misc( self )->props_frame_state == plane_flyby1 )     {
 			self->melee->s.loopSound = self->melee->noise_index = fpflyby1_snd;
-		} else if ( self->props_frame_state == plane_flyby2 )     {
+		} else if ( G_Misc( self )->props_frame_state == plane_flyby2 )     {
 			self->melee->s.loopSound = self->melee->noise_index = fpflyby2_snd;
 		}
 	} else
@@ -1313,7 +1313,7 @@ void SP_truck_cam( gentity_t *self ) {
 	self->touch = truck_cam_touch;
 
 	self->s.loopSound = 0;
-	self->props_frame_state = 0;
+	G_Misc( self )->props_frame_state = 0;
 
 	self->clipmask = CONTENTS_SOLID;
 
@@ -1358,19 +1358,19 @@ void Init_Camera( gentity_t *ent ) {
 	vec3_t move;
 	float distance;
 
-	ent->moverState = MOVER_POS1;
+	G_Mover( ent )->moverState = MOVER_POS1;
 	ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
 	ent->s.eType = ET_MOVER;
 
-	VectorCopy( ent->pos1, ent->r.currentOrigin );
+	VectorCopy( G_Mover( ent )->pos1, ent->r.currentOrigin );
 
 	trap_LinkEntity( ent );
 
 	ent->s.pos.trType = TR_STATIONARY;
-	VectorCopy( ent->pos1, ent->s.pos.trBase );
+	VectorCopy( G_Mover( ent )->pos1, ent->s.pos.trBase );
 
 	// calculate time to reach second position from speed
-	VectorSubtract( ent->pos2, ent->pos1, move );
+	VectorSubtract( G_Mover( ent )->pos2, G_Mover( ent )->pos1, move );
 	distance = VectorLength( move );
 	if ( !ent->speed ) {
 		ent->speed = 100;

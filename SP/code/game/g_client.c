@@ -1164,6 +1164,11 @@ G_CheckForExistingModelInfo
   returns qtrue if existing model found, qfalse otherwise
 ==================
 */
+// a model's info is parsed into this at full size, then cut to fit
+// (G_FitModelInfo); kept between models while the level loads
+static animModelInfo_t *modelInfoFull;
+static qboolean modelInfoHold;
+
 qboolean G_CheckForExistingModelInfo( gclient_t *cl, char *modelName, animModelInfo_t **modelInfo ) {
 	int i;
 	animModelInfo_t *trav;
@@ -1178,11 +1183,13 @@ qboolean G_CheckForExistingModelInfo( gclient_t *cl, char *modelName, animModelI
 				return qtrue;
 			}
 		} else {
-			// parsed at full size, then cut to fit (G_GetModelInfo)
-			level.animScriptData.modelInfo[i] = malloc( sizeof( animModelInfo_t ) );
-			if ( !level.animScriptData.modelInfo[i] ) {
-				G_Error( "G_CheckForExistingModelInfo: out of memory" );
+			if ( !modelInfoFull ) {
+				modelInfoFull = malloc( sizeof( animModelInfo_t ) );
+				if ( !modelInfoFull ) {
+					G_Error( "G_CheckForExistingModelInfo: out of memory" );
+				}
 			}
+			level.animScriptData.modelInfo[i] = modelInfoFull;
 			*modelInfo = level.animScriptData.modelInfo[i];
 			// clear the structure out ready for use
 			memset( *modelInfo, 0, sizeof( **modelInfo ) );
@@ -1222,7 +1229,10 @@ static animModelInfo_t *G_FitModelInfo( animModelInfo_t *full ) {
 			}
 		}
 	}
-	free( full );
+	if ( !modelInfoHold ) {
+		free( modelInfoFull );
+		modelInfoFull = NULL;
+	}
 	return mi;
 }
 
@@ -1238,7 +1248,30 @@ static void G_LoadModelInfo( gclient_t *cl, char *modelName ) {
 	}
 }
 
+// the cast's model infos, parsed as the level loads (AICast_PreloadCast) with
+// the one full size buffer, into a client slot no one's in yet
+void G_PreloadModelInfo( char *modelName ) {
+	gclient_t *cl = &level.clients[level.maxclients - 1];
+
+	if ( cl->pers.connected != CON_DISCONNECTED ) {
+		return;
+	}
+	cl->ps.clientNum = level.maxclients - 1;
+	modelInfoHold = qtrue;
+	G_LoadModelInfo( cl, modelName );
+	cl->modelInfo = NULL;
+	level.animScriptData.clientModels[cl->ps.clientNum] = 0;
+}
+
+void G_PreloadModelInfoDone( void ) {
+	modelInfoHold = qfalse;
+	free( modelInfoFull );
+	modelInfoFull = NULL;
+}
+
 qboolean G_GetModelInfo( int clientNum, char *modelName, animModelInfo_t **modelInfo ) {
+	// the client asks for slots no one's in as well (CG_PreloadAIModels)
+	level.clients[clientNum].ps.clientNum = clientNum;
 	G_LoadModelInfo( &level.clients[clientNum], modelName );
 	*modelInfo = level.clients[clientNum].modelInfo;
 	return qtrue;

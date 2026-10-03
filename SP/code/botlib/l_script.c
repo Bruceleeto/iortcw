@@ -841,10 +841,20 @@ int PS_ReadPrimitive( script_t *script, token_t *token ) {
 	} //end while
 	token->string[len] = 0;
 	//copy the token into the script structure
-	memcpy( &script->token, token, sizeof( token_t ) );
+	PS_CopyToken( &script->token, token );
 	//primitive reading successfull
 	return 1;
 } //end of the function PS_ReadPrimitive
+//============================================================================
+//
+// Parameter:				-
+// Returns:					-
+// Changes Globals:		-
+//============================================================================
+void PS_CopyToken( token_t *dst, const token_t *src ) {
+	memcpy( &dst->type, &src->type, sizeof( token_t ) - offsetof( token_t, type ) );
+	strcpy( dst->string, src->string );
+} //end of the function PS_CopyToken
 //============================================================================
 //
 // Parameter:				-
@@ -855,15 +865,16 @@ int PS_ReadToken( script_t *script, token_t *token ) {
 	//if there is a token available (from UnreadToken)
 	if ( script->tokenavailable ) {
 		script->tokenavailable = 0;
-		memcpy( token, &script->token, sizeof( token_t ) );
+		PS_CopyToken( token, &script->token );
 		return 1;
 	} //end if
 	  //save script pointer
 	script->lastscript_p = script->script_p;
 	//save line counter
 	script->lastline = script->line;
-	//clear the token stuff
-	memset( token, 0, sizeof( token_t ) );
+	//clear the token stuff (each reader ends its string)
+	token->string[0] = 0;
+	memset( &token->type, 0, sizeof( token_t ) - offsetof( token_t, type ) );
 	//start of the white space
 	script->whitespace_p = script->script_p;
 	token->whitespace_p = script->script_p;
@@ -917,7 +928,7 @@ int PS_ReadToken( script_t *script, token_t *token ) {
 		return 0;
 	} //end if
 	  //copy the token into the script structure
-	memcpy( &script->token, token, sizeof( token_t ) );
+	PS_CopyToken( &script->token, token );
 	//successfully read a token
 	return 1;
 } //end of the function PS_ReadToken
@@ -1070,7 +1081,7 @@ int PS_CheckTokenType( script_t *script, int type, int subtype, token_t *token )
 	//if the type matches
 	if ( tok.type == type &&
 		 ( tok.subtype & subtype ) == subtype ) {
-		memcpy( token, &tok, sizeof( token_t ) );
+		PS_CopyToken( token, &tok );
 		return 1;
 	} //end if
 	  //token is not available
@@ -1110,7 +1121,7 @@ void PS_UnreadLastToken( script_t *script ) {
 // Changes Globals:		-
 //============================================================================
 void PS_UnreadToken( script_t *script, token_t *token ) {
-	memcpy( &script->token, token, sizeof( token_t ) );
+	PS_CopyToken( &script->token, token );
 	script->tokenavailable = 1;
 } //end of the function UnreadToken
 //============================================================================

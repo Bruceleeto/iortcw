@@ -1331,7 +1331,7 @@ static int IndexUInt( const void *p, int i ) { return ( (const GLuint *)p )[i]; 
 static int IndexUShort( const void *p, int i ) { return ( (const GLushort *)p )[i]; }
 static int IndexUByte( const void *p, int i ) { return ( (const GLubyte *)p )[i]; }
 
-static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
+static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
 	listBuffer_t *l;
 	float depthScale;
 	int list, i;
@@ -1429,6 +1429,13 @@ static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void 
 		break;
 	}
 #undef V
+}
+
+/* DC_PROF: its time as pvr */
+static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
+	PROF_BEGIN( PROF_PVR );
+	DrawPrimitivesPVR( mode, count, idx, indices, maxIndex );
+	PROF_END( PROF_PVR );
 }
 
 void APIENTRY pvrglDrawArrays( GLenum mode, GLint first, GLsizei count ) {
@@ -1595,6 +1602,7 @@ void pvrgl_EndFrame( void ) {
 	PROF_END( PROF_GPU );
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
+	PROF_BEGIN( PROF_SUBMIT );
 	pvr_scene_begin();
 	if ( getenv( "PVRGL_STATS" ) ) {
 		static int n;
@@ -1620,6 +1628,7 @@ void pvrgl_EndFrame( void ) {
 		pvr_list_finish();
 	}
 	pvr_scene_finish();
+	PROF_END( PROF_SUBMIT );
 
 	ResetLists();
 }

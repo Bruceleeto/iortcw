@@ -461,8 +461,8 @@ void target_relay_use( gentity_t *self, gentity_t *other, gentity_t *activator )
 
 //			if(self->key == -1)	// relay permanently locked
 			if ( self->key >= KEY_LOCKED_ENT ) { // relay permanently locked
-				if ( self->soundPos1 ) {
-					G_Sound( self, self->soundPos1 );    //----(SA)	added
+				if ( G_Mover( self )->soundPos1 ) {
+					G_Sound( self, G_Mover( self )->soundPos1 );    //----(SA)	added
 				}
 				return;
 			}
@@ -472,16 +472,16 @@ void target_relay_use( gentity_t *self, gentity_t *other, gentity_t *activator )
 			if ( item ) {
 				if ( activator->client->ps.stats[STAT_KEYS] & ( 1 << item->giTag ) ) { // user has key
 					if ( self->spawnflags & 8 ) {    // relay is NOKEY_ONLY and player has key
-						if ( self->soundPos1 ) {
-							G_Sound( self, self->soundPos1 );    //----(SA)	added
+						if ( G_Mover( self )->soundPos1 ) {
+							G_Sound( self, G_Mover( self )->soundPos1 );    //----(SA)	added
 						}
 						return;
 					}
 				} else                            // user does not have key
 				{
 					if ( !( self->spawnflags & 8 ) ) {
-						if ( self->soundPos1 ) {
-							G_Sound( self, self->soundPos1 );    //----(SA)	added
+						if ( G_Mover( self )->soundPos1 ) {
+							G_Sound( self, G_Mover( self )->soundPos1 );    //----(SA)	added
 						}
 						return;
 					}
@@ -531,9 +531,9 @@ void SP_target_relay( gentity_t *self ) {
 
 	if ( !( self->spawnflags & 32 ) ) {  // !NO_LOCKED_NOISE
 		if ( G_SpawnString( "lockednoise", "0", &sound ) ) {
-			self->soundPos1 = G_SoundIndex( sound );
+			G_Mover( self )->soundPos1 = G_SoundIndex( sound );
 		} else {
-			self->soundPos1 = G_SoundIndex( "sound/movers/doors/default_door_locked.wav" );
+			G_Mover( self )->soundPos1 = G_SoundIndex( "sound/movers/doors/default_door_locked.wav" );
 		}
 	}
 
@@ -694,7 +694,7 @@ void Use_target_fog( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 //		density
 //		r,g,b
 //		time to complete
-	trap_SetConfigstring( CS_FOGVARS, va( "%f %f %f %f %f %f %i", ent->accuracy, ent->random, 1.0f, (float)ent->dl_color[0], (float)ent->dl_color[1], (float)ent->dl_color[2], ent->s.time ) );
+	trap_SetConfigstring( CS_FOGVARS, va( "%f %f %f %f %f %f %i", G_Misc( ent )->accuracy, ent->random, 1.0f, (float)G_Misc( ent )->dl_color[0], (float)G_Misc( ent )->dl_color[1], (float)G_Misc( ent )->dl_color[2], ent->s.time ) );
 }
 
 /*QUAKED target_fog (1 1 0) (-8 -8 -8) (8 8 8)
@@ -718,7 +718,7 @@ void SP_target_fog( gentity_t *ent ) {
 	}
 
 	G_SpawnFloat( "near", "1.0", &startdist );
-	ent->accuracy = startdist;
+	G_Misc( ent )->accuracy = startdist;
 
 
 	// ent->s.time will carry the 'time' value
@@ -826,11 +826,11 @@ void smoke_think( gentity_t *ent ) {
 	tent->s.density = ent->s.density;
 
 	// this is used to set the size of the smoke particle
-	tent->s.angles2[0] = ent->start_size;
-	tent->s.angles2[1] = ent->end_size;
+	tent->s.angles2[0] = G_Misc( ent )->start_size;
+	tent->s.angles2[1] = G_Misc( ent )->end_size;
 	tent->s.angles2[2] = ent->wait;
 
-	VectorCopy( ent->pos3, tent->s.origin2 );
+	VectorCopy( G_Mover( ent )->pos3, tent->s.origin2 );
 
 	if ( ent->s.frame ) { // denotes reverse gravity effect
 		tent->s.frame = 1;
@@ -858,13 +858,13 @@ void smoke_init( gentity_t *ent ) {
 		target = G_Find( NULL, FOFS( targetname ), ent->target );
 		if ( target ) {
 			VectorSubtract( target->s.origin, ent->s.origin, vec );
-			VectorCopy( vec, ent->pos3 );
+			VectorCopy( vec, G_Mover( ent )->pos3 );
 		} else {
-			VectorSet( ent->pos3, 0, 0, 1 );
+			VectorSet( G_Mover( ent )->pos3, 0, 0, 1 );
 		}
 	} else
 	{
-		VectorSet( ent->pos3, 0, 0, 1 );
+		VectorSet( G_Mover( ent )->pos3, 0, 0, 1 );
 	}
 
 	trap_LinkEntity( ent );
@@ -908,12 +908,12 @@ void SP_target_smoke( gentity_t *ent ) {
 		ent->duration = 2000;
 	}
 
-	if ( !ent->start_size ) {
-		ent->start_size = 24;
+	if ( !G_Misc( ent )->start_size ) {
+		G_Misc( ent )->start_size = 24;
 	}
 
-	if ( !ent->end_size ) {
-		ent->end_size = 96;
+	if ( !G_Misc( ent )->end_size ) {
+		G_Misc( ent )->end_size = 96;
 	}
 
 	if ( !ent->wait ) {
@@ -994,26 +994,26 @@ void target_rumble_think( gentity_t * ent ) {
 		ent->timestamp = level.time;
 		ent->count++;
 		// start sound here
-		if ( ent->soundPos1 ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos1 );
+		if ( G_Mover( ent )->soundPos1 ) {
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos1 );
 		}
 	} else
 	{
 		// looping sound
-		ent->s.loopSound = ent->soundLoop;
+		ent->s.loopSound = G_Mover( ent )->soundLoop;
 	}
 
 	dapitch = ent->delay;
 	ratio = 1.0f;
 
-	if ( ent->start_size ) {
-		if ( level.time < ( ent->timestamp + ent->start_size ) ) {
+	if ( G_Misc( ent )->start_size ) {
+		if ( level.time < ( ent->timestamp + G_Misc( ent )->start_size ) ) {
 			time = level.time - ent->timestamp;
-			time2 = ( ent->timestamp + ent->start_size ) - ent->timestamp;
+			time2 = ( ent->timestamp + G_Misc( ent )->start_size ) - ent->timestamp;
 			ratio = time / time2;
-		} else if ( level.time < ( ent->timestamp + ent->end_size + ent->start_size ) )       {
+		} else if ( level.time < ( ent->timestamp + G_Misc( ent )->end_size + G_Misc( ent )->start_size ) )       {
 			time = level.time - ent->timestamp;
-			time2 = ( ent->timestamp + ent->start_size + ent->end_size ) - ent->timestamp;
+			time2 = ( ent->timestamp + G_Misc( ent )->start_size + G_Misc( ent )->end_size ) - ent->timestamp;
 			ratio = time2 / time;
 		} else {
 			validrumble = qfalse;
@@ -1028,8 +1028,8 @@ void target_rumble_think( gentity_t * ent ) {
 
 	// end sound
 	if ( level.time > ent->duration + ent->timestamp ) {
-		if ( ent->soundPos2 ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos2 );
+		if ( G_Mover( ent )->soundPos2 ) {
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos2 );
 			ent->s.loopSound = 0;
 		}
 
@@ -1070,15 +1070,15 @@ void SP_target_rumble( gentity_t *self ) {
 	char        *endsound;
 
 	if ( G_SpawnString( "noise", "100", &sound ) ) {
-		self->soundLoop = G_SoundIndex( sound );
+		G_Mover( self )->soundLoop = G_SoundIndex( sound );
 	}
 
 	if ( G_SpawnString( "startnoise", "100", &startsound ) ) {
-		self->soundPos1 = G_SoundIndex( startsound );
+		G_Mover( self )->soundPos1 = G_SoundIndex( startsound );
 	}
 
 	if ( G_SpawnString( "endnoise", "100", &endsound ) ) {
-		self->soundPos2 = G_SoundIndex( endsound );
+		G_Mover( self )->soundPos2 = G_SoundIndex( endsound );
 	}
 
 	self->s.eType = ET_RUMBLE;
@@ -1100,15 +1100,15 @@ void SP_target_rumble( gentity_t *self ) {
 	}
 
 	G_SpawnString( "rampup", "0", &rampup );
-	self->start_size = atoi( rampup ) * 1000;
-	if ( !( self->start_size ) ) {
-		self->start_size = 1000;
+	G_Misc( self )->start_size = atoi( rampup ) * 1000;
+	if ( !( G_Misc( self )->start_size ) ) {
+		G_Misc( self )->start_size = 1000;
 	}
 
 	G_SpawnString( "rampdown", "0", &rampdown );
-	self->end_size = atoi( rampdown ) * 1000;
-	if ( !( self->end_size ) ) {
-		self->end_size = 1000;
+	G_Misc( self )->end_size = atoi( rampdown ) * 1000;
+	if ( !( G_Misc( self )->end_size ) ) {
+		G_Misc( self )->end_size = 1000;
 	}
 
 	if ( !( self->duration ) ) {

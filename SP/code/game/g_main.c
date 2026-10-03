@@ -267,6 +267,7 @@ qboolean AICast_VisibleFromPos( vec3_t srcpos, int srcnum,
 								vec3_t destpos, int destnum, qboolean updateVisPos );
 qboolean AICast_CheckAttackAtPos( int entnum, int enemy, vec3_t pos, qboolean ducking, qboolean allowHitWorld );
 void AICast_Init( void );
+void AICast_PreloadCast( void );
 // done.
 
 void G_RetrieveMoveSpeedsFromClient( int entnum, char *text );
@@ -730,8 +731,8 @@ void G_CheckForCursorHints( gentity_t *ent ) {
 				}
 			} else if ( checkEnt->s.eType == ET_MOVER )     {
 				if ( !Q_stricmp( checkEnt->classname, "func_door_rotating" ) ) {
-					if ( checkEnt->moverState == MOVER_POS1ROTATE    ||      // stationary/closed
-						 ( checkEnt->moverState == MOVER_POS2ROTATE && checkEnt->flags & FL_TOGGLE ) ) { // toggle door that's open
+					if ( G_ReadMover( checkEnt )->moverState == MOVER_POS1ROTATE    ||      // stationary/closed
+						 ( G_ReadMover( checkEnt )->moverState == MOVER_POS2ROTATE && checkEnt->flags & FL_TOGGLE ) ) { // toggle door that's open
 
 						hintDist = CH_DOOR_DIST;
 						hintType = HINT_DOOR_ROTATING;
@@ -741,8 +742,8 @@ void G_CheckForCursorHints( gentity_t *ent ) {
 						}
 					}
 				} else if ( !Q_stricmp( checkEnt->classname, "func_door" ) )         {
-					if ( checkEnt->moverState == MOVER_POS1   || // stationary/closed
-						 ( checkEnt->moverState == MOVER_POS2 && checkEnt->flags & FL_TOGGLE ) ) { // toggle door that's open
+					if ( G_ReadMover( checkEnt )->moverState == MOVER_POS1   || // stationary/closed
+						 ( G_ReadMover( checkEnt )->moverState == MOVER_POS2 && checkEnt->flags & FL_TOGGLE ) ) { // toggle door that's open
 
 						hintDist = CH_DOOR_DIST;
 						hintType = HINT_DOOR;
@@ -1204,6 +1205,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	G_ProcessIPBans();
 
 	G_InitMemory();
+	G_InitParts();
 	{
 		// the bots' states were in what G_InitMemory just took back: the
 		// game isn't a dll loaded again on a restart (dying's map_restart),
@@ -1321,6 +1323,16 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// parse the key/value pairs and spawn gentities
 	G_SpawnEntitiesFromString();
+
+	if ( g_gametype.integer == GT_SINGLE_PLAYER ) {
+		AICast_PreloadCast();
+	}
+	{
+		int movers, scripts, miscs, bytes = G_PartsInUse( &movers, &scripts, &miscs );
+
+		G_Printf( "entity parts: %d movers, %d scripts, %d misc, %d K (an entity's %d bytes)\n",
+				  movers, scripts, miscs, bytes / 1024, (int)sizeof( gentity_t ) );
+	}
 
 	// create the camera entity that will communicate with the scripts
 	G_SpawnScriptCamera();
@@ -2444,8 +2456,8 @@ void G_RunThink( gentity_t *ent ) {
 	float thinktime;
 
 	// RF, run scripting
-	if ( ent->s.number >= MAX_CLIENTS ) {
-		ent->scriptStatusCurrent = ent->scriptStatus;
+	if ( ent->s.number >= MAX_CLIENTS && ent->script ) {
+		G_Script( ent )->scriptStatusCurrent = G_Script( ent )->scriptStatus;
 		G_Script_ScriptRun( ent );
 	}
 

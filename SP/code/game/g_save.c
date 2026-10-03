@@ -121,7 +121,6 @@ static saveField_t gentityFields_17[] = {
 	{FOFS( spawnitem ),   F_STRING},
 	{FOFS( track ),       F_STRING},
 	{FOFS( scriptName ),  F_STRING},
-	{FOFS( scriptStatus.animatingParams ),    F_STRING},
 	{FOFS( tagName ),     F_STRING},
 	{FOFS( tagParent ),   F_ENTITY},
 
@@ -173,8 +172,10 @@ static ignoreField_t gentityIgnoreFields[] = {
 	//{FOFS(s.eventParms[0]),	sizeof(int) * MAX_EVENTS},
 	//{FOFS(s.eventSequence),	sizeof(int)},
 
-	{FOFS( numScriptEvents ), sizeof( int )},
-	{FOFS( scriptEvents ),    sizeof( g_script_event_t * ) },   // gets created upon parsing the script file, this is static while playing
+	// its parts (gMover_t ...) aren't in the save: it keeps what it has
+	{FOFS( mover ),           sizeof( gMover_t * ) },
+	{FOFS( script ),          sizeof( gScript_t * ) },
+	{FOFS( misc ),            sizeof( gMisc_t * ) },
 
 	{0, 0}
 };
@@ -831,9 +832,9 @@ void ReadEntity( fileHandle_t f, gentity_t *ent, int size ) {
 	}
 
 	// if this is a mover, check areaportals
-	if ( ent->s.eType == ET_MOVER && ent->moverState != backup.moverState ) {
+	if ( ent->s.eType == ET_MOVER && ent->mover && backup.mover && ent->mover->moverState != backup.mover->moverState ) {
 		if ( ent->teammaster == ent || !ent->teammaster ) {
-			if ( ent->moverState == MOVER_POS1ROTATE || ent->moverState == MOVER_POS1 ) {
+			if ( G_Mover( ent )->moverState == MOVER_POS1ROTATE || G_Mover( ent )->moverState == MOVER_POS1 ) {
 				// closed areaportal
 				trap_AdjustAreaPortalState( ent, qfalse );
 			} else {    // must be open
@@ -853,7 +854,7 @@ void ReadEntity( fileHandle_t f, gentity_t *ent, int size ) {
 	}
 
 	// check for blocking AAS at save time
-	if ( ent->AASblocking ) {
+	if ( ent->misc && ent->misc->AASblocking ) {
 		G_SetAASBlockingEntity( ent, qtrue );
 	}
 
@@ -1559,6 +1560,7 @@ void G_LoadGame( char *filename ) {
 
 		// clear all remaining entities
 		for ( ent = &g_entities[last] ; last < MAX_GENTITIES ; last++, ent++ ) {
+			G_FreeParts( ent );
 			memset( ent, 0, sizeof( *ent ) );
 			ent->classname = "freed";
 			ent->freetime = level.time;

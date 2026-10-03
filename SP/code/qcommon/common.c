@@ -1653,6 +1653,10 @@ void Com_MemoryReport( const char *when ) {
 	Com_Printf( "MEM %s: hunk %d K (temp %d K now, %d K peak); malloc %d K in use, %d K free\n",
 				when, hunk_low.permanent / 1024, hunk_high.temp / 1024, hunk_high.tempHighwater / 1024,
 				inUse / 1024, Hunk_FreeRAM() / 1024 );
+#ifdef DCSIM
+	Com_Printf( "MEM %s: largest free block %d K\n", when, DCSim_LargestFree() / 1024 );
+	DCSim_DumpHoles( when );
+#endif
 	{
 		extern size_t pvr_mem_available( void );    // dc/pvr.h: the texture memory left
 
@@ -2629,6 +2633,7 @@ void Com_Init( char *commandLine ) {
 
 //	Swap_Init();
 	Cbuf_Init();
+	LOAD_START();   // the boot's steps, LOAD lines as a map's
 
 	Com_DetectSSE();
 
@@ -2649,6 +2654,7 @@ void Com_Init( char *commandLine ) {
 	com_homepath = Cvar_Get("com_homepath", "", CVAR_INIT|CVAR_PROTECTED);
 
 	FS_InitFilesystem();
+	LOAD_STEP( "fs init" );
 
 	Com_InitJournaling();
 
@@ -2666,6 +2672,7 @@ void Com_Init( char *commandLine ) {
 	Cmd_AddCommand("game_restart", Com_GameRestart_f);
 
 	Com_ExecuteCfg();
+	LOAD_STEP( "configs" );
 
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
@@ -2739,12 +2746,14 @@ void Com_Init( char *commandLine ) {
 
 	VM_Init();
 	SV_Init();
+	LOAD_STEP( "sys, vm, server init" );
 
 	com_dedicated->modified = qfalse;
 
 #ifndef DEDICATED
 	CL_Init();
 #endif
+	LOAD_STEP( "client init" );
 
 	// set com_frameTime so that if a map is started on the
 	// command line it will still be able to count on com_frameTime
@@ -2780,10 +2789,13 @@ void Com_Init( char *commandLine ) {
 
 	CL_StartHunkUsers( qfalse );
 
+#if !defined( _arch_dreamcast ) && !defined( DCSIM )
+	// the Dreamcast's settings are fixed: no *Vid*CPU.cfg, and no vid_restart for it
 	if ( !com_recommendedSet->integer ) {
 		Com_SetRecommended( qtrue );
 		Cvar_Set( "com_recommendedSet", "1" );
 	}
+#endif
 
 	com_fullyInitialized = qtrue;
 
@@ -2799,6 +2811,7 @@ void Com_Init( char *commandLine ) {
 		pipefile = FS_FCreateOpenPipeFile( com_pipefile->string );
 	}
 
+	LOAD_STEP( "boot (rest)" );
 	Com_Printf ("--- Common Initialization Complete ---\n");
 }
 

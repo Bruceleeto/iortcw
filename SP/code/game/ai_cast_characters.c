@@ -1480,7 +1480,7 @@ void AIChar_spawn( gentity_t *ent ) {
 	//
 	// check for no headshot damage
 	if ( cs->aiFlags & AIFL_NO_HEADSHOT_DMG ) {
-		ent->headshotDamageScale = 0.0;
+		G_Misc( ent )->headshotDamageScale = 0.0;
 	}
 	// set these values now so scripting system isn't relying on a Think having been run prior to running a script
 	//origin of the cast

@@ -1429,6 +1429,49 @@ static void CG_SetDeferredClientInfo( int clientNum, clientInfo_t *ci ) {
 CG_NewClientInfo
 ======================
 */
+/*
+======================
+CG_PreloadAIModels
+
+The cast's models, as the level loads (CS_AIMODELS, AICast_PreloadCast), into
+a client slot no one's in yet: they're found by name when the cast spawn.
+======================
+*/
+void CG_PreloadAIModels( void ) {
+	static clientInfo_t ci;
+	char list[MAX_STRING_CHARS], *p, *tok, *slash;
+	int slot;
+
+	for ( slot = cgs.maxclients - 1; slot > 0 && CG_ConfigString( CS_PLAYERS + slot )[0]; slot-- ) {
+	}
+	if ( slot <= 0 ) {
+		return;
+	}
+	Q_strncpyz( list, CG_ConfigString( CS_AIMODELS ), sizeof( list ) );
+	p = list;
+	while ( 1 ) {
+		tok = COM_Parse( &p );
+		if ( !tok[0] ) {
+			break;
+		}
+		// as CG_NewClientInfo has them
+		memset( &ci, 0, sizeof( ci ) );
+		ci.clientNum = slot;
+		Q_strncpyz( ci.modelName, tok, sizeof( ci.modelName ) );
+		slash = strchr( ci.modelName, '/' );
+		if ( slash ) {
+			Q_strncpyz( ci.skinName, slash + 1, sizeof( ci.skinName ) );
+			*slash = 0;
+		} else {
+			Q_strncpyz( ci.skinName, "default", sizeof( ci.skinName ) );
+		}
+		tok = COM_Parse( &p );
+		Q_strncpyz( ci.hSkinName, tok, sizeof( ci.hSkinName ) );
+		CG_LoadClientInfo( slot, &ci );
+	}
+	cgs.animScriptData.clientModels[slot] = 0;
+}
+
 void CG_NewClientInfo( int clientNum ) {
 	clientInfo_t *ci;
 	clientInfo_t newInfo;
@@ -2706,7 +2749,7 @@ static void CG_PlayerPowerups( centity_t *cent ) {
 	int powerups;
 
 	if ( cent->pe->teslaDamagedTime > cg.time - 400 ) {
-		trap_R_AddLightToScene( cent->lerpOrigin, 128 + 128 * sin( cg.time * cg.time ), 0.2, 0.6, 1, 0 );
+		trap_R_AddLightToScene( cent->lerpOrigin, 128 + 128 * sin( ( cg.time * cg.time ) & 0xffff ), 0.2, 0.6, 1, 0 );
 	}
 
 	// RF, AI don't use these effects, they are generally added manually by the game
@@ -3651,7 +3694,7 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 
 	// show a dlight
 	// color
-	colTake = 0.8 - fabs( sin( cg.time ) ) * 0.3;
+	colTake = 0.8 - fabs( sin( cg.time & 0xffff ) ) * 0.3;
 	c[0] = 1.0 - colTake;
 	c[1] = 1.0 - 0.7 * colTake;
 	c[2] = 1.0; //c[1] + 0.2;
@@ -3660,7 +3703,7 @@ void CG_AddLoperLightningEffect( centity_t *cent ) {
 	}
 	//VectorScale( c, alpha, c );
 	// add the light
-	trap_R_AddLightToScene( tagPos, LOPER_LIGHTNING_NORMAL_DIST * ( 2.5 + ( 1.0 + sin( cg.time ) ) / 4.0 ), c[0], c[1], c[2], 1 );
+	trap_R_AddLightToScene( tagPos, LOPER_LIGHTNING_NORMAL_DIST * ( 2.5 + ( 1.0 + sin( cg.time & 0xffff ) ) / 4.0 ), c[0], c[1], c[2], 1 );
 
 	for ( i = 0; i < numPoints; i++ ) {
 		// if this point has timed out, find a new spot
@@ -3796,7 +3839,7 @@ void CG_AddLoperGroundEffect( centity_t *cent ) {
 
 	// show a dlight
 	// color
-	colTake = 0.8 - fabs( sin( cg.time ) ) * 0.3;
+	colTake = 0.8 - fabs( sin( cg.time & 0xffff ) ) * 0.3;
 	c[0] = 1.0 - colTake;
 	c[1] = 1.0 - 0.8 * colTake;
 	c[2] = 1.0; //c[1] + 0.2;

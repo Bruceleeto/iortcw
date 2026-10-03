@@ -4041,8 +4041,8 @@ char *AIFunc_BattleMG42( cast_state_t *cs ) {
 	// check for enemy outside harc
 	if (    cs->enemyNum < 0 ||
 			!AICast_CheckAttack( cs, cs->enemyNum, qfalse ) ||
-			( fabs( AngleDifference( angles[YAW], mg42->s.angles[YAW] ) ) > mg42->harc ) ||
-			( angles[PITCH] < 0 && angles[PITCH] + 5 < -mg42->varc ) ||
+			( fabs( AngleDifference( angles[YAW], mg42->s.angles[YAW] ) ) > G_ReadMisc( mg42 )->harc ) ||
+			( angles[PITCH] < 0 && angles[PITCH] + 5 < -G_ReadMisc( mg42 )->varc ) ||
 			( angles[PITCH] > 0 && angles[PITCH] - 5 > 5.0 ) ) {
 		qboolean shouldAttack;
 
@@ -4067,8 +4067,8 @@ char *AIFunc_BattleMG42( cast_state_t *cs ) {
 				VectorNormalize( vec );
 				vectoangles( vec, angles );
 				angles[PITCH] = AngleNormalize180( angles[PITCH] );
-				if ( !(  ( fabs( AngleDifference( angles[YAW], mg42->s.angles[YAW] ) ) > mg42->harc ) ||
-						 ( angles[YAW] < 0 && angles[YAW] + 2 < -mg42->varc ) ||
+				if ( !(  ( fabs( AngleDifference( angles[YAW], mg42->s.angles[YAW] ) ) > G_ReadMisc( mg42 )->harc ) ||
+						 ( angles[YAW] < 0 && angles[YAW] + 2 < -G_ReadMisc( mg42 )->varc ) ||
 						 ( angles[YAW] > 0 && angles[YAW] - 2 > 5.0 ) ) ) {
 					//
 					// found someone inside harc, so dont unmount

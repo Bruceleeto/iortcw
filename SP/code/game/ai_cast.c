@@ -641,6 +641,50 @@ void AIChar_AIScript_AlertEntity( gentity_t *ent ) {
 
 /*
 ================
+AICast_PreloadCast
+
+The cast's models, as the level loads: their animation info parsed now, and
+their names in CS_AIMODELS for the client to load their models
+(CG_PreloadAIModels). They'd come in the first frames otherwise, after the
+RAM's cut up.
+================
+*/
+void AICast_PreloadCast( void ) {
+	char list[MAX_STRING_CHARS], entry[MAX_QPATH * 2 + 3], modelName[MAX_QPATH], *slash;
+	const char *skin;
+	gentity_t *ent;
+	int i;
+
+	// " model/skin head model/skin head ... ", so each is found with its spaces
+	Q_strncpyz( list, " ", sizeof( list ) );
+	for ( i = MAX_CLIENTS, ent = &g_entities[MAX_CLIENTS]; i < level.num_entities; i++, ent++ ) {
+		if ( !ent->inuse || ent->think != AIChar_spawn ) {
+			continue;
+		}
+		// as AIChar_spawn has them
+		skin = ent->aiSkin && ent->aiSkin[0] ? ent->aiSkin : aiDefaults[ent->aiCharacter].skin;
+		Com_sprintf( entry, sizeof( entry ), " %s %s ", skin, ent->aihSkin );
+		if ( strstr( list, entry ) ) {
+			continue;
+		}
+		if ( strlen( list ) + strlen( entry ) >= sizeof( list ) ) {
+			G_Printf( "AICast_PreloadCast: no room for %s\n", skin );
+			continue;
+		}
+		Q_strcat( list, sizeof( list ), entry + 1 );
+
+		Q_strncpyz( modelName, skin, sizeof( modelName ) );
+		if ( ( slash = strchr( modelName, '/' ) ) != NULL ) {
+			*slash = 0;
+		}
+		G_PreloadModelInfo( modelName );
+	}
+	G_PreloadModelInfoDone();
+	trap_SetConfigstring( CS_AIMODELS, list );
+}
+
+/*
+================
 AICast_DelayedSpawnCast
 ================
 */
@@ -916,7 +960,7 @@ G_SetAASBlockingEntity
 ===============
 */
 void G_SetAASBlockingEntity( gentity_t *ent, qboolean blocking ) {
-	ent->AASblocking = blocking;
+	G_Misc( ent )->AASblocking = blocking;
 	trap_AAS_SetAASBlockingEntity( ent->r.absmin, ent->r.absmax, blocking );
 }
 

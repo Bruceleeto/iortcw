@@ -12,7 +12,7 @@
 
 static const char *const sectionNames[PROF_NUM] = {
 	"engine", "game", "ai", "pathing", "collision", "cgame", "ui",
-	"scene", "draw", "gpu", "sound", "idle"
+	"scene", "draw", "world", "models", "shade", "sky", "flares", "pvr", "submit", "gpu", "sound", "idle"
 };
 
 #define PROF_DEPTH  32
@@ -97,6 +97,42 @@ void Com_ProfFrame( void ) {
 		frames = 0;
 		worst = 0;
 	}
+}
+
+static long long loadStart, loadLast;   // 0: not loading
+extern int fs_profOpens, fs_profProbes, fs_profReads, fs_profSeeks;  // files.c
+static int lastOpens, lastProbes, lastReads, lastSeeks;
+
+void Com_LoadStart( void ) {
+	loadStart = loadLast = Sys_Microseconds();
+	lastOpens = fs_profOpens;
+	lastProbes = fs_profProbes;
+	lastReads = fs_profReads;
+	lastSeeks = fs_profSeeks;
+}
+
+void Com_LoadStep( const char *what ) {
+	long long now;
+
+	if ( !loadStart ) {
+		return;
+	}
+	now = Sys_Microseconds();
+	// and the files it opened, its reads and seeks (each a trip to the disc or dcload, unless
+	// the read's in what stdio has buffered)
+	Com_Printf( "LOAD %-24s %6d ms  (total %6d)  opens %d probes %d reads %d seeks %d\n", what,
+				(int)( ( now - loadLast ) / 1000 ), (int)( ( now - loadStart ) / 1000 ),
+				fs_profOpens - lastOpens, fs_profProbes - lastProbes, fs_profReads - lastReads, fs_profSeeks - lastSeeks );
+	loadLast = now;
+	lastOpens = fs_profOpens;
+	lastProbes = fs_profProbes;
+	lastReads = fs_profReads;
+	lastSeeks = fs_profSeeks;
+}
+
+void Com_LoadDone( void ) {
+	Com_LoadStep( "first frame" );
+	loadStart = 0;
 }
 
 #endif

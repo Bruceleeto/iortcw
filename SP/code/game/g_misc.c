@@ -212,7 +212,7 @@ grabber_think_hit
 */
 void grabber_think_hit( gentity_t *ent ) {
 	G_RadiusDamage( ent->s.pos.trBase, ent, ent->damage, ent->duration, ent, MOD_GRABBER );
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 ); // sound2to1 is the 'pain' sound
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 ); // sound2to1 is the 'pain' sound
 
 	ent->nextthink  = level.time + ( attackDurations[( ent->s.frame ) - 2] - attackHittimes[( ent->s.frame ) - 2] );
 	ent->think      = grabber_think_idle;
@@ -286,7 +286,7 @@ grabber_pain
 ==============
 */
 void grabber_pain( gentity_t *ent, gentity_t *attacker, int damage, vec3_t point ) {
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound2to1 ); // sound2to1 is the 'pain' sound
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->sound2to1 ); // sound2to1 is the 'pain' sound
 }
 
 
@@ -330,7 +330,7 @@ void grabber_wake( gentity_t *ent ) {
 		parent->think       = grabber_think_idle;
 	}
 
-	G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos1 ); // soundPos1 is the 'wake' sound
+	G_AddEvent( ent, EV_GENERAL_SOUND, G_Mover( ent )->soundPos1 ); // soundPos1 is the 'wake' sound
 }
 
 
@@ -404,9 +404,9 @@ void SP_misc_grabber_trap( gentity_t *ent ) {
 
 	// TODO: make these user assignable?
 	ent->s.modelindex   = G_ModelIndex( "models/misc/grabber/grabber.md3" );
-	ent->soundPos1      = G_SoundIndex( "models/misc/grabber/grabber_wake.wav" );
-	ent->sound1to2      = G_SoundIndex( "models/misc/grabber/grabber_attack.wav" );
-	ent->sound2to1      = G_SoundIndex( "models/misc/grabber/grabber_pain.wav" );
+	G_Mover( ent )->soundPos1      = G_SoundIndex( "models/misc/grabber/grabber_wake.wav" );
+	G_Mover( ent )->sound1to2      = G_SoundIndex( "models/misc/grabber/grabber_attack.wav" );
+	G_Mover( ent )->sound2to1      = G_SoundIndex( "models/misc/grabber/grabber_pain.wav" );
 
 	G_SetOrigin( ent, ent->s.origin );
 	VectorCopy( ent->s.angles, ent->s.apos.trBase );
@@ -1008,20 +1008,20 @@ void SP_shooter_tesla( gentity_t *ent ) {
 			ent->s.time2 = 4; // dlight randomness
 
 		}
-		if ( ent->dl_color[0] <= 0 &&    // if it's black or has no color assigned
-			 ent->dl_color[1] <= 0 &&
-			 ent->dl_color[2] <= 0 ) {
+		if ( G_Misc( ent )->dl_color[0] <= 0 &&    // if it's black or has no color assigned
+			 G_Misc( ent )->dl_color[1] <= 0 &&
+			 G_Misc( ent )->dl_color[2] <= 0 ) {
 			// default is the same color as the tesla weapon
-			ent->dl_color[0] = 0.2f;
-			ent->dl_color[1] = 0.6f;
-			ent->dl_color[2] = 1.0f;
+			G_Misc( ent )->dl_color[0] = 0.2f;
+			G_Misc( ent )->dl_color[1] = 0.6f;
+			G_Misc( ent )->dl_color[2] = 1.0f;
 		}
 
-		ent->dl_color[0] = ent->dl_color[0] * 255;
-		ent->dl_color[1] = ent->dl_color[1] * 255;
-		ent->dl_color[2] = ent->dl_color[2] * 255;
+		G_Misc( ent )->dl_color[0] = G_Misc( ent )->dl_color[0] * 255;
+		G_Misc( ent )->dl_color[1] = G_Misc( ent )->dl_color[1] * 255;
+		G_Misc( ent )->dl_color[2] = G_Misc( ent )->dl_color[2] * 255;
 
-		ent->s.dl_intensity = (int)ent->dl_color[0] | ( (int)ent->dl_color[1] << 8 ) | ( (int)ent->dl_color[2] << 16 );
+		ent->s.dl_intensity = (int)G_Misc( ent )->dl_color[0] | ( (int)G_Misc( ent )->dl_color[1] << 8 ) | ( (int)G_Misc( ent )->dl_color[2] << 16 );
 
 	} else {
 		ent->s.dl_intensity = 0;
@@ -1105,9 +1105,9 @@ void brush_activate_sniper( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 					sniper->count = 1;
 					sniper->wait = level.time + sniper->delay;
 					// record enemypos pos
-					VectorCopy( ent->enemy->r.currentOrigin, ent->pos1 );
+					VectorCopy( ent->enemy->r.currentOrigin, G_Mover( ent )->pos1 );
 				} else if ( sniper->count == 1 )     {
-					VectorSubtract( ent->enemy->r.currentOrigin, ent->pos1, vec );
+					VectorSubtract( ent->enemy->r.currentOrigin, G_Mover( ent )->pos1, vec );
 					dist = VectorLength( vec );
 					if ( dist < sniper->radius ) {
 						// ok the enemy is still inside the radius take a shot
@@ -1197,17 +1197,17 @@ void SP_corona( gentity_t *ent ) {
 
 	ent->s.eType        = ET_CORONA;
 
-	if ( ent->dl_color[0] <= 0 &&                // if it's black or has no color assigned
-		 ent->dl_color[1] <= 0 &&
-		 ent->dl_color[2] <= 0 ) {
-		ent->dl_color[0] = ent->dl_color[1] = ent->dl_color[2] = 1; // set white
+	if ( G_Misc( ent )->dl_color[0] <= 0 &&                // if it's black or has no color assigned
+		 G_Misc( ent )->dl_color[1] <= 0 &&
+		 G_Misc( ent )->dl_color[2] <= 0 ) {
+		G_Misc( ent )->dl_color[0] = G_Misc( ent )->dl_color[1] = G_Misc( ent )->dl_color[2] = 1; // set white
 
 	}
-	ent->dl_color[0] = ent->dl_color[0] * 255;
-	ent->dl_color[1] = ent->dl_color[1] * 255;
-	ent->dl_color[2] = ent->dl_color[2] * 255;
+	G_Misc( ent )->dl_color[0] = G_Misc( ent )->dl_color[0] * 255;
+	G_Misc( ent )->dl_color[1] = G_Misc( ent )->dl_color[1] * 255;
+	G_Misc( ent )->dl_color[2] = G_Misc( ent )->dl_color[2] * 255;
 
-	ent->s.dl_intensity = (int)ent->dl_color[0] | ( (int)ent->dl_color[1] << 8 ) | ( (int)ent->dl_color[2] << 16 );
+	ent->s.dl_intensity = (int)G_Misc( ent )->dl_color[0] | ( (int)G_Misc( ent )->dl_color[1] << 8 ) | ( (int)G_Misc( ent )->dl_color[2] << 16 );
 
 	G_SpawnFloat( "scale", "1", &scale );
 	ent->s.density = (int)( scale * 255 );
@@ -1253,7 +1253,7 @@ dlight_finish_spawning
 ==============
 */
 void dlight_finish_spawning( gentity_t *ent ) {
-	G_FindConfigstringIndex( va( "%i %s %i %i %i", ent->s.number, ent->dl_stylestring, ent->health, ent->soundLoop, ent->dl_atten ), CS_DLIGHTS, MAX_DLIGHT_CONFIGSTRINGS, qtrue );
+	G_FindConfigstringIndex( va( "%i %s %i %i %i", ent->s.number, ent->dl_stylestring, ent->health, G_Mover( ent )->soundLoop, G_Misc( ent )->dl_atten ), CS_DLIGHTS, MAX_DLIGHT_CONFIGSTRINGS, qtrue );
 }
 
 static int dlightstarttime = 0;
@@ -1354,7 +1354,7 @@ void SP_dlight( gentity_t *ent ) {
 	G_SpawnString( "shader", "", &shader );             // name of shader to use for this dlight image
 
 	if ( G_SpawnString( "sound", "0", &snd ) ) {
-		ent->soundLoop = G_SoundIndex( snd );
+		G_Mover( ent )->soundLoop = G_SoundIndex( snd );
 	}
 
 	if ( ent->dl_stylestring && strlen( ent->dl_stylestring ) ) {    // if they're specified in a string, use em
@@ -1368,7 +1368,7 @@ void SP_dlight( gentity_t *ent ) {
 
 	ent->count      = strlen( ent->dl_stylestring );
 
-	ent->dl_atten = atten;
+	G_Misc( ent )->dl_atten = atten;
 
 	// make the initial offset a valid index into the stylestring
 	offset = offset % ( ent->count );
@@ -1381,20 +1381,20 @@ void SP_dlight( gentity_t *ent ) {
 	}
 	ent->nextthink  = dlightstarttime;
 
-	if ( ent->dl_color[0] <= 0 &&                // if it's black or has no color assigned, make it white
-		 ent->dl_color[1] <= 0 &&
-		 ent->dl_color[2] <= 0 ) {
-		ent->dl_color[0] = ent->dl_color[1] = ent->dl_color[2] = 1;
+	if ( G_Misc( ent )->dl_color[0] <= 0 &&                // if it's black or has no color assigned, make it white
+		 G_Misc( ent )->dl_color[1] <= 0 &&
+		 G_Misc( ent )->dl_color[2] <= 0 ) {
+		G_Misc( ent )->dl_color[0] = G_Misc( ent )->dl_color[1] = G_Misc( ent )->dl_color[2] = 1;
 	}
 
-	ent->dl_color[0] = ent->dl_color[0] * 255;  // range 0-255 now so the client doesn't have to on every update
-	ent->dl_color[1] = ent->dl_color[1] * 255;
-	ent->dl_color[2] = ent->dl_color[2] * 255;
+	G_Misc( ent )->dl_color[0] = G_Misc( ent )->dl_color[0] * 255;  // range 0-255 now so the client doesn't have to on every update
+	G_Misc( ent )->dl_color[1] = G_Misc( ent )->dl_color[1] * 255;
+	G_Misc( ent )->dl_color[2] = G_Misc( ent )->dl_color[2] * 255;
 
 	i = (int)( ent->dl_stylestring[offset] ) - (int)'a';
 	i = i * ( 1000.0f / 24.0f );
 
-	ent->s.constantLight =  (int)ent->dl_color[0] | ( (int)ent->dl_color[1] << 8 ) | ( (int)ent->dl_color[2] << 16 ) | ( i / 4 << 24 );
+	ent->s.constantLight =  (int)G_Misc( ent )->dl_color[0] | ( (int)G_Misc( ent )->dl_color[1] << 8 ) | ( (int)G_Misc( ent )->dl_color[2] << 16 ) | ( i / 4 << 24 );
 
 	ent->use = use_dlight;
 
@@ -1752,16 +1752,16 @@ void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 	clamped = qfalse;
 
 	if ( other ) {
-		VectorCopy( self->TargetAngles, dang );
+		VectorCopy( G_Mover( self )->TargetAngles, dang );
 		yawspeed = MG42_YAWSPEED;
 	} else {    // go back to start position
 		VectorCopy( self->s.angles, dang );
 		yawspeed = MG42_IDLEYAWSPEED;
 	}
 
-	if ( dang[0] < 0 && dang[0] < -( self->varc ) ) {
+	if ( dang[0] < 0 && dang[0] < -( G_Misc( self )->varc ) ) {
 		clamped = qtrue;
-		dang[0] = -( self->varc );
+		dang[0] = -( G_Misc( self )->varc );
 	}
 
 // NOTE to self this change has damaged visualy all mg42 behind sandbags
@@ -1778,13 +1778,13 @@ void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 	} else
 	{
 		if ( self->spawnflags & 1 ) {
-			if ( dang[0] > 0 && dang[0] > ( self->varc / 2 ) ) {
+			if ( dang[0] > 0 && dang[0] > ( G_Misc( self )->varc / 2 ) ) {
 				clamped = qtrue;
-				dang[0] = self->varc / 2;
+				dang[0] = G_Misc( self )->varc / 2;
 			}
-		} else if ( dang[0] > 0 && dang[0] > ( self->varc / 2 ) )    {
+		} else if ( dang[0] > 0 && dang[0] > ( G_Misc( self )->varc / 2 ) )    {
 			clamped = qtrue;
-			dang[0] = self->varc / 2;
+			dang[0] = G_Misc( self )->varc / 2;
 		}
 	}
 
@@ -1792,12 +1792,12 @@ void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 
 	if ( !Q_stricmp( self->classname, "misc_mg42" ) || !( self->active ) ) {
 		diff = AngleDifference( dang[YAW], self->s.angles[YAW] );
-		if ( fabs( diff ) > self->harc ) {
+		if ( fabs( diff ) > G_Misc( self )->harc ) {
 			clamped = qtrue;
 			if ( diff > 0 ) {
-				dang[YAW] = AngleMod( self->s.angles[YAW] + self->harc );
+				dang[YAW] = AngleMod( self->s.angles[YAW] + G_Misc( self )->harc );
 			} else {
-				dang[YAW] = AngleMod( self->s.angles[YAW] - self->harc );
+				dang[YAW] = AngleMod( self->s.angles[YAW] - G_Misc( self )->harc );
 			}
 		}
 
@@ -1824,13 +1824,13 @@ void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 	// diff = AngleDifference( dang[YAW], self->s.angles[YAW] );
 	diff = AngleDifference( self->s.angles[YAW], dang[YAW] );
 	// if (fabs(diff) > self->harc) {
-	if ( fabs( diff ) > self->harc && other && other->r.svFlags & SVF_CASTAI ) {
+	if ( fabs( diff ) > G_Misc( self )->harc && other && other->r.svFlags & SVF_CASTAI ) {
 		clamped = qtrue;
 
 		if ( diff > 0 ) {
-			dang[YAW] = AngleMod( self->s.angles[YAW] + self->harc );
+			dang[YAW] = AngleMod( self->s.angles[YAW] + G_Misc( self )->harc );
 		} else {
-			dang[YAW] = AngleMod( self->s.angles[YAW] - self->harc );
+			dang[YAW] = AngleMod( self->s.angles[YAW] - G_Misc( self )->harc );
 		}
 
 //		G_Printf ("dang %5.2f ang %5.2f diff %5.2f\n", dang[YAW], self->s.angles[YAW], diff);
@@ -1847,14 +1847,14 @@ void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 
 		//if they are an AI, they should dismount now
 		if ( other->r.svFlags & SVF_CASTAI ) {
-			if ( !other->mg42ClampTime ) {
-				other->mg42ClampTime = level.time;
-			} else if ( other->mg42ClampTime < level.time - 750 ) {
+			if ( !G_Misc( other )->mg42ClampTime ) {
+				G_Misc( other )->mg42ClampTime = level.time;
+			} else if ( G_Misc( other )->mg42ClampTime < level.time - 750 ) {
 				other->active = qfalse;
 			}
 		}
 	} else if ( other ) {
-		other->mg42ClampTime = 0;
+		G_Misc( other )->mg42ClampTime = 0;
 	}
 
 
@@ -1908,7 +1908,7 @@ void mg42_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 			dang[i] = SHORT2ANGLE( other->client->pers.cmd.angles[i] );
 
 		// the gun should go to our current angles next time it thinks
-		VectorCopy( dang, self->TargetAngles );
+		VectorCopy( dang, G_Mover( self )->TargetAngles );
 		//VectorCopy( other->client->ps.viewangles, self->TargetAngles );
 
 		// now tell the client to lock the view in the direction of the gun
@@ -1924,14 +1924,14 @@ void mg42_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 		}
 
 		// clamp the mg42 to fire arc
-		VectorCopy( other->client->ps.viewangles, self->TargetAngles );
+		VectorCopy( other->client->ps.viewangles, G_Mover( self )->TargetAngles );
 
 		clamp_hweapontofirearc( self, other, dang );
 
 		// clamp player behind the gun
 		clamp_playerbehindgun( self, other, dang );
 
-		VectorCopy( dang, self->TargetAngles );
+		VectorCopy( dang, G_Mover( self )->TargetAngles );
 	}
 }
 
@@ -2015,9 +2015,9 @@ void mg42_track( gentity_t *self, gentity_t *other ) {
 					} else
 					{
 						if ( self->damage ) {
-							Fire_Lead( self, other, MG42_SPREAD / self->accuracy, self->damage, muzzle, self->s.apos.trBase );
+							Fire_Lead( self, other, MG42_SPREAD / G_Misc( self )->accuracy, self->damage, muzzle, self->s.apos.trBase );
 						} else {
-							Fire_Lead( self, other, MG42_SPREAD / self->accuracy, MG42_DAMAGE_AI, muzzle, self->s.apos.trBase );
+							Fire_Lead( self, other, MG42_SPREAD / G_Misc( self )->accuracy, MG42_DAMAGE_AI, muzzle, self->s.apos.trBase );
 						}
 
 					}
@@ -2031,7 +2031,7 @@ void mg42_track( gentity_t *self, gentity_t *other ) {
 		}
 
 		// move to the position over the next frame
-		VectorCopy( self->TargetAngles, dang );
+		VectorCopy( G_Mover( self )->TargetAngles, dang );
 		VectorSubtract( dang, self->s.apos.trBase, self->s.apos.trDelta );
 		for ( i = 0; i < 3; i++ ) {
 			self->s.apos.trDelta[i] = AngleNormalize180( self->s.apos.trDelta[i] );
@@ -2217,7 +2217,7 @@ void mg42_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int d
 
 	// owner = &g_entities[self->r.ownerNum];
 
-	G_Sound( self, self->soundPos3 ); // death sound
+	G_Sound( self, G_Mover( self )->soundPos3 ); // death sound
 
 	// DHM - Nerve :: self->chain not set if no tripod
 	if ( self->chain ) {
@@ -2286,7 +2286,7 @@ void mg42_spawn( gentity_t *ent ) {
 	gentity_t *base, *gun;
 	vec3_t offset;
 
-	ent->soundPos3 = G_SoundIndex( "sound/weapons/mg42/mg42_death.wav" );   // die sound
+	G_Mover( ent )->soundPos3 = G_SoundIndex( "sound/weapons/mg42/mg42_death.wav" );   // die sound
 
 	//if (!(ent->spawnflags & 2)) // no tripod
 	{
@@ -2318,8 +2318,8 @@ void mg42_spawn( gentity_t *ent ) {
 		base->target = ent->target; //----(SA)	added so mounting mg42 can trigger targets
 		base->takedamage = qtrue;
 		base->die = mg42_die;
-		base->soundPos3 = ent->soundPos3;   //----(SA)
-		base->activateArc = ent->activateArc;           //----(SA)	added
+		G_Mover( base )->soundPos3 = G_Mover( ent )->soundPos3;   //----(SA)
+		G_Misc( base )->activateArc = G_Misc( ent )->activateArc;           //----(SA)	added
 		trap_LinkEntity( base );
 	}
 
@@ -2351,24 +2351,24 @@ void mg42_spawn( gentity_t *ent ) {
 	gun->think = mg42_think;
 	gun->nextthink = level.time + FRAMETIME;
 	gun->s.number = gun - g_entities;
-	gun->harc = ent->harc;
-	gun->varc = ent->varc;
+	G_Misc( gun )->harc = G_Misc( ent )->harc;
+	G_Misc( gun )->varc = G_Misc( ent )->varc;
 	gun->s.apos.trType = TR_LINEAR_STOP;    // interpolate the angles
 	gun->takedamage = qtrue;
 	gun->targetname = ent->targetname;      // need this for scripting
 	gun->damage = ent->damage;
 	gun->health = ent->health;  //----(SA)	added
-	gun->accuracy = ent->accuracy;
+	G_Misc( gun )->accuracy = G_Misc( ent )->accuracy;
 	gun->target = ent->target;  //----(SA)	added so mounting mg42 can trigger targets
 	gun->use = mg42_use;
 	gun->die = mg42_die; // JPW NERVE we want it to be called for non-tripod machineguns too (for mp_beach etc)
-	gun->soundPos3 = ent->soundPos3;    //----(SA)
-	gun->activateArc = ent->activateArc;            //----(SA)	added
+	G_Mover( gun )->soundPos3 = G_Mover( ent )->soundPos3;    //----(SA)
+	G_Misc( gun )->activateArc = G_Misc( ent )->activateArc;            //----(SA)	added
 
 	if ( !( ent->spawnflags & 2 ) ) { // no tripod
-		gun->mg42BaseEnt = base->s.number;
+		G_Misc( gun )->mg42BaseEnt = base->s.number;
 	} else {
-		gun->mg42BaseEnt = -1;
+		G_Misc( gun )->mg42BaseEnt = -1;
 	}
 
 	gun->spawnflags = ent->spawnflags;
@@ -2399,17 +2399,17 @@ void SP_mg42( gentity_t *self ) {
 	char        *accuracy;
 	float grabarc;
 
-	if ( !self->harc ) {
-		self->harc = 115;
+	if ( !G_Misc( self )->harc ) {
+		G_Misc( self )->harc = 115;
 	} else
 	{
-		if ( self->harc < 45 ) {
-			self->harc = 45;
+		if ( G_Misc( self )->harc < 45 ) {
+			G_Misc( self )->harc = 45;
 		}
 	}
 
-	if ( !self->varc ) {
-		self->varc = 90.0;
+	if ( !G_Misc( self )->varc ) {
+		G_Misc( self )->varc = 90.0;
 	}
 
 	if ( !self->health ) {
@@ -2422,7 +2422,7 @@ void SP_mg42( gentity_t *self ) {
 	snd_noammo = G_SoundIndex( "sound/weapons/noammo.wav" );
 
 	G_SpawnFloat( "grabarc", "0", &grabarc );   // half arc, so actually activatable over 120 deg
-	self->activateArc = grabarc;
+	G_Misc( self )->activateArc = grabarc;
 
 
 	if ( G_SpawnString( "damage", "0", &damage ) ) {
@@ -2431,10 +2431,10 @@ void SP_mg42( gentity_t *self ) {
 
 	G_SpawnString( "accuracy", "1.0", &accuracy );
 
-	self->accuracy = atof( accuracy );
+	G_Misc( self )->accuracy = atof( accuracy );
 
-	if ( !self->accuracy ) {
-		self->accuracy = 1;
+	if ( !G_Misc( self )->accuracy ) {
+		G_Misc( self )->accuracy = 1;
 	}
 // JPW NERVE
 	if ( g_gametype.integer != GT_SINGLE_PLAYER ) {
@@ -2470,12 +2470,12 @@ void flak_spawn( gentity_t *ent ) {
 	gun->think = mg42_think;
 	gun->nextthink = level.time + FRAMETIME;
 	gun->s.number = gun - g_entities;
-	gun->harc = ent->harc;
-	gun->varc = ent->varc;
+	G_Misc( gun )->harc = G_Misc( ent )->harc;
+	G_Misc( gun )->varc = G_Misc( ent )->varc;
 	gun->s.apos.trType = TR_LINEAR_STOP;    // interpolate the angles
 	gun->takedamage = qtrue;
 	gun->targetname = ent->targetname;      // need this for scripting
-	gun->mg42BaseEnt = ent->s.number;
+	G_Misc( gun )->mg42BaseEnt = ent->s.number;
 
 	trap_LinkEntity( gun );
 
@@ -2485,17 +2485,17 @@ void flak_spawn( gentity_t *ent ) {
 */
 void SP_misc_flak( gentity_t *self ) {
 
-	if ( !self->harc ) {
-		self->harc = 180;
+	if ( !G_Misc( self )->harc ) {
+		G_Misc( self )->harc = 180;
 	} else
 	{
-		if ( self->harc < 90 ) {
-			self->harc = 115;
+		if ( G_Misc( self )->harc < 90 ) {
+			G_Misc( self )->harc = 115;
 		}
 	}
 
-	if ( !self->varc ) {
-		self->varc = 90.0;
+	if ( !G_Misc( self )->varc ) {
+		G_Misc( self )->varc = 90.0;
 	}
 
 	if ( !self->health ) {

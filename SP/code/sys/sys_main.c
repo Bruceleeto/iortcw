@@ -33,10 +33,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef _arch_dreamcast
 #include <kos/init.h>
-// INIT_DEFAULT less the ramdisk and /dev/null filesystems, which nothing
-// uses (/dev/urandom is Sys_RandomBytes'; the pty is stdout and stderr, to
-// dbgio, without dcload)
-KOS_INIT_FLAGS( INIT_IRQ | INIT_FS_ROMDISK | INIT_FS_PTY | INIT_FS_RND | INIT_DEFAULT_ARCH );
+// only what's used: the controller and VMU of the maple drivers (no
+// keyboard, mouse, rumble ...), the CD, /dev/urandom (Sys_RandomBytes') and
+// the pty (stdout and stderr, to dbgio, without dcload)
+KOS_INIT_FLAGS( INIT_IRQ | INIT_FS_PTY | INIT_FS_RND | INIT_CONTROLLER | INIT_VMU | INIT_CDROM );
 #endif
 
 #if !defined(DEDICATED) && !defined(_arch_dreamcast)

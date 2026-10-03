@@ -258,9 +258,9 @@ void G_UseTargets( gentity_t *ent, gentity_t *activator ) {
 		return;
 	}
 
-	if ( ent->targetShaderName && ent->targetShaderNewName ) {
+	if ( G_ReadMisc( ent )->targetShaderName && G_ReadMisc( ent )->targetShaderNewName ) {
 		float f = level.time * 0.001;
-		AddRemap( ent->targetShaderName, ent->targetShaderNewName, f );
+		AddRemap( G_ReadMisc( ent )->targetShaderName, G_ReadMisc( ent )->targetShaderNewName, f );
 		trap_SetConfigstring( CS_SHADERSTATE, BuildShaderStateConfig() );
 	}
 
@@ -399,13 +399,9 @@ void G_InitGentity( gentity_t *e ) {
 	e->classname = "noclass";
 	e->s.number = e - g_entities;
 	e->r.ownerNum = ENTITYNUM_NONE;
-	e->headshotDamageScale = 1.0;   // RF, default value
 	e->eventTime = 0;
 	e->freeAfterEvent = qfalse;
 	e->neverFree = qfalse;
-
-	// RF, init scripting
-	e->scriptStatus.scriptEventIndex = -1;
 }
 
 /*
@@ -500,6 +496,94 @@ qboolean G_EntitiesFree( void ) {
 
 /*
 =================
+An entity's parts (gMover_t ... in g_local.h): from pools a level long, a
+chunk at a time, and handed back when the entity's let go
+=================
+*/
+#define PART_CHUNK  16
+
+typedef struct {
+	void *free;     // each free one's first bytes point to the next
+	int size, inUse;
+} partPool_t;
+
+static partPool_t moverPool = { NULL, sizeof( gMover_t ) };
+static partPool_t scriptPool = { NULL, sizeof( gScript_t ) };
+static partPool_t miscPool = { NULL, sizeof( gMisc_t ) };
+
+static void *G_PartAlloc( partPool_t *pool ) {
+	void *p;
+	int i;
+
+	if ( !pool->free ) {
+		byte *chunk = G_Alloc( pool->size * PART_CHUNK );
+
+		for ( i = 0; i < PART_CHUNK; i++ ) {
+			*(void **)( chunk + i * pool->size ) = pool->free;
+			pool->free = chunk + i * pool->size;
+		}
+	}
+	p = pool->free;
+	pool->free = *(void **)p;
+	memset( p, 0, pool->size );
+	pool->inUse++;
+	return p;
+}
+
+static void G_PartFree( partPool_t *pool, void *p ) {
+	if ( p ) {
+		*(void **)p = pool->free;
+		pool->free = p;
+		pool->inUse--;
+	}
+}
+
+// what one without reads as: what G_Attach* starts one at
+const gMover_t g_noMover;
+const gScript_t g_noScript = { .scriptStatus.scriptEventIndex = -1 };
+const gMisc_t g_noMisc = { .headshotDamageScale = 1.0 };
+
+gMover_t *G_AttachMover( gentity_t *ent ) {
+	return ent->mover = G_PartAlloc( &moverPool );
+}
+
+gScript_t *G_AttachScript( gentity_t *ent ) {
+	ent->script = G_PartAlloc( &scriptPool );
+	ent->script->scriptStatus.scriptEventIndex = -1;   // RF, init scripting
+	return ent->script;
+}
+
+gMisc_t *G_AttachMisc( gentity_t *ent ) {
+	ent->misc = G_PartAlloc( &miscPool );
+	ent->misc->headshotDamageScale = 1.0;   // RF, default value
+	return ent->misc;
+}
+
+void G_FreeParts( gentity_t *ent ) {
+	G_PartFree( &moverPool, ent->mover );
+	G_PartFree( &scriptPool, ent->script );
+	G_PartFree( &miscPool, ent->misc );
+	ent->mover = NULL;
+	ent->script = NULL;
+	ent->misc = NULL;
+}
+
+// a level's start: its G_Alloc memory is new
+void G_InitParts( void ) {
+	moverPool.free = scriptPool.free = miscPool.free = NULL;
+	moverPool.inUse = scriptPool.inUse = miscPool.inUse = 0;
+}
+
+// the bytes they take, and how many of each
+int G_PartsInUse( int *movers, int *scripts, int *miscs ) {
+	*movers = moverPool.inUse;
+	*scripts = scriptPool.inUse;
+	*miscs = miscPool.inUse;
+	return moverPool.inUse * moverPool.size + scriptPool.inUse * scriptPool.size + miscPool.inUse * miscPool.size;
+}
+
+/*
+=================
 G_FreeEntity
 
 Marks the entity as free
@@ -512,6 +596,7 @@ void G_FreeEntity( gentity_t *ed ) {
 		return;
 	}
 
+	G_FreeParts( ed );
 	memset( ed, 0, sizeof( *ed ) );
 	ed->classname = "freed";
 	ed->freetime = level.time;
@@ -745,7 +830,7 @@ qboolean infront( gentity_t *self, gentity_t *other ) {
 	}
 
 
-	if ( self->activateArc ) {
+	if ( G_ReadMisc( self )->activateArc ) {
 		// move the origin of the 'other' up/down so that it matches the 'self' so the check is along a horizontal plane
 		VectorCopy( other->r.currentOrigin, otherOrigin );
 		otherOrigin[2] = self->r.currentOrigin[2];
@@ -758,10 +843,10 @@ qboolean infront( gentity_t *self, gentity_t *other ) {
 	dot = DotProduct( vec, forward );
 	// G_Printf( "other %5.2f\n",	dot);
 
-	if ( !other->aiCharacter && self->activateArc ) {  //----(SA)	make sure ai's aren't constrained to the grabarc of an mg42
+	if ( !other->aiCharacter && G_ReadMisc( self )->activateArc ) {  //----(SA)	make sure ai's aren't constrained to the grabarc of an mg42
 		float angle;
 		angle = RAD2DEG( M_PI - acos( dot ) );
-		if ( angle < ( self->activateArc * 2.0 ) ) { // arc is 'half arc' since that's the way the other angles in the mg42 were done
+		if ( angle < ( G_ReadMisc( self )->activateArc * 2.0 ) ) { // arc is 'half arc' since that's the way the other angles in the mg42 were done
 			return qfalse;
 		} else {
 			return qtrue;
