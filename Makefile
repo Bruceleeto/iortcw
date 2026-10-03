@@ -411,6 +411,22 @@ endif
 ifeq ($(DC_PROF),1)
   BASE_CFLAGS += -DDC_PROF
 endif
+# SH4ZAM=1, on by default for the Dreamcast and DCSIM=1: sh4zam's fast maths
+# (USE_SH4ZAM in the code). The Dreamcast's is the KOS port (kos-ports/sh4zam,
+# its SH4 back-end); the sim's is deps/sh4zam (git submodule update --init),
+# built here with its C back-end
+ifneq ($(filter dc,$(PLATFORM))$(filter 1,$(DCSIM)),)
+  SH4ZAM ?= 1
+endif
+SH4ZAM_DIR = deps/sh4zam
+ifeq ($(SH4ZAM),1)
+  BASE_CFLAGS += -DUSE_SH4ZAM
+  ifneq ($(PLATFORM),dc)
+    BASE_CFLAGS += -I$(CURDIR)/$(SH4ZAM_DIR)/include
+    SH4ZAM_SRC = shz_matrix.c shz_quat.c shz_version.c shz_xmtrx.c sw/shz_complex_sw.c sw/shz_xmtrx_sw.c
+    SH4ZAM_OBJ = $(patsubst %,$(B)/sh4zam/%.o,$(SH4ZAM_SRC))
+  endif
+endif
 
 # engine + renderer
 CLIENT_CFLAGS = $(BASE_CFLAGS) $(FAST_MATH) $(SDL_CFLAGS) -I$(CODE)/SDL2/include \
@@ -442,6 +458,9 @@ MOD_CFLAGS = $(BASE_CFLAGS) -fvisibility=hidden
 LDFLAGS += $(ARCH_FLAGS) $(ARCH_LDFLAGS)
 ifeq ($(PLATFORM),dc)
   LIBS = -lm
+  ifeq ($(SH4ZAM),1)
+    LIBS := -lsh4zam $(LIBS)
+  endif
 else
   LIBS = $(SDL_LIBS) -lm -ldl -lrt -lpthread
 endif
@@ -595,7 +614,7 @@ STRINGIFY = $(B)/tools/stringify
 
 game: $(EXE)
 
-$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) $(MDSC_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
+$(EXE): $(ENGINE_OBJ) $(BOTLIB_OBJ) $(RENDERER_OBJ) $(GLSL_OBJ) $(PVR_OBJ) $(DC_OBJ) $(MDSC_OBJ) $(SH4ZAM_OBJ) $(MODULE_OBJ) $(filter %.a,$(RENDERER_LIBS))
 	$(echo_cmd) "LD $@"
 	$(Q)$(CXX) $(LDFLAGS) -o $@ $(filter %.o,$^) $(RENDERER_LIBS) $(LIBS)
 
@@ -604,6 +623,12 @@ $(B)/pvr/%.c.o: pvr/%.c
 	$(echo_cmd) "PVR_CC $<"
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(CLIENT_CFLAGS) -I$(CODE)/renderer $(GPU_PVR_CFLAGS) -c $< -o $@
+
+# deps/sh4zam's C back-end, for the sim (the Dreamcast links the KOS port's)
+$(B)/sh4zam/%.c.o: $(SH4ZAM_DIR)/source/%.c
+	$(echo_cmd) "SHZ_CC $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(ARCH_FLAGS) $(OPT) -I$(SH4ZAM_DIR)/include -c $< -o $@
 
 # mdsc/ is shared by the game and tools/rtcwconv
 $(B)/mdsc/%.c.o: mdsc/%.c
