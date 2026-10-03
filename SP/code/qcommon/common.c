@@ -3026,6 +3026,10 @@ void Com_Frame( void ) {
 		return;         // an ERR_DROP was thrown
 	}
 
+#ifdef DC_PROF
+	Com_ProfFrame();
+#endif
+
 	timeBeforeFirstEvents = 0;
 	timeBeforeServer = 0;
 	timeBeforeEvents = 0;
@@ -3070,6 +3074,7 @@ void Com_Frame( void ) {
 		}
 	}
 
+	PROF_BEGIN( PROF_IDLE );
 	do
 	{
 		timeVal = Com_TimeVal(minMsec);
@@ -3077,6 +3082,7 @@ void Com_Frame( void ) {
 		if(!com_busyWait->integer && timeVal > 1)
 			Sys_Sleep(timeVal - 1);
 	} while(Com_TimeVal(minMsec));
+	PROF_END( PROF_IDLE );
 
 	IN_Frame();
 	

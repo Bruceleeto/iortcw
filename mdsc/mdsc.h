@@ -28,8 +28,11 @@ extern "C" {
 #endif
 
 #define MDSC_IDENT          ( ( 'C' << 24 ) + ( 'S' << 16 ) + ( 'D' << 8 ) + 'M' )
-#define MDSC_VERSION        4       /* (2 and 3 had only key lists) */
-#define MDSC_VERSION_SHARED 5       /* frames shared with another MDSC: mdscShare_t */
+/* its surfaces' triangles as strips (STRIP_START in tr_local.h), the rest
+   of each surface moved up into the room that leaves (4 and 5 had them as
+   ints, 2 and 3 only key lists) */
+#define MDSC_VERSION        6
+#define MDSC_VERSION_SHARED 7       /* frames shared with another MDSC: mdscShare_t */
 
 #define MDSC_MAX_BONES      128     /* MDS_MAX_BONES */
 #define MDSC_FRAME_FLOATS   13      /* bounds[2], localOrigin, radius, parentOffset */

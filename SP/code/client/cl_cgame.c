@@ -606,7 +606,9 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.SetFog( args[1], args[2], args[3], VMF( 4 ), VMF( 5 ), VMF( 6 ), VMF( 7 ) );
 		return 0;
 	case CG_R_RENDERSCENE:
+		PROF_BEGIN( PROF_SCENE );
 		re.RenderScene( VMA( 1 ) );
+		PROF_END( PROF_SCENE );
 		return 0;
 	case CG_R_SETCOLOR:
 		re.SetColor( VMA( 1 ) );

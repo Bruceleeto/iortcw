@@ -1791,4 +1791,6 @@ typedef enum {
 	MAX_LANGUAGES
 } languages_t;
 
+#include "dc_prof.h"
+
 #endif  // __Q_SHARED_H

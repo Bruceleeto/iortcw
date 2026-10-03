@@ -18,7 +18,9 @@
  *          loads in place of the .bsp
  *   .mdc   vertex animated models -> .mdb with rigid bones in place of
  *          the vertexes a frame (mdc.cpp), which the renderer looks for
- *          first; none when the .mdc is better kept
+ *          first; when the .mdc is better kept, the .mdc again. Either
+ *          with its triangles in strip order (strip.cpp), as an .md3 is
+ *          written again, which the renderer makes strips of at load
  *   .aas   bot navigation -> .aasc, what the game reads of it in smaller
  *          structs (aas.cpp), which a botlib built with AAS_COMPACT reads
  *          and an empty maps/<map>_b1.aasc for a map with no big characters
@@ -182,6 +184,7 @@ int main( int argc, char **argv ) {
 	ColStats col = {};
 	WldStats wld = {};
 	MdcStats mdc = {};
+	ModelStripStats modelStrips = {};
 	ShaderStats shaders = {};
 	std::vector<fs::path> smallMaps;	/* .bsps with no big characters, without extension */
 	std::map<std::string, TexJob> images;	/* by name without extension */
@@ -233,11 +236,25 @@ int main( int argc, char **argv ) {
 			std::vector<uint8_t> in, out;
 			fs::path mdbPath = outDir / rel;
 			mdbPath.replace_extension( ".mdb" );
-			if ( !ReadFile( e.path(), in ) || !ConvertMdc( in, out, mdc, rel.c_str() ) ||
-				 ( !out.empty() && !WriteFile( mdbPath, out ) ) ) {
+			if ( !ReadFile( e.path(), in ) || !ConvertMdc( in, out, mdc, rel.c_str() ) ) {
 				failed++;
-			} else if ( verbose && !out.empty() ) {
-				printf( "%-48s %6.1f K -> %6.1f K\n", rel.c_str(), in.size() / 1024.0, out.size() / 1024.0 );
+			} else if ( !out.empty() ) {
+				/* its triangles in strip order */
+				if ( !StripModel( out, true, modelStrips ) || !WriteFile( mdbPath, out ) ) {
+					failed++;
+				} else if ( verbose ) {
+					printf( "%-48s %6.1f K -> %6.1f K\n", rel.c_str(), in.size() / 1024.0, out.size() / 1024.0 );
+				}
+			} else if ( !StripModel( in, true, modelStrips ) || !WriteFile( outDir / rel, in ) ) {
+				/* no .mdb: the .mdc with its triangles in strip order */
+				failed++;
+			}
+		} else if ( !strcasecmp( ext.c_str(), ".md3" ) ) {
+			/* its triangles in strip order */
+			std::vector<uint8_t> in;
+			if ( !ReadFile( e.path(), in ) || !StripModel( in, false, modelStrips ) || !WriteFile( outDir / rel, in ) ) {
+				fprintf( stderr, "%s: not an .md3\n", rel.c_str() );
+				failed++;
 			}
 		} else if ( !strcasecmp( ext.c_str(), ".aas" ) ) {
 			std::vector<uint8_t> in, out;
@@ -390,6 +407,10 @@ int main( int argc, char **argv ) {
 				mdc.files, mdc.bytesIn / 1048576.0, mdc.converted, mdc.bytesConverted / 1048576.0, mdc.bytesOut / 1048576.0,
 				mdc.boneSurfaces, mdc.surfaces, mdc.bones, mdc.frames ? 100.0 * mdc.keys / mdc.frames : 0.0,
 				mdc.numErr ? mdc.sumErr / mdc.numErr : 0.0, mdc.maxErr, mdc.kept );
+	}
+	if ( modelStrips.files ) {
+		printf( "models: %d .md3, .mdc and .mdb, %ld of %ld triangles in %ld strips\n", modelStrips.files,
+				modelStrips.stripTris, modelStrips.tris, modelStrips.strips );
 	}
 	if ( shaders.files ) {
 		printf( "shaders: %d files, %.0f K -> %.0f K; %d of %d shaders named somewhere\n",

@@ -913,6 +913,148 @@ frames it has, and those at what it has: a bone surface's bones cover its
 vertexes, a vertex surface's kept frames are of its base and compressed frames
 =================
 */
+/*
+=================
+R_PackTriangles
+
+A surface's triangles, 3 little endian ints each, as strips (STRIP_START)
+in their place, those that go on from each other as one: the bytes they
+take now (padded to 4), or -1 for an index not of its numVerts
+=================
+*/
+int R_PackTriangles( void *triangles, int numTriangles, int numVerts ) {
+	const int *in = triangles;
+	unsigned short *out = triangles;
+	int last[3] = { -1, -1, -1 }, odd = 0, k = 0, i;
+
+	// never past the triangles still to read: 3 shorts a triangle at most
+	for ( i = 0 ; i < numTriangles ; i++ ) {
+		int a = LittleLong( in[i * 3] ), b = LittleLong( in[i * 3 + 1] ), c = LittleLong( in[i * 3 + 2] );
+		int on = odd ? a == last[0] && b == last[2] : a == last[2] && b == last[1];
+
+		if ( (unsigned)a >= (unsigned)numVerts || (unsigned)b >= (unsigned)numVerts ||
+			 (unsigned)c >= (unsigned)numVerts || numVerts > STRIP_START ) {
+			return -1;
+		}
+		odd = on ? !odd : 0;
+		if ( !on ) {
+			out[k++] = a | STRIP_START;
+			out[k++] = b;
+		}
+		out[k++] = c;
+		last[0] = a;
+		last[1] = b;
+		last[2] = c;
+	}
+	while ( k & 1 ) {
+		out[k++] = 0;
+	}
+	return k * 2;
+}
+
+/*
+=================
+R_StripsSize
+
+The bytes numTriangles of strips take (padded to 4), or -1 if they don't
+check out: past maxShorts, too short, or an index not of numVerts
+=================
+*/
+int R_StripsSize( const unsigned short *strips, int maxShorts, int numTriangles, int numVerts ) {
+	int k = 0, n = 0;
+
+	while ( numTriangles > 0 ) {
+		int x;
+
+		if ( k >= maxShorts ) {
+			return -1;
+		}
+		x = strips[k];
+		if ( x & STRIP_START ) {
+			if ( n && n < 3 ) {
+				return -1;
+			}
+			n = 0;
+			x &= ~STRIP_START;
+		} else if ( !n ) {
+			return -1;
+		}
+		if ( x >= numVerts ) {
+			return -1;
+		}
+		k++;
+		if ( ++n >= 3 ) {
+			numTriangles--;
+		}
+	}
+	return ( k * 2 + 3 ) & ~3;
+}
+
+#define SURF_INT( s, f )        LittleLong( *(int *)( ( s ) + ( f ) ) )
+#define SET_SURF_INT( s, f, v ) ( *(int *)( ( s ) + ( f ) ) = LittleLong( v ) )
+
+/*
+=================
+R_PackModelSurfaces
+
+An .md3's or .mdc's surfaces, still as in the file, their triangles made
+strips (R_PackTriangles) and, when move, the rest of each surface moved up
+into the room that leaves, and so the surfaces after it. The fields are
+where in a surface its numVerts, numTriangles, ofsTriangles and ofsEnd are,
+and numOfs more offsets in it. Where the surfaces end now, or -1 if they
+don't check out
+=================
+*/
+static int R_PackModelSurfaces( byte *model, int size, int ofsSurfaces, int numSurfaces, qboolean move, int surfSize,
+								int fNumVerts, int fNumTriangles, int fOfsTriangles, int fOfsEnd, const int *fOfs, int numOfs ) {
+	byte *src = model + ofsSurfaces, *dst = src;
+	int i, j;
+
+	if ( ofsSurfaces < 0 || numSurfaces < 0 ) {
+		return -1;
+	}
+	for ( i = 0 ; i < numSurfaces ; i++ ) {
+		int numTriangles, ofsTriangles, ofsEnd, triBytes, packed, delta;
+
+		if ( src + surfSize > model + size ) {
+			return -1;
+		}
+		numTriangles = SURF_INT( src, fNumTriangles );
+		ofsTriangles = SURF_INT( src, fOfsTriangles );
+		ofsEnd = SURF_INT( src, fOfsEnd );
+		triBytes = numTriangles * 12;
+		if ( numTriangles < 0 || numTriangles > SHADER_MAX_INDEXES || ofsTriangles < surfSize || ofsEnd <= 0 ||
+			 ofsEnd > model + size - src || ofsTriangles > ofsEnd - triBytes ) {
+			return -1;
+		}
+		packed = R_PackTriangles( src + ofsTriangles, numTriangles, SURF_INT( src, fNumVerts ) );
+		if ( packed < 0 ) {
+			return -1;
+		}
+
+		// the offsets past the triangles that much nearer
+		delta = move ? triBytes - packed : 0;
+		for ( j = 0 ; j < numOfs ; j++ ) {
+			int ofs = SURF_INT( src, fOfs[j] );
+
+			if ( ofs >= ofsTriangles + triBytes ) {
+				SET_SURF_INT( src, fOfs[j], ofs - delta );
+			} else if ( ofs > ofsTriangles ) {
+				return -1;
+			}
+		}
+		SET_SURF_INT( src, fOfsEnd, ofsEnd - delta );
+
+		if ( move ) {
+			memmove( dst, src, ofsTriangles + packed );
+			memmove( dst + ofsTriangles + packed, src + ofsTriangles + triBytes, ofsEnd - ofsTriangles - triBytes );
+		}
+		dst += ofsEnd - delta;
+		src += ofsEnd;
+	}
+	return move ? dst - model : size;
+}
+
 static qboolean R_CheckMdbSurface( const mdcSurface_t *surf, int numFrames ) {
 	const mdbFrame_t *frame;
 	int i, total, numKeys, keySize;
@@ -976,7 +1118,6 @@ static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *mod_
 	md3Frame_t          *frame;
 	mdcSurface_t        *surf;
 	md3Shader_t         *shader;
-	md3Triangle_t       *tri;
 	md3St_t             *st;
 	md3XyzNormal_t      *xyz;
 	mdcXyzCompressed_t  *xyzComp;
@@ -998,10 +1139,30 @@ static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *mod_
 
 	mod->type = MOD_MDC;
 	size = LittleLong( pinmodel->ofsEnd );
+
+	// its triangles as strips, and the surfaces smaller for it, when they're last
+	{
+		static const int ofs[] = { offsetof( mdcSurface_t, ofsShaders ), offsetof( mdcSurface_t, ofsSt ),
+			offsetof( mdcSurface_t, ofsXyzNormals ), offsetof( mdcSurface_t, ofsXyzCompressed ),
+			offsetof( mdcSurface_t, ofsFrameBaseFrames ), offsetof( mdcSurface_t, ofsFrameCompFrames ) };
+		int ofsSurfaces = LittleLong( pinmodel->ofsSurfaces );
+
+		size = R_PackModelSurfaces( buffer, size, ofsSurfaces, LittleLong( pinmodel->numSurfaces ),
+									LittleLong( pinmodel->ofsFrames ) <= ofsSurfaces && LittleLong( pinmodel->ofsTagNames ) <= ofsSurfaces &&
+									LittleLong( pinmodel->ofsTags ) <= ofsSurfaces, sizeof( mdcSurface_t ),
+									offsetof( mdcSurface_t, numVerts ), offsetof( mdcSurface_t, numTriangles ),
+									offsetof( mdcSurface_t, ofsTriangles ), offsetof( mdcSurface_t, ofsEnd ), ofs, ARRAY_LEN( ofs ) );
+		if ( size < 0 ) {
+			ri.Printf( PRINT_WARNING, "R_LoadMDC: %s has bad surfaces\n", mod_name );
+			return qfalse;
+		}
+		pinmodel->ofsEnd = LittleLong( size );
+	}
+
 	mod->dataSize += size;
 	mod->mdc[lod] = ri.Hunk_Alloc( size, h_low );
 
-	memcpy( mod->mdc[lod], buffer, LittleLong( pinmodel->ofsEnd ) );
+	memcpy( mod->mdc[lod], buffer, size );
 
 	LL( mod->mdc[lod]->ident );
 	LL( mod->mdc[lod]->version );
@@ -1119,15 +1280,8 @@ static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *mod_
 		}
 
 		// Ridah, optimization, only do the swapping if we really need to
+		// (not the triangles: made strips, R_PackModelSurfaces)
 		if ( LittleShort( 1 ) != 1 ) {
-
-			// swap all the triangles
-			tri = ( md3Triangle_t * )( (byte *)surf + surf->ofsTriangles );
-			for ( j = 0 ; j < surf->numTriangles ; j++, tri++ ) {
-				LL( tri->indexes[0] );
-				LL( tri->indexes[1] );
-				LL( tri->indexes[2] );
-			}
 
 			// swap all the ST
 			st = ( md3St_t * )( (byte *)surf + surf->ofsSt );
@@ -1191,7 +1345,6 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, const char *mod_
 	md3Frame_t          *frame;
 	md3Surface_t        *surf;
 	md3Shader_t         *shader;
-	md3Triangle_t       *tri;
 	md3St_t             *st;
 	md3XyzNormal_t      *xyz;
 	md3Tag_t            *tag;
@@ -1210,6 +1363,24 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, const char *mod_
 
 	mod->type = MOD_MESH;
 	size = LittleLong( pinmodel->ofsEnd );
+
+	// its triangles as strips, and the surfaces smaller for it, when they're last
+	{
+		static const int ofs[] = { offsetof( md3Surface_t, ofsShaders ), offsetof( md3Surface_t, ofsSt ),
+			offsetof( md3Surface_t, ofsXyzNormals ) };
+		int ofsSurfaces = LittleLong( pinmodel->ofsSurfaces );
+
+		size = R_PackModelSurfaces( buffer, size, ofsSurfaces, LittleLong( pinmodel->numSurfaces ),
+									LittleLong( pinmodel->ofsFrames ) <= ofsSurfaces && LittleLong( pinmodel->ofsTags ) <= ofsSurfaces,
+									sizeof( md3Surface_t ), offsetof( md3Surface_t, numVerts ), offsetof( md3Surface_t, numTriangles ),
+									offsetof( md3Surface_t, ofsTriangles ), offsetof( md3Surface_t, ofsEnd ), ofs, ARRAY_LEN( ofs ) );
+		if ( size < 0 ) {
+			ri.Printf( PRINT_WARNING, "R_LoadMD3: %s has bad surfaces\n", mod_name );
+			return qfalse;
+		}
+		pinmodel->ofsEnd = LittleLong( size );
+	}
+
 	mod->dataSize += size;
 	// Ridah, convert to compressed format
 	if ( !r_compressModels->integer ) {
@@ -1219,7 +1390,7 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, const char *mod_
 	}
 	// done.
 
-	memcpy( mod->md3[lod], buffer, LittleLong( pinmodel->ofsEnd ) );
+	memcpy( mod->md3[lod], buffer, size );
 
 	LL( mod->md3[lod]->ident );
 	LL( mod->md3[lod]->version );
@@ -1337,15 +1508,8 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, const char *mod_
 		}
 
 		// Ridah, optimization, only do the swapping if we really need to
+		// (not the triangles: made strips, R_PackModelSurfaces)
 		if ( LittleShort( 1 ) != 1 ) {
-
-			// swap all the triangles
-			tri = ( md3Triangle_t * )( (byte *)surf + surf->ofsTriangles );
-			for ( j = 0 ; j < surf->numTriangles ; j++, tri++ ) {
-				LL( tri->indexes[0] );
-				LL( tri->indexes[1] );
-				LL( tri->indexes[2] );
-			}
 
 			// swap all the ST
 			st = ( md3St_t * )( (byte *)surf + surf->ofsSt );
@@ -1734,7 +1898,6 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 	mdsHeader_t         *pinmodel, *mds;
 	mdsFrame_t          *frame;
 	mdsSurface_t        *surf;
-	mdsTriangle_t       *tri;
 	mdsVertex_t         *v;
 	mdsBoneInfo_t       *bi;
 	mdsTag_t            *tag;
@@ -1875,6 +2038,16 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 			return qfalse;
 		}
 
+		// its triangles as strips: an .mdsc's are, an .mds's are made so in their place
+		if ( surf->ofsTriangles < (int)sizeof( *surf ) || surf->ofsTriangles > surf->ofsEnd ||
+			 ( compact ? R_StripsSize( (unsigned short *)( (byte *)surf + surf->ofsTriangles ),
+									   ( surf->ofsEnd - surf->ofsTriangles ) / 2, surf->numTriangles, surf->numVerts )
+					   : surf->numTriangles * 12 > surf->ofsEnd - surf->ofsTriangles ? -1
+					   : R_PackTriangles( (byte *)surf + surf->ofsTriangles, surf->numTriangles, surf->numVerts ) ) < 0 ) {
+			ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has bad triangles on %s\n", mod_name, surf->name );
+			return qfalse;
+		}
+
 		// register the shaders
 		if ( surf->shader[0] ) {
 			sh = R_FindShader( surf->shader, LIGHTMAP_NONE, qtrue );
@@ -1888,14 +2061,6 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 		}
 
 		if ( LittleLong( 1 ) != 1 ) {
-			// swap all the triangles
-			tri = ( mdsTriangle_t * )( (byte *)surf + surf->ofsTriangles );
-			for ( j = 0 ; j < surf->numTriangles ; j++, tri++ ) {
-				LL( tri->indexes[0] );
-				LL( tri->indexes[1] );
-				LL( tri->indexes[2] );
-			}
-
 			// swap all the vertexes
 			v = ( mdsVertex_t * )( (byte *)surf + surf->ofsVerts );
 			for ( j = 0 ; j < surf->numVerts ; j++ ) {

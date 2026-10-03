@@ -773,7 +773,6 @@ RB_SurfaceMesh
 static void RB_SurfaceMesh( md3Surface_t *surface ) {
 	int j;
 	float backlerp;
-	int             *triangles;
 	float           *texCoords;
 	int indexes;
 	int Bob, Doug;
@@ -796,13 +795,11 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 
 	LerpMeshVertexes( surface, backlerp );
 
-	triangles = ( int * )( (byte *)surface + surface->ofsTriangles );
 	indexes = surface->numTriangles * 3;
 	Bob = tess.numIndexes;
 	Doug = tess.numVertexes;
-	for ( j = 0 ; j < indexes ; j++ ) {
-		tess.indexes[Bob + j] = Doug + triangles[j];
-	}
+	R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
+					  tess.indexes + Bob, Doug );
 	tess.numIndexes += indexes;
 
 	texCoords = ( float * )( (byte *)surface + surface->ofsSt );
@@ -1147,7 +1144,6 @@ RB_SurfaceCMesh
 void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	int j;
 	float backlerp;
-	int             *triangles;
 	float           *texCoords;
 	int indexes;
 	int Bob, Doug;
@@ -1176,13 +1172,11 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 		LerpCMeshVertexes( surface, backlerp );
 	}
 
-	triangles = ( int * )( (byte *)surface + surface->ofsTriangles );
 	indexes = surface->numTriangles * 3;
 	Bob = tess.numIndexes;
 	Doug = tess.numVertexes;
-	for ( j = 0 ; j < indexes ; j++ ) {
-		tess.indexes[Bob + j] = Doug + triangles[j];
-	}
+	R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
+					  tess.indexes + Bob, Doug );
 	tess.numIndexes += indexes;
 
 	texCoords = ( float * )( (byte *)surface + surface->ofsSt );
@@ -1205,6 +1199,33 @@ RB_SurfaceWorld
 A .wld surface: copied as it is, the indexes counted on from the tess's
 ==============
 */
+/*
+=============
+R_StripTriangles
+
+numTriangles from strips (STRIP_START) as 3 indexes each, plus add, at out;
+where they end
+=============
+*/
+glIndex_t *R_StripTriangles( const unsigned short *strips, int numTriangles, glIndex_t *out, int add ) {
+	while ( numTriangles > 0 ) {
+		glIndex_t a = add + ( *strips++ & ~STRIP_START ), b = add + *strips++, c;
+		int odd = 0;
+
+		do {
+			c = add + *strips++;
+			out[0] = odd ? b : a;
+			out[1] = odd ? a : b;
+			out[2] = c;
+			out += 3;
+			a = b;
+			b = c;
+			odd ^= 1;
+		} while ( --numTriangles > 0 && !( *strips & STRIP_START ) );
+	}
+	return out;
+}
+
 /*
 =============
 R_WorldNextTriangle
@@ -1246,29 +1267,9 @@ static void RB_SurfaceWorld( srfWorld_t *srf ) {
 	dlightBits = srf->dlightBits;
 	tess.dlightBits |= dlightBits;
 
-	// the strips as triangles, in the same order (wldfile.h): a strip's
-	// triangles go on from each other, which the PVR backend sends as a strip
 	first = tess.numVertexes;
 	tessIndexes = tess.indexes + tess.numIndexes;
-	{
-		const unsigned short *p = srf->indexes, *end = p + srf->numStripIndexes;
-
-		while ( p < end ) {
-			glIndex_t a = first + ( *p++ & ~WLD_STRIP_START ), b = first + *p++, c;
-			int odd = 0;
-
-			do {
-				c = first + *p++;
-				tessIndexes[0] = odd ? b : a;
-				tessIndexes[1] = odd ? a : b;
-				tessIndexes[2] = c;
-				tessIndexes += 3;
-				a = b;
-				b = c;
-				odd ^= 1;
-			} while ( p < end && !( *p & WLD_STRIP_START ) );
-		}
-	}
+	R_StripTriangles( srf->indexes, srf->numIndexes / 3, tessIndexes, first );
 	tess.numIndexes += srf->numIndexes;
 
 	v = srf->verts;

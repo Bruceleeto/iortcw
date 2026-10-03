@@ -99,7 +99,9 @@ void R_IssueRenderCommands( qboolean runPerformanceCounters ) {
 	// actually start the commands going
 	if ( !r_skipBackEnd->integer ) {
 		// let it start on the new batch
+		PROF_BEGIN( PROF_DRAW );
 		RB_ExecuteRenderCommands( cmdList->cmds );
+		PROF_END( PROF_DRAW );
 	}
 }
 

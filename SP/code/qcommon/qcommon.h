@@ -729,6 +729,9 @@ void Com_TouchMemory( void );
 // commandLine should not include the executable name (argv[0])
 void Com_Init( char *commandLine );
 void Com_Frame( void );
+#ifdef DC_PROF
+void Com_ProfFrame( void );
+#endif
 void Com_Shutdown( void );
 
 
@@ -894,6 +897,8 @@ void    Sys_Print( const char *msg );
 // Sys_Milliseconds should only be used for profiling purposes,
 // any game related timing information should come from event timestamps
 int     Sys_Milliseconds( void );
+// microseconds from some point: for timing (DC_PROF), only a difference means anything
+long long Sys_Microseconds( void );
 
 qboolean Sys_RandomBytes( byte *string, int len );
 

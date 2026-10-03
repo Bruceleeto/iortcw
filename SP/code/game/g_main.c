@@ -2626,7 +2626,9 @@ void G_RunFrame( int levelTime ) {
 	}
 
 	// Ridah, move the AI
+	PROF_BEGIN( PROF_AI );
 	AICast_StartServerFrame( level.time );
+	PROF_END( PROF_AI );
 
 	// perform final fixups on the players
 	ent = &g_entities[0];

@@ -323,7 +323,9 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 		return 0;
 
 	case UI_R_RENDERSCENE:
+		PROF_BEGIN( PROF_SCENE );
 		re.RenderScene( VMA( 1 ) );
+		PROF_END( PROF_SCENE );
 		return 0;
 
 	case UI_R_SETCOLOR:

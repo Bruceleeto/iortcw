@@ -1254,7 +1254,9 @@ void R_Register( void ) {
 	r_printShaders = ri.Cvar_Get( "r_printShaders", "0", 0 );
 	r_saveFontData = ri.Cvar_Get( "r_saveFontData", "0", 0 );
 
-	r_compressModels = ri.Cvar_Get( "r_compressModels", "0", 0 );     // converts MD3 -> MDC at run-time
+	// converts MD3 -> MDC at run-time: never, as models' triangles are made
+	// strips at load (R_PackModelSurfaces), which it doesn't know
+	r_compressModels = ri.Cvar_Get( "r_compressModels", "0", CVAR_ROM );
 	r_exportCompressedModels = ri.Cvar_Get( "r_exportCompressedModels", "0", 0 ); // saves compressed models
 	r_buildScript = ri.Cvar_Get( "com_buildscript", "0", 0 );
 	r_bonesDebug = ri.Cvar_Get( "r_bonesDebug", "0", CVAR_CHEAT );

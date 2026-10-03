@@ -9,6 +9,7 @@
 #include <array>
 #include <map>
 #include <stdio.h>
+#include <string.h>
 
 #include "rtcwconv.h"
 #include "tri_stripper.h"
@@ -126,4 +127,74 @@ int StripOrder( std::vector<uint32_t> &tris, int *stripTris ) {
 
 	tris = out;
 	return (int)strips.size();
+}
+
+std::vector<uint16_t> StripIndexes( const std::vector<uint32_t> &tris, long *strips ) {
+	std::vector<uint16_t> out;
+	uint32_t last[3] = { ~0u, ~0u, ~0u };
+	bool odd = false;
+
+	for ( size_t t = 0; t + 2 < tris.size(); t += 3 ) {
+		uint32_t a = tris[t], b = tris[t + 1], c = tris[t + 2];
+		bool on = odd ? a == last[0] && b == last[2] : a == last[2] && b == last[1];
+		odd = on ? !odd : false;
+		if ( !on ) {
+			out.insert( out.end(), { (uint16_t)( a | 0x8000 ), (uint16_t)b } );
+			( *strips )++;
+		}
+		out.push_back( (uint16_t)c );
+		last[0] = a;
+		last[1] = b;
+		last[2] = c;
+	}
+	return out;
+}
+
+template <typename T> static T GetAt( const std::vector<uint8_t> &b, size_t at ) {
+	T v;
+	memcpy( &v, &b[at], sizeof( v ) );
+	return v;
+}
+
+bool StripModel( std::vector<uint8_t> &b, bool mdc, ModelStripStats &st ) {
+	/* where they are in the header and a surface: md3Header_t / mdcHeader_t,
+	   md3Surface_t / mdcSurface_t */
+	const size_t hNumSurfaces = 84, hOfsSurfaces = mdc ? 104 : 100;
+	const size_t sNumVerts = mdc ? 84 : 80, sNumTris = mdc ? 88 : 84, sOfsTris = mdc ? 92 : 88;
+	const size_t sOfsEnd = mdc ? 120 : 104, sSize = mdc ? 124 : 108;
+
+	if ( b.size() < hOfsSurfaces + 8 ) {
+		return false;
+	}
+	int numSurfaces = GetAt<int>( b, hNumSurfaces );
+	size_t surf = GetAt<int>( b, hOfsSurfaces );
+	for ( int i = 0; i < numSurfaces; i++ ) {
+		if ( surf + sSize > b.size() ) {
+			return false;
+		}
+		int numVerts = GetAt<int>( b, surf + sNumVerts ), numTris = GetAt<int>( b, surf + sNumTris );
+		int ofsTris = GetAt<int>( b, surf + sOfsTris ), ofsEnd = GetAt<int>( b, surf + sOfsEnd );
+		if ( numTris < 0 || ofsTris < 0 || ofsEnd <= 0 || surf + ofsEnd > b.size() ||
+			 (size_t)ofsTris + numTris * 12 > (size_t)ofsEnd ) {
+			return false;
+		}
+		std::vector<uint32_t> tris( numTris * 3 );
+		memcpy( tris.data(), &b[surf + ofsTris], tris.size() * 4 );
+		for ( uint32_t v : tris ) {
+			if ( v >= (uint32_t)numVerts ) {
+				return false;
+			}
+		}
+		int stripTris;
+		int strips = StripOrder( tris, &stripTris );
+		if ( strips > 0 ) {
+			memcpy( &b[surf + ofsTris], tris.data(), tris.size() * 4 );
+			st.strips += strips;
+			st.stripTris += stripTris;
+		}
+		st.tris += numTris;
+		surf += ofsEnd;
+	}
+	st.files++;
+	return true;
 }

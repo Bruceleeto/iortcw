@@ -1429,7 +1429,9 @@ void ClientThink( int clientNum ) {
 
 	// Ridah, let the AI think now
 	if ( g_gametype.integer == GT_SINGLE_PLAYER && !( ent->r.svFlags & SVF_CASTAI ) ) {
+		PROF_BEGIN( PROF_AI );
 		AICast_StartFrame( level.time /*ent->client->pers.cmd.serverTime*/ );
+		PROF_END( PROF_AI );
 		//AICast_StartServerFrame ( level.time );
 	}
 	// done.

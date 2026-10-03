@@ -1358,7 +1358,9 @@ CM_BoxTrace
 void CM_BoxTrace( trace_t *results, const vec3_t start, const vec3_t end,
 				  const vec3_t mins, const vec3_t maxs,
 				  clipHandle_t model, int brushmask, int capsule ) {
+	PROF_BEGIN( PROF_COLLISION );
 	CM_Trace( results, start, end, mins, maxs, model, vec3_origin, brushmask, capsule, NULL );
+	PROF_END( PROF_COLLISION );
 }
 
 /*
@@ -1442,7 +1444,9 @@ void CM_TransformedBoxTrace( trace_t *results, const vec3_t start, const vec3_t 
 	}
 
 	// sweep the box through the model
+	PROF_BEGIN( PROF_COLLISION );
 	CM_Trace( &trace, start_l, end_l, symetricSize[0], symetricSize[1], model, origin, brushmask, capsule, &sphere );
+	PROF_END( PROF_COLLISION );
 
 	// if the bmodel was rotated and there was a collision
 	if ( rotated && trace.fraction != 1.0 ) {

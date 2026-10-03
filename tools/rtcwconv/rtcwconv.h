@@ -20,6 +20,22 @@
  * found, or -1 (and leaves tris alone) if the result didn't check out. */
 int StripOrder(std::vector<uint32_t> &tris, int *stripTris);
 
+/* Triangles (in strip order, from StripOrder) as the strips the renderer
+ * reads (STRIP_START in tr_local.h, WLD_STRIP_START): unsigned shorts, the
+ * first index of each strip with 0x8000, a triangle that goes on from the
+ * one before one index more. Adds how many strips to *strips. */
+std::vector<uint16_t> StripIndexes(const std::vector<uint32_t> &tris, long *strips);
+
+struct ModelStripStats {
+	int files;
+	long tris, stripTris, strips;
+};
+
+/* An .md3's (mdc false) or .mdc's / .mdb's surfaces' triangles put in
+ * strip order, which the renderer makes strips of when it loads them.
+ * False if it isn't one. */
+bool StripModel(std::vector<uint8_t> &b, bool mdc, ModelStripStats &st);
+
 /* ---- mds.cpp ---- */
 
 struct MdsStats {

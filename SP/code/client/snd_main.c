@@ -328,7 +328,9 @@ void S_Update( void )
 	}
 	
 	if( si.Update ) {
+		PROF_BEGIN( PROF_SOUND );
 		si.Update( );
+		PROF_END( PROF_SOUND );
 	}
 }
 

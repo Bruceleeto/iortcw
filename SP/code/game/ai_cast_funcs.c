@@ -4018,8 +4018,8 @@ char *AIFunc_BattleMG42( cast_state_t *cs ) {
 		return NULL;
 	}
 
-	// if enemy is dead, stop attacking them
-	if ( g_entities[cs->enemyNum].health <= 0 ) {
+	// if enemy is dead, stop attacking them (none: -1, not an entity)
+	if ( cs->enemyNum >= 0 && g_entities[cs->enemyNum].health <= 0 ) {
 		cs->enemyNum = -1;
 	}
 

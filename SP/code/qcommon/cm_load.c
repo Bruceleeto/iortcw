@@ -380,7 +380,8 @@ void CMod_LoadLeafBrushes( bspLump_t *l ) {
 	}
 	count = l->len / sizeof( *in );
 
-	cm.leafbrushes = Hunk_Alloc( count * sizeof( *cm.leafbrushes ), h_high );
+	// and the box brush's (CM_InitBoxHull)
+	cm.leafbrushes = Hunk_Alloc( ( BOX_BRUSHES + count ) * sizeof( *cm.leafbrushes ), h_high );
 	cm.numLeafBrushes = count;
 
 	out = cm.leafbrushes;

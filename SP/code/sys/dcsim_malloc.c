@@ -4,6 +4,10 @@
  * (DCSIM_HEAP_START, the .elf's _end) to the top of its 32MB less the
  * kernel stack, as KallistiOS gives it out (mm_sbrk). Less DCSIM_KOS_BYTES,
  * what KallistiOS mallocs itself before the game starts. See dcsim.h.
+ *
+ * Built with -fsanitize=address (make sp DCSIM=1 ASAN=1), every block is the
+ * system's instead, which AddressSanitizer watches: a write to one after
+ * it's freed is caught where it happens. The arena's limits are gone then.
  */
 #undef malloc
 #undef calloc
@@ -79,7 +83,8 @@ static void init( void ) {
 		return;
 	}
 	// the same place in a page as on the Dreamcast, so it lines up alike
-	block = aligned_alloc( 4096, size + 8192 );
+	// (a size aligned_alloc takes: a multiple of the alignment)
+	block = aligned_alloc( 4096, ( size + 8192 + 4095 ) & ~(size_t)4095 );
 	if ( !block ) {
 		fprintf( stderr, "DCSIM: no %u bytes for the arena\n", (unsigned)size );
 		exit( 1 );
@@ -184,6 +189,9 @@ void DCSim_DumpAllocs( const char *when ) {
 void *dcsim_malloc( size_t size ) {
 	void *p;
 
+#ifdef __SANITIZE_ADDRESS__
+	return malloc( size );
+#endif
 	init();
 	p = dl_malloc( size );
 	track( p, size );
@@ -193,6 +201,9 @@ void *dcsim_malloc( size_t size ) {
 void *dcsim_calloc( size_t n, size_t size ) {
 	void *p;
 
+#ifdef __SANITIZE_ADDRESS__
+	return calloc( n, size );
+#endif
 	init();
 	p = dl_calloc( n, size );
 	track( p, n * size );
@@ -202,6 +213,12 @@ void *dcsim_calloc( size_t n, size_t size ) {
 void *dcsim_memalign( size_t align, size_t size ) {
 	void *p;
 
+#ifdef __SANITIZE_ADDRESS__
+	if ( posix_memalign( &p, align < sizeof( void * ) ? sizeof( void * ) : align, size ) ) {
+		return NULL;
+	}
+	return p;
+#endif
 	init();
 	p = dl_memalign( align, size );
 	track( p, size );

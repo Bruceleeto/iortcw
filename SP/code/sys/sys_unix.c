@@ -35,6 +35,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <sys/mman.h>
 #endif
 #include <sys/time.h>
+#include <time.h>
+#ifdef _arch_dreamcast
+#include <arch/timer.h>
+#endif
 #include <pwd.h>
 #include <libgen.h>
 #include <fcntl.h>
@@ -162,6 +166,22 @@ char *Sys_GogPath( void )
 	return gogPath;
 }
 #endif
+
+/*
+================
+Sys_Microseconds
+================
+*/
+long long Sys_Microseconds( void ) {
+#ifdef _arch_dreamcast
+	return (long long)timer_us_gettime64();
+#else
+	struct timespec ts;
+
+	clock_gettime( CLOCK_MONOTONIC, &ts );
+	return (long long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+#endif
+}
 
 /*
 ================

@@ -727,6 +727,17 @@ typedef struct {
 
 qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] );
 
+// Triangles as strips, unsigned shorts: a .wld surface's, and an .md3's,
+// .mdc's and .mds's surfaces' once loaded (.mdsc's on disc). The first index
+// of each strip has STRIP_START; a strip a b c d e is the triangles a b c,
+// c b d, c d e, ... (every other one turned, so all keep their winding), in
+// that order, which the PVR backend sends as a strip
+#define STRIP_START     0x8000
+
+glIndex_t *R_StripTriangles( const unsigned short *strips, int numTriangles, glIndex_t *out, int add );
+int R_PackTriangles( void *triangles, int numTriangles, int numVerts );
+int R_StripsSize( const unsigned short *strips, int maxShorts, int numTriangles, int numVerts );
+
 #define R_WorldVertXyz( srf, v, out ) VectorMA( ( srf )->origin, ( srf )->xyzStep, ( v )->xyz, out )
 #define R_WorldVertNormal( v, out ) R_LatLongToNormal( out, ( ( v )->normal[0] << 8 ) | ( v )->normal[1] )
 
@@ -1811,7 +1822,7 @@ RENDERER BACK END COMMAND QUEUE
 =============================================================
 */
 
-#define MAX_RENDER_COMMANDS 0x20000     // 128K: a full console is about 90K; past it, commands are dropped
+#define MAX_RENDER_COMMANDS 0x30000     // 192K: a briefing (each text drawn twice) is up to about 160K; past it, commands are dropped
 
 typedef struct {
 	byte cmds[MAX_RENDER_COMMANDS];

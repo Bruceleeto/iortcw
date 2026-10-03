@@ -37,6 +37,7 @@
 #include <dc/pvr.h>
 
 #include "pvr_gl.h"
+#include "../SP/code/qcommon/dc_prof.h"
 
 #ifndef PVR_PT_ALPHA_REF
 #define PVR_PT_ALPHA_REF	0x011c
@@ -1589,7 +1590,9 @@ void pvrgl_EndFrame( void ) {
 		return;
 	}
 
+	PROF_BEGIN( PROF_GPU );
 	pvr_wait_ready();
+	PROF_END( PROF_GPU );
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
 	pvr_scene_begin();

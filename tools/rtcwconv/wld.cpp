@@ -769,20 +769,9 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 			tris.assign( b.indexes.begin() + s.firstIndex, b.indexes.begin() + s.firstIndex + s.numIndexes );
 		}
 		s.firstIndex = outIndexes.size();
-		/* a triangle that goes on from the strip before is one index more */
-		int last[3] = { -1, -1, -1 }, odd = 0;
-		for ( size_t t = 0; t < tris.size(); t += 3 ) {
-			uint32_t a = tris[t], c = tris[t + 2], bb = tris[t + 1];
-			bool on = odd ? a == (uint32_t)last[0] && bb == (uint32_t)last[2] : a == (uint32_t)last[2] && bb == (uint32_t)last[1];
-			odd = on ? !odd : 0;
-			if ( !on ) {
-				outIndexes.insert( outIndexes.end(), { (uint16_t)( a | WLD_STRIP_START ), (uint16_t)bb } );
-				st.strips++;
-			}
-			outIndexes.push_back( (uint16_t)c );
-			last[0] = a; last[1] = bb; last[2] = c;
-		}
-		s.numStripIndexes = outIndexes.size() - s.firstIndex;
+		std::vector<uint16_t> strips = StripIndexes( tris, &st.strips );
+		outIndexes.insert( outIndexes.end(), strips.begin(), strips.end() );
+		s.numStripIndexes = strips.size();
 
 		/* and back, as the renderer does it */
 		std::vector<uint32_t> back;

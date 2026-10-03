@@ -262,10 +262,6 @@ static void PutMesh( Out &o, const MdsSrc &s, bool mesh, MdsStats &st, const cha
 		MdsSurface surf;
 		memcpy( &surf, in.data() + at, sizeof( surf ) );
 
-		size_t surfAt = o.pos();
-		o.put( in.data() + at, surf.ofsEnd );
-		o.set32( surfAt + offsetof( MdsSurface, ofsHeader ), -(int32_t)surfAt );
-
 		std::vector<uint32_t> tris( surf.numTriangles * 3 );
 		memcpy( tris.data(), in.data() + at + surf.ofsTriangles, tris.size() * 4 );
 		int stripTris;
@@ -273,11 +269,33 @@ static void PutMesh( Out &o, const MdsSrc &s, bool mesh, MdsStats &st, const cha
 		if ( strips < 0 ) {
 			fprintf( stderr, "%s: %s: strips didn't check out, triangles left in order\n", name, surf.name );
 		} else {
-			memcpy( &o.b[surfAt + surf.ofsTriangles], tris.data(), tris.size() * 4 );
-			st.strips += strips;
 			st.stripTris += stripTris;
 		}
 		st.tris += surf.numTriangles;
+
+		/* the surface with its triangles as strips (MDSC_VERSION), the rest
+		   moved up into the room that leaves */
+		long numStrips = 0;
+		std::vector<uint16_t> strip = StripIndexes( tris, &numStrips );
+		st.strips += numStrips;
+		strip.resize( ( strip.size() + 1 ) & ~1, 0 );
+		const int triBytes = surf.numTriangles * 12, stripBytes = strip.size() * 2, delta = triBytes - stripBytes;
+		size_t surfAt = o.pos();
+		o.put( in.data() + at, surf.ofsTriangles );
+		o.put( strip.data(), stripBytes );
+		o.put( in.data() + at + surf.ofsTriangles + triBytes, surf.ofsEnd - surf.ofsTriangles - triBytes );
+		o.set32( surfAt + offsetof( MdsSurface, ofsHeader ), -(int32_t)surfAt );
+		for ( size_t f : { offsetof( MdsSurface, ofsVerts ), offsetof( MdsSurface, ofsCollapseMap ),
+						   offsetof( MdsSurface, ofsBoneReferences ), offsetof( MdsSurface, ofsEnd ) } ) {
+			int32_t v;
+			memcpy( &v, &o.b[surfAt + f], 4 );
+			if ( v >= surf.ofsTriangles + triBytes ) {
+				o.set32( surfAt + f, v - delta );
+			} else if ( v > surf.ofsTriangles ) {
+				fprintf( stderr, "%s: %s: something in its triangles\n", name, surf.name );
+				exit( 1 );
+			}
+		}
 
 		at += surf.ofsEnd;
 	}

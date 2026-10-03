@@ -340,7 +340,7 @@ void WriteField1( saveField_t *field, byte *base ) {
 		} else {
 			index = *(gclient_t **)p - level.clients;
 		}
-		if ( index >= MAX_CLIENTS || index < -1 ) {
+		if ( index >= level.maxclients || index < -1 ) {
 			G_Error( "WriteField1: client out of range (%i)", index );
 		}
 		*(int *)p = index;
@@ -441,7 +441,7 @@ void ReadField( fileHandle_t f, saveField_t *field, byte *base ) {
 		break;
 	case F_CLIENT:
 		index = *(int *)p;
-		if ( index >= MAX_CLIENTS || index < -1 ) {
+		if ( index >= level.maxclients || index < -1 ) {
 			G_Error( "ReadField: client out of range (%i)", index );
 		}
 		if ( index == -1 ) {
@@ -1300,7 +1300,8 @@ qboolean G_SaveGame( char *username ) {
 	if ( !G_SaveWrite( &i, sizeof( i ), f ) ) {
 		G_SaveWriteError();
 	}
-	for ( i = 0 ; i < MAX_CLIENTS ; i++ )
+	// (level.maxclients of them: g_clients is no bigger)
+	for ( i = 0 ; i < level.maxclients ; i++ )
 	{
 		cl = &level.clients[i];
 		if ( cl->pers.connected != CON_CONNECTED ) {
@@ -1573,7 +1574,7 @@ void G_LoadGame( char *filename ) {
 			if ( i < 0 ) {
 				break;
 			}
-			if ( i > MAX_CLIENTS ) {
+			if ( i >= level.maxclients ) {
 				trap_FS_FCloseFile( f );
 				G_Error( "G_LoadGame: clientnum out of range\n" );
 			}
@@ -1594,7 +1595,7 @@ void G_LoadGame( char *filename ) {
 			if ( i < 0 ) {
 				break;
 			}
-			if ( i > MAX_CLIENTS ) {
+			if ( i >= level.maxclients ) {
 				trap_FS_FCloseFile( f );
 				G_Error( "G_LoadGame: clientnum out of range\n" );
 			}

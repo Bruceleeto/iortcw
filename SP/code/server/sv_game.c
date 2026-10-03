@@ -297,7 +297,30 @@ SV_GameSystemCalls
 The module is making a system call
 ====================
 */
+static intptr_t SV_GameSystemCallsAll( intptr_t *args );
+
+/*
+====================
+SV_GameSystemCalls
+
+The game's syscalls; the botlib's (BOTLIB_SETUP on) timed as pathing (DC_PROF)
+====================
+*/
 intptr_t SV_GameSystemCalls( intptr_t *args ) {
+#ifdef DC_PROF
+	if ( args[0] >= BOTLIB_SETUP ) {
+		intptr_t r;
+
+		PROF_BEGIN( PROF_PATHING );
+		r = SV_GameSystemCallsAll( args );
+		PROF_END( PROF_PATHING );
+		return r;
+	}
+#endif
+	return SV_GameSystemCallsAll( args );
+}
+
+static intptr_t SV_GameSystemCallsAll( intptr_t *args ) {
 	switch ( args[0] ) {
 	case G_PRINT:
 		Com_Printf( "%s", (const char*)VMA(1) );

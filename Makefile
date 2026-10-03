@@ -24,6 +24,10 @@
 #                      -> build/sp-x86-dcsim/iowolfsp.x86; needs the
 #                      Dreamcast build (make disc) and runs on its files:
 #                      +set fs_basepath $PWD/build/disc
+#   make sp DCSIM=1 ASAN=1   the same with AddressSanitizer, its blocks the
+#                      system's (sys/dcsim_malloc.c), so a write to freed
+#                      memory is caught where it happens
+#                      -> build/sp-x86-dcsim-asan/iowolfsp.x86
 #
 # Everything (engine, renderer, qagame, cgame, ui) is linked into one
 # executable; no renderer or game shared libraries are built or loaded.
@@ -323,7 +327,7 @@ ifeq ($(RENDERER),pvr)
   MAP ?= escape1
 endif
 
-B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter 1,$(DCSIM)),-dcsim)
+B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter 1,$(DCSIM)),-dcsim)$(if $(filter 1,$(ASAN)),-asan)
 ifeq ($(PLATFORM),dc)
   EXE = $(B)/$(BIN).elf
 else
@@ -357,6 +361,16 @@ else
   FAST_MATH = -ffast-math
 endif
 
+# ASAN=1: AddressSanitizer (a PC build), with what it needs for its stacks
+ASAN ?= 0
+ifeq ($(ASAN),1)
+  ifeq ($(PLATFORM),dc)
+    $(error ASAN=1 is for the PC build)
+  endif
+  OPT = -O1 -g -fno-omit-frame-pointer -fsanitize=address -DNDEBUG
+  LDFLAGS += -fsanitize=address
+endif
+
 # the Dreamcast build is small but for the renderer (renderer/, pvr/, mdsc/),
 # which stays -O3: SIZE_OPT comes after OPT, and the renderer's objects clear it
 ifeq ($(PLATFORM)$(DEBUG),dc0)
@@ -387,6 +401,15 @@ endif
 ifeq ($(RENDERER),pvr)
   # in every module: glconfig_t is passed between them
   BASE_CFLAGS += -DGLCONFIG_SHORT_STRINGS
+endif
+# DC_PROF=1, on by default for the Dreamcast and DCSIM=1: a line every
+# com_profile seconds of where a frame's time goes, by system
+# (SP/code/qcommon/dc_prof.h); DC_PROF=0 builds without it
+ifneq ($(filter dc,$(PLATFORM))$(filter 1,$(DCSIM)),)
+  DC_PROF ?= 1
+endif
+ifeq ($(DC_PROF),1)
+  BASE_CFLAGS += -DDC_PROF
 endif
 
 # engine + renderer

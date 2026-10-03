@@ -340,8 +340,9 @@ Dlls will call this directly
 ============
 */
 intptr_t QDECL VM_DllSyscall( intptr_t arg, ... ) {
-#if !id386 || defined __clang__
-  // rcg010206 - see commentary above
+#if !id386 || defined __clang__ || defined __SANITIZE_ADDRESS__
+  // rcg010206 - see commentary above (and AddressSanitizer: &arg[1] and
+  // on read past arg, which it stops at)
   intptr_t args[MAX_VMSYSCALL_ARGS];
   int i;
   va_list ap;
@@ -881,6 +882,13 @@ locals from sp
 ==============
 */
 
+#ifdef DC_PROF
+// the module's section: qagame, cgame or ui
+static profSection_t VM_ProfSection( const vm_t *vm ) {
+	return vm->name[0] == 'q' ? PROF_GAME : vm->name[0] == 'c' ? PROF_CGAME : PROF_UI;
+}
+#endif
+
 intptr_t QDECL VM_Call( vm_t *vm, intptr_t callnum, ... )
 {
 	vm_t	*oldVM;
@@ -889,6 +897,8 @@ intptr_t QDECL VM_Call( vm_t *vm, intptr_t callnum, ... )
 
 	if(!vm || !vm->name[0])
 		Com_Error(ERR_FATAL, "VM_Call with NULL vm");
+
+	PROF_BEGIN( VM_ProfSection( vm ) );
 
 	oldVM = currentVM;
 	currentVM = vm;
@@ -946,6 +956,7 @@ intptr_t QDECL VM_Call( vm_t *vm, intptr_t callnum, ... )
 
 	if ( oldVM != NULL )
 	  currentVM = oldVM;
+	PROF_END( VM_ProfSection( vm ) );
 	return r;
 }
 

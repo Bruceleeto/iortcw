@@ -49,7 +49,6 @@ frame.
 
 static float frontlerp, backlerp;
 static float torsoFrontlerp, torsoBacklerp;
-static int *triangles;
 static glIndex_t *pIndexes;
 static int indexes;
 static int baseIndex, baseVertex, oldIndexes;
@@ -1156,7 +1155,6 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 //DBG_SHOWTIME
 
 	collapse_map   = ( int * )( ( byte * )surface + surface->ofsCollapseMap );
-	triangles = ( int * )( (byte *)surface + surface->ofsTriangles );
 	indexes = surface->numTriangles * 3;
 	baseIndex = tess.numIndexes;
 	baseVertex = tess.numVertexes;
@@ -1169,12 +1167,13 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 //DBG_SHOWTIME
 
 	if ( render_count == surface->numVerts ) {
-		for ( j = 0; j < indexes; j++ )
-			pIndexes[j] = triangles[j] + baseVertex;
+		R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
+						  pIndexes, baseVertex );
 		tess.numIndexes += indexes;
 	} else
 	{
 		short *collapseEnd;
+		const glIndex_t *tri = pIndexes;
 
 		pCollapse = collapse;
 		for ( j = 0; j < render_count; pCollapse++, j++ )
@@ -1188,11 +1187,14 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 			*pCollapse = collapse[ *pCollapseMap ];
 		}
 
+		// the triangles, then those not collapsed to nothing moved up over them
+		R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
+						  pIndexes, 0 );
 		for ( j = 0 ; j < indexes ; j += 3 )
 		{
-			p0 = collapse[ *( triangles++ ) ];
-			p1 = collapse[ *( triangles++ ) ];
-			p2 = collapse[ *( triangles++ ) ];
+			p0 = collapse[ tri[j] ];
+			p1 = collapse[ tri[j + 1] ];
+			p2 = collapse[ tri[j + 2] ];
 
 			// FIXME
 			// note:  serious optimization opportunity here,

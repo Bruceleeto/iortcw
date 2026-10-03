@@ -84,7 +84,9 @@ extern vmCvar_t g_gametype;
 //
 //
 
-ammotable_t ammoTable[] = {
+// one per weapon: 27 are listed, the rest (to WP_NUM_WEAPONS, past the
+// table as it was, and read from: Fill_Clip on every weapon) all 0
+ammotable_t ammoTable[WP_NUM_WEAPONS] = {
 	//	MAX				USES	MAX		RELOAD	FIRE			NEXT	HEAT,	COOL,	MOD,	...
 	//	AMMO			AMT.	CLIP	TIME	DELAY			SHOT
 	{   0,              0,      0,      0,      50,             0,      0,      0,      0                       },  //	WP_NONE					// 0
@@ -138,7 +140,9 @@ ammotable_t ammoTable[] = {
 
 
 //----(SA)	moved in here so both games can get to it
-int weapAlts[] = {
+// one per weapon: the rest past those listed (read from, as an AI's weapon
+// can be any of them: PM_BeginWeaponChange) are WP_NONE
+int weapAlts[WP_NUM_WEAPONS] = {
 	WP_NONE,            // 0 WP_NONE
 	WP_NONE,            // 1 WP_KNIFE
 	WP_SILENCER,        // 2 WP_LUGER
