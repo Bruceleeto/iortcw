@@ -155,6 +155,7 @@ int BotGetAirGoal( bot_state_t *bs, bot_goal_t *goal ) {
 BotGoForAir
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotGoForAir( bot_state_t *bs, int tfl, bot_goal_t *ltg, float range ) {
 	bot_goal_t goal;
 
@@ -183,12 +184,14 @@ int BotGoForAir( bot_state_t *bs, int tfl, bot_goal_t *ltg, float range ) {
 	}
 	return qfalse;
 }
+#endif
 
 /*
 ==================
 BotNearbyGoal
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotNearbyGoal( bot_state_t *bs, int tfl, bot_goal_t *ltg, float range ) {
 	int ret;
 
@@ -209,6 +212,7 @@ int BotNearbyGoal( bot_state_t *bs, int tfl, bot_goal_t *ltg, float range ) {
 	*/
 	return ret;
 }
+#endif
 
 /*
 ==================
@@ -258,6 +262,7 @@ int BotReachedGoal( bot_state_t *bs, bot_goal_t *goal ) {
 BotGetItemLongTermGoal
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotGetItemLongTermGoal( bot_state_t *bs, int tfl, bot_goal_t *goal ) {
 	//if the bot has no goal
 	if ( !trap_BotGetTopGoal( bs->gs, goal ) ) {
@@ -302,6 +307,7 @@ int BotGetItemLongTermGoal( bot_state_t *bs, int tfl, bot_goal_t *goal ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
@@ -311,6 +317,7 @@ we could also create a seperate AI node for every long term goal type
 however this saves us a lot of code
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotGetLongTermGoal( bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal ) {
 	vec3_t target, dir;
 	char netname[MAX_NETNAME];
@@ -750,12 +757,14 @@ int BotGetLongTermGoal( bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal 
 	   //normal goal stuff
 	return BotGetItemLongTermGoal( bs, tfl, goal );
 }
+#endif
 
 /*
 ==================
 BotLongTermGoal
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotLongTermGoal( bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal ) {
 	aas_entityinfo_t entinfo;
 	char teammate[MAX_MESSAGE_SIZE];
@@ -836,12 +845,14 @@ int BotLongTermGoal( bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal ) {
 	}
 	return BotGetLongTermGoal( bs, tfl, retreat, goal );
 }
+#endif
 
 /*
 ==================
 AIEnter_Intermission
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Intermission( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "intermission", "" );
 	//reset the bot state
@@ -852,12 +863,14 @@ void AIEnter_Intermission( bot_state_t *bs ) {
 	}
 	bs->ainode = AINode_Intermission;
 }
+#endif
 
 /*
 ==================
 AINode_Intermission
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Intermission( bot_state_t *bs ) {
 	//if the intermission ended
 	if ( !BotIntermission( bs ) ) {
@@ -870,24 +883,28 @@ int AINode_Intermission( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Observer
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Observer( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "observer", "" );
 	//reset the bot state
 	BotResetState( bs );
 	bs->ainode = AINode_Observer;
 }
+#endif
 
 /*
 ==================
 AINode_Observer
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Observer( bot_state_t *bs ) {
 	//if the bot left observer mode
 	if ( !BotIsObserver( bs ) ) {
@@ -895,23 +912,27 @@ int AINode_Observer( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Stand
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Stand( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "stand", "" );
 	bs->standfindenemy_time = trap_AAS_Time() + 1;
 	bs->ainode = AINode_Stand;
 }
+#endif
 
 /*
 ==================
 AINode_Stand
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Stand( bot_state_t *bs ) {
 
 	//if the bot's health decreased
@@ -937,12 +958,14 @@ int AINode_Stand( bot_state_t *bs ) {
 	//
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Respawn
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Respawn( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "respawn", "" );
 	//reset some states
@@ -962,12 +985,14 @@ void AIEnter_Respawn( bot_state_t *bs ) {
 	bs->respawn_wait = qfalse;
 	bs->ainode = AINode_Respawn;
 }
+#endif
 
 /*
 ==================
 AINode_Respawn
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Respawn( bot_state_t *bs ) {
 	if ( bs->respawn_wait ) {
 		if ( !BotIsDead( bs ) ) {
@@ -992,22 +1017,26 @@ int AINode_Respawn( bot_state_t *bs ) {
 	//
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Seek_ActivateEntity
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Seek_ActivateEntity( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "activate entity", "" );
 	bs->ainode = AINode_Seek_ActivateEntity;
 }
+#endif
 
 /*
 ==================
 AINode_Seek_Activate_Entity
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Seek_ActivateEntity( bot_state_t *bs ) {
 	bot_goal_t *goal;
 	vec3_t target, dir;
@@ -1114,12 +1143,14 @@ int AINode_Seek_ActivateEntity( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Seek_NBG
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Seek_NBG( bot_state_t *bs ) {
 	bot_goal_t goal;
 	char buf[144];
@@ -1132,12 +1163,14 @@ void AIEnter_Seek_NBG( bot_state_t *bs ) {
 	}
 	bs->ainode = AINode_Seek_NBG;
 }
+#endif
 
 /*
 ==================
 AINode_Seek_NBG
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Seek_NBG( bot_state_t *bs ) {
 	bot_goal_t goal;
 	vec3_t target, dir;
@@ -1252,12 +1285,14 @@ int AINode_Seek_NBG( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Seek_LTG
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Seek_LTG( bot_state_t *bs ) {
 	bot_goal_t goal;
 	char buf[144];
@@ -1270,12 +1305,14 @@ void AIEnter_Seek_LTG( bot_state_t *bs ) {
 	}
 	bs->ainode = AINode_Seek_LTG;
 }
+#endif
 
 /*
 ==================
 AINode_Seek_LTG
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Seek_LTG( bot_state_t *bs ) {
 	bot_goal_t goal;
 	vec3_t target, dir;
@@ -1432,23 +1469,27 @@ int AINode_Seek_LTG( bot_state_t *bs ) {
 	//
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Battle_Fight
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Battle_Fight( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "battle fight", "" );
 	trap_BotResetLastAvoidReach( bs->ms );
 	bs->ainode = AINode_Battle_Fight;
 }
+#endif
 
 /*
 ==================
 AINode_Battle_Fight
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Battle_Fight( bot_state_t *bs ) {
 	int areanum;
 	aas_entityinfo_t entinfo;
@@ -1579,23 +1620,27 @@ int AINode_Battle_Fight( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Battle_Chase
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Battle_Chase( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "battle chase", "" );
 	bs->chase_time = trap_AAS_Time();
 	bs->ainode = AINode_Battle_Chase;
 }
+#endif
 
 /*
 ==================
 AINode_Battle_Chase
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Battle_Chase( bot_state_t *bs ) {
 	bot_goal_t goal;
 	vec3_t target, dir;
@@ -1728,22 +1773,26 @@ int AINode_Battle_Chase( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Battle_Retreat
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Battle_Retreat( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "battle retreat", "" );
 	bs->ainode = AINode_Battle_Retreat;
 }
+#endif
 
 /*
 ==================
 AINode_Battle_Retreat
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Battle_Retreat( bot_state_t *bs ) {
 	bot_goal_t goal;
 	aas_entityinfo_t entinfo;
@@ -1900,22 +1949,26 @@ int AINode_Battle_Retreat( bot_state_t *bs ) {
 	//
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 AIEnter_Battle_NBG
 ==================
 */
+#ifndef NO_DM_BOTS
 void AIEnter_Battle_NBG( bot_state_t *bs ) {
 	BotRecordNodeSwitch( bs, "battle NBG", "" );
 	bs->ainode = AINode_Battle_NBG;
 }
+#endif
 
 /*
 ==================
 AINode_Battle_NBG
 ==================
 */
+#ifndef NO_DM_BOTS
 int AINode_Battle_NBG( bot_state_t *bs ) {
 	int areanum;
 	bot_goal_t goal;
@@ -2040,3 +2093,4 @@ int AINode_Battle_NBG( bot_state_t *bs ) {
 	//
 	return qtrue;
 }
+#endif

@@ -304,19 +304,128 @@ void MDSC_ChildMatrix( const mdscMatrix_t p, const float q[4], mdscMatrix_t m ) 
 	}
 }
 
+/* set bits in a word, a byte at a time (the SH4 has no instruction for it) */
+static const unsigned char bitCount[256] = {
+#define B2( n ) n, n + 1, n + 1, n + 2
+#define B4( n ) B2( n ), B2( n + 1 ), B2( n + 1 ), B2( n + 2 )
+#define B6( n ) B4( n ), B4( n + 1 ), B4( n + 1 ), B4( n + 2 )
+	B6( 0 ), B6( 1 ), B6( 1 ), B6( 2 )
+#undef B2
+#undef B4
+#undef B6
+};
+
+static int CountBits( unsigned int w ) {
+	return bitCount[w & 255] + bitCount[( w >> 8 ) & 255] + bitCount[( w >> 16 ) & 255] + bitCount[w >> 24];
+}
+
+static int HighBit( unsigned int w ) {   /* w not 0 */
+	int b = 31;
+	while ( !( w & 0x80000000u ) ) {
+		w <<= 1;
+		b--;
+	}
+	return b;
+}
+
+static int LowBit( unsigned int w ) {    /* w not 0 */
+	int b = 0;
+	while ( !( w & 1 ) ) {
+		w >>= 1;
+		b++;
+	}
+	return b;
+}
+
+/* a track's key at or before frame: its number (the return), its frame, and
+   the next key's frame, -1 if it's the last */
+static int TrackKey( const unsigned char *animBase, const mdscTrack_t *track, int frame, int *keyFrame, int *nextFrame ) {
+	const unsigned short *keys = (const unsigned short *)( animBase + track->ofsKeys );
+	int numKeys = MDSC_NUMKEYS( track );
+	int numBlocks, numWords, w, k;
+	const unsigned int *bits;
+	unsigned int mask, m;
+
+	if ( !( track->numKeys & MDSC_KEYS_BITMAP ) ) {
+		k = FindKey( keys, numKeys, frame );
+		*keyFrame = keys[k];
+		*nextFrame = k + 1 < numKeys ? keys[k + 1] : -1;
+		return k;
+	}
+
+	numBlocks = keys[0];
+	numWords = numBlocks * 2;
+	bits = (const unsigned int *)( keys + ( ( 1 + numBlocks + 1 ) & ~1 ) );
+	w = frame >> 5;
+	if ( w >= numWords ) {
+		/* past its last key */
+		w = numWords - 1;
+		mask = 0xffffffffu;
+	} else {
+		mask = ( 2u << ( frame & 31 ) ) - 1;   /* the bits up to frame */
+	}
+	k = keys[1 + ( w >> 1 )] + ( w & 1 ? CountBits( bits[w - 1] ) : 0 ) + CountBits( bits[w] & mask ) - 1;
+
+	/* this key's frame: frame 0 is one, so there's always one */
+	for ( m = bits[w] & mask; !m; m = bits[--w] ) {
+	}
+	*keyFrame = w * 32 + HighBit( m );
+
+	/* the next */
+	w = frame >> 5;
+	m = w < numWords ? bits[w] & ~mask : 0;
+	while ( !m && ++w < numWords ) {
+		m = bits[w];
+	}
+	*nextFrame = m ? w * 32 + LowBit( m ) : -1;
+	return k;
+}
+
 /* n floats a key */
 static void TrackFloats( const unsigned char *animBase, const mdscTrack_t *track, int n, int frame, float *out ) {
-	const unsigned short *keys = (const unsigned short *)( animBase + track->ofsKeys );
-	int k = FindKey( keys, track->numKeys, frame );
+	int kf, nf, k = TrackKey( animBase, track, frame, &kf, &nf );
 	const float *v = (const float *)( animBase + track->ofsValues ) + k * n;
 	int c;
 
-	if ( keys[k] == frame || k + 1 >= track->numKeys ) {
+	if ( kf == frame || nf < 0 ) {
 		memcpy( out, v, n * 4 );
 	} else {
-		float t = (float)( frame - keys[k] ) / (float)( keys[k + 1] - keys[k] );
+		float t = (float)( frame - kf ) / (float)( nf - kf );
 		for ( c = 0; c < n; c++ ) {
 			out[c] = v[c] + ( v[c + n] - v[c] ) * t;
+		}
+	}
+}
+
+/* a rotation track's value at frame */
+static void TrackQuatAt( const unsigned char *animBase, const mdscTrack_t *track, int frame, float q[4] ) {
+	int kf, nf, k = TrackKey( animBase, track, frame, &kf, &nf );
+	const unsigned int *values = (const unsigned int *)( animBase + track->ofsValues );
+
+	if ( kf == frame || nf < 0 ) {
+		UnpackQuat( values[k], q );
+	} else {
+		float a[4], b[4];
+
+		UnpackQuat( values[k], a );
+		UnpackQuat( values[k + 1], b );
+		LerpQuat( a, b, (float)( frame - kf ) / (float)( nf - kf ), q );
+	}
+}
+
+/* a direction track's */
+static void TrackDirAt( const unsigned char *animBase, const mdscTrack_t *track, int frame, float dir[3] ) {
+	int kf, nf, k = TrackKey( animBase, track, frame, &kf, &nf ), i;
+	const short *a = (const short *)( animBase + track->ofsValues ) + k * 4;
+
+	if ( kf == frame || nf < 0 ) {
+		for ( i = 0; i < 3; i++ ) {
+			dir[i] = a[i];
+		}
+	} else {
+		float t = (float)( frame - kf ) / (float)( nf - kf );
+		for ( i = 0; i < 3; i++ ) {
+			dir[i] = a[i] + ( a[i + 4] - a[i] ) * t;
 		}
 	}
 }
@@ -341,8 +450,7 @@ static void DecodePose( const unsigned char *base, const unsigned char *animBase
 		short *pose = poses + i * MDSC_POSE_SHORTS;
 		float q[4];
 
-		MDSC_TrackQuat( (const unsigned short *)( animBase + rot->ofsKeys ),
-						(const unsigned int *)( animBase + rot->ofsValues ), rot->numKeys, frame, q );
+		TrackQuatAt( animBase, rot, frame, q );
 		if ( parent < 0 ) {
 			MDSC_ChildMatrix( NULL, q, model[i] );
 			pose[4] = pose[5] = 0;
@@ -351,8 +459,7 @@ static void DecodePose( const unsigned char *base, const unsigned char *animBase
 			float d[3], md[3];
 
 			MDSC_ChildMatrix( (const float (*)[3])model[parent], q, model[i] );
-			MDSC_TrackDir( (const unsigned short *)( animBase + dir->ofsKeys ),
-						   (const short *)( animBase + dir->ofsValues ), dir->numKeys, frame, d );
+			TrackDirAt( animBase, dir, frame, d );
 			for ( j = 0; j < 3; j++ ) {
 				md[j] = model[parent][j][0] * d[0] + model[parent][j][1] * d[1] + model[parent][j][2] * d[2];
 			}

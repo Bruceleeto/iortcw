@@ -44,7 +44,6 @@
 
 #define MAX_MATRIX_DEPTH	8	/* the renderer pushes 2 deep at most (tr_flares.c) */
 #define MAX_TEXTURES		( 2048 + 1 )	/* the renderer's MAX_DRAWIMAGES, from name 1, reused */
-#define MAX_IMMEDIATE		4096
 /* the lists are kept in blocks, from one pool for all of them, made as
    frames need them, up to the vertex buffer pvrgl_Init gives the PVR: no
    frame can send it more than that, whichever lists it is in */
@@ -101,6 +100,12 @@ typedef struct {
 	int			hasLast;
 } listBuffer_t;
 
+typedef struct {
+	float		xyz[3];
+	float		st[2];
+	uint8_t		rgba[4];
+} immVert_t;
+
 static struct {
 	int			inited;
 
@@ -148,12 +153,13 @@ static struct {
 	int			textureBytes;
 	int			outOfVram;
 
-	/* immediate mode */
+	/* immediate mode: glArrayElement's indices, drawn from the arrays bound,
+	   or glVertex's vertices; each grows to the most a glBegin has had */
 	GLenum		immMode;
-	int			immCount;
-	float		immXYZ[MAX_IMMEDIATE][3];
-	float		immST[MAX_IMMEDIATE][2];
-	uint8_t		immRGBA[MAX_IMMEDIATE][4];
+	int			immCount, immSize;
+	immVert_t	*immVerts;
+	int			numImmIndexes, immIndexSize, immMaxIndex;
+	GLuint		*immIndexes;
 
 	/* frame */
 	listBuffer_t	lists[5];	/* indexed by pvr_list_t */
@@ -1411,31 +1417,56 @@ void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const 
 void APIENTRY pvrglBegin( GLenum mode ) {
 	gl.immMode = mode;
 	gl.immCount = 0;
+	gl.numImmIndexes = 0;
+	gl.immMaxIndex = 0;
 }
 
-static void ImmVertex( float x, float y, float z ) {
-	int n = gl.immCount;
-
-	if ( n >= MAX_IMMEDIATE ) {
-		return;
+/* p's room for n of size each, at least: grown by half again */
+static void *ImmGrow( void *p, int *size, int n, int each ) {
+	if ( n > *size ) {
+		*size = n + n / 2 + 64;
+		p = realloc( p, *size * each );
+		if ( !p ) {
+			fprintf( stderr, "pvr_gl: out of memory for %d immediate vertices\n", n );
+			abort();
+		}
 	}
-	gl.immXYZ[n][0] = x;
-	gl.immXYZ[n][1] = y;
-	gl.immXYZ[n][2] = z;
-	gl.immST[n][0] = gl.texCoord[0];
-	gl.immST[n][1] = gl.texCoord[1];
-	gl.immRGBA[n][0] = gl.color >> 16;
-	gl.immRGBA[n][1] = gl.color >> 8;
-	gl.immRGBA[n][2] = gl.color;
-	gl.immRGBA[n][3] = gl.color >> 24;
-	gl.immCount++;
+	return p;
+}
+
+static void ArrayElementVertex( GLint i );
+
+static void ImmVertex( float x, float y, float z ) {
+	immVert_t *v;
+
+	if ( gl.numImmIndexes ) {
+		/* glVertex after glArrayElement in one glBegin: theirs as vertices too */
+		int k, n = gl.numImmIndexes;
+
+		gl.numImmIndexes = 0;
+		for ( k = 0; k < n; k++ ) {
+			ArrayElementVertex( gl.immIndexes[k] );
+		}
+	}
+	gl.immVerts = ImmGrow( gl.immVerts, &gl.immSize, gl.immCount + 1, sizeof( *gl.immVerts ) );
+	v = &gl.immVerts[gl.immCount++];
+	v->xyz[0] = x;
+	v->xyz[1] = y;
+	v->xyz[2] = z;
+	v->st[0] = gl.texCoord[0];
+	v->st[1] = gl.texCoord[1];
+	v->rgba[0] = gl.color >> 16;
+	v->rgba[1] = gl.color >> 8;
+	v->rgba[2] = gl.color;
+	v->rgba[3] = gl.color >> 24;
 }
 
 void APIENTRY pvrglVertex2f( GLfloat x, GLfloat y ) { ImmVertex( x, y, 0.0f ); }
 void APIENTRY pvrglVertex3f( GLfloat x, GLfloat y, GLfloat z ) { ImmVertex( x, y, z ); }
 void APIENTRY pvrglVertex3fv( const GLfloat *v ) { ImmVertex( v[0], v[1], v[2] ); }
 
-void APIENTRY pvrglArrayElement( GLint i ) {
+/* glArrayElement as a glVertex: its array values the current ones */
+static void ArrayElementVertex( GLint i ) {
 	if ( gl.texCoordArray[0].enabled ) {
 		gl.texCoord[0] = ArrayFloat( &gl.texCoordArray[0], i, 0 );
 		gl.texCoord[1] = ArrayFloat( &gl.texCoordArray[0], i, 1 );
@@ -1449,12 +1480,35 @@ void APIENTRY pvrglArrayElement( GLint i ) {
 	}
 }
 
-void APIENTRY pvrglEnd( void ) {
-	glArray_t saveV = gl.vertexArray, saveC = gl.colorArray, saveT = gl.texCoordArray[0];
+/* only its index, unless glVertex has been used too: drawn at glEnd
+   from the arrays bound, which give the same vertex as copying it would */
+void APIENTRY pvrglArrayElement( GLint i ) {
+	if ( gl.immCount ) {
+		ArrayElementVertex( i );
+		return;
+	}
+	gl.immIndexes = ImmGrow( gl.immIndexes, &gl.immIndexSize, gl.numImmIndexes + 1, sizeof( *gl.immIndexes ) );
+	gl.immIndexes[gl.numImmIndexes++] = i;
+	if ( i > gl.immMaxIndex ) {
+		gl.immMaxIndex = i;
+	}
+}
 
-	SetArray( &gl.vertexArray, 3, GL_FLOAT, 0, gl.immXYZ );
-	SetArray( &gl.colorArray, 4, GL_UNSIGNED_BYTE, 0, gl.immRGBA );
-	SetArray( &gl.texCoordArray[0], 2, GL_FLOAT, 0, gl.immST );
+void APIENTRY pvrglEnd( void ) {
+	glArray_t saveV, saveC, saveT;
+
+	if ( gl.numImmIndexes ) {
+		DrawPrimitives( gl.immMode, gl.numImmIndexes, IndexUInt, gl.immIndexes, gl.immMaxIndex );
+		gl.numImmIndexes = 0;
+		return;
+	}
+
+	saveV = gl.vertexArray;
+	saveC = gl.colorArray;
+	saveT = gl.texCoordArray[0];
+	SetArray( &gl.vertexArray, 3, GL_FLOAT, sizeof( immVert_t ), gl.immVerts ? gl.immVerts->xyz : NULL );
+	SetArray( &gl.colorArray, 4, GL_UNSIGNED_BYTE, sizeof( immVert_t ), gl.immVerts ? gl.immVerts->rgba : NULL );
+	SetArray( &gl.texCoordArray[0], 2, GL_FLOAT, sizeof( immVert_t ), gl.immVerts ? gl.immVerts->st : NULL );
 	gl.vertexArray.enabled = gl.colorArray.enabled = gl.texCoordArray[0].enabled = 1;
 
 	DrawPrimitives( gl.immMode, gl.immCount, IndexDirect, (const void *)0, gl.immCount - 1 );

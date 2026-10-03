@@ -265,10 +265,10 @@ int CM_PointContents( const vec3_t p, clipHandle_t model ) {
 
 		// see if the point is in the brush
 		for ( i = 0 ; i < b->numsides ; i++ ) {
-			d = DotProduct( p, b->sides[i].plane->normal );
+			d = DotProduct( p, CM_SidePlane( &b->sides[i] )->normal );
 // FIXME test for Cash
-//			if ( d >= b->sides[i].plane->dist ) {
-			if ( d > b->sides[i].plane->dist ) {
+//			if ( d >= CM_SidePlane( &b->sides[i] )->dist ) {
+			if ( d > CM_SidePlane( &b->sides[i] )->dist ) {
 				break;
 			}
 		}

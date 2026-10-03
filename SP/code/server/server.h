@@ -112,7 +112,7 @@ typedef enum {
 //#define	RELIABLE_COMMANDS_MULTI		128
 //#define	RELIABLE_COMMANDS_SINGLE	256		// need more for loadgame situations
 
-#define RELIABLE_COMMANDS_CHARS     384     // we can scale this down from the max of 1024, since not all commands are going to use that many chars
+#define RELIABLE_COMMANDS_START     ( 16 * 1024 )   // what a client's buffer starts at; it grows when full
 
 typedef struct {
 	int bufSize;

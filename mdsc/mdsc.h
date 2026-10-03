@@ -28,8 +28,8 @@ extern "C" {
 #endif
 
 #define MDSC_IDENT          ( ( 'C' << 24 ) + ( 'S' << 16 ) + ( 'D' << 8 ) + 'M' )
-#define MDSC_VERSION        2
-#define MDSC_VERSION_SHARED 3       /* frames shared with another MDSC: mdscShare_t */
+#define MDSC_VERSION        4       /* (2 and 3 had only key lists) */
+#define MDSC_VERSION_SHARED 5       /* frames shared with another MDSC: mdscShare_t */
 
 #define MDSC_MAX_BONES      128     /* MDS_MAX_BONES */
 #define MDSC_FRAME_FLOATS   13      /* bounds[2], localOrigin, radius, parentOffset */
@@ -39,10 +39,25 @@ extern "C" {
 #define MDSC_FRAME_SIZE( numBones )	( MDSC_FRAME_FLOATS * 4 + ( numBones ) * MDSC_POSE_SHORTS * 2 )
 
 typedef struct {
-	int numKeys;
-	int ofsKeys;                    /* unsigned short frames[numKeys], padded to 4 */
+	int numKeys;                    /* | MDSC_KEYS_BITMAP for a bitmap of them */
+	int ofsKeys;                    /* which frames are keys: a list or a bitmap */
 	int ofsValues;                  /* the key values [numKeys] */
 } mdscTrack_t;
+
+/*
+ * A track's keys are at frame 0, its last frame, and between. Where they're
+ * many, a bit a frame is less than their frame numbers, so a track has
+ * whichever is smaller (the converter picks):
+ *  - a list: unsigned short frames[numKeys], padded to 4;
+ *  - with MDSC_KEYS_BITMAP: unsigned short numBlocks, then the keys before
+ *    each block of MDSC_KEY_BLOCK frames, unsigned short rank[numBlocks],
+ *    padded to 4; then unsigned int bits[numBlocks * 2], bit f & 31 of word
+ *    f >> 5 set where frame f is a key.
+ * Either gives the same keys, so the same frames.
+ */
+#define MDSC_KEYS_BITMAP    0x40000000
+#define MDSC_NUMKEYS( t )   ( ( t )->numKeys & ~MDSC_KEYS_BITMAP )
+#define MDSC_KEY_BLOCK      64
 
 /* an mdsFrame_t's floats: bounds[2], localOrigin and radius, for culling
  * (their own keys, made a little bigger so they still hold the model where

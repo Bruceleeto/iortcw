@@ -72,7 +72,7 @@ static float diff, a1, a2;
 static int render_count;
 static float lodRadius, lodScale;
 static int             *collapse_map, *pCollapseMap;
-static int collapse[ MDS_MAX_VERTS ], *pCollapse;
+static short collapse[ MDS_MAX_VERTS ], *pCollapse;    // vertex numbers, < MDS_MAX_VERTS
 static int p0, p1, p2;
 static qboolean isTorso, fullTorso;
 static vec4_t m1[4], m2[4];
@@ -1174,7 +1174,7 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		tess.numIndexes += indexes;
 	} else
 	{
-		int *collapseEnd;
+		short *collapseEnd;
 
 		pCollapse = collapse;
 		for ( j = 0; j < render_count; pCollapse++, j++ )

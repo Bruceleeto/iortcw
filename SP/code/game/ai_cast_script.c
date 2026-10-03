@@ -393,13 +393,28 @@ AICast_ScriptParse
 #define MAX_SCRIPT_EVENTS   64
 cast_script_event_t cast_temp_events[MAX_SCRIPT_EVENTS];
 // theirs, while parsing; one buffer for this and G_Script_ScriptParse's,
-// as each is done with it (copied out) before it returns
-static union {
+// as each is done with it (copied out) before it returns, and malloc'd only
+// for the parse (an error's left for the next to use)
+typedef union {
 	cast_script_stack_item_t cast[MAX_SCRIPT_EVENTS][AICAST_MAX_SCRIPT_STACK_ITEMS];
 	g_script_stack_item_t g[MAX_SCRIPT_EVENTS][G_MAX_SCRIPT_STACK_ITEMS];
-} scriptParseItems;
-#define cast_temp_items scriptParseItems.cast
-g_script_stack_item_t( *const g_temp_items )[G_MAX_SCRIPT_STACK_ITEMS] = scriptParseItems.g;
+} scriptParseItems_t;
+static scriptParseItems_t *scriptParseItems;
+
+void *G_ScriptParseItems( qboolean ai ) {
+	if ( !scriptParseItems ) {
+		scriptParseItems = malloc( sizeof( *scriptParseItems ) );
+		if ( !scriptParseItems ) {
+			G_Error( "G_ScriptParseItems: out of memory" );
+		}
+	}
+	return ai ? (void *)scriptParseItems->cast : (void *)scriptParseItems->g;
+}
+
+void G_FreeScriptParseItems( void ) {
+	free( scriptParseItems );
+	scriptParseItems = NULL;
+}
 void AICast_ScriptParse( cast_state_t *cs ) {
 	gentity_t   *ent;
 	char        *pScript;
@@ -414,6 +429,7 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 	int i;
 	int bracketLevel;
 	qboolean buildScript;       //----(SA)	added
+	cast_script_stack_item_t ( *cast_temp_items )[AICAST_MAX_SCRIPT_STACK_ITEMS];
 
 	if ( !level.scriptAI ) {
 		return;
@@ -425,6 +441,7 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 	}
 
 	buildScript = qtrue;
+	cast_temp_items = G_ScriptParseItems( qtrue );
 
 	pScript = level.scriptAI;
 	wantName = qtrue;
@@ -528,6 +545,8 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 				}
 
 				curEvent->stack.items[curEvent->stack.numItems].action = action;
+				// the parse buffer's shared, never cleared: no params unless it has some
+				curEvent->stack.items[curEvent->stack.numItems].params = NULL;
 
 				memset( params, 0, sizeof( params ) );
 				token = COM_ParseExt( &pScript, qfalse );
@@ -623,6 +642,7 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 
 		cs->castScriptStatus.castScriptEventIndex = -1;
 	}
+	G_FreeScriptParseItems();
 }
 
 /*

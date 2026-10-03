@@ -768,7 +768,10 @@ void AAS_InitPortalCache( void ) {
 void AAS_FreeAreaVisibility( void ) {
 	int i;
 
-	if ( ( *aasworld ).areavisibility ) {
+	if ( ( *aasworld ).areavisdata ) {
+		FreeMemory( ( *aasworld ).areavisdata );
+		( *aasworld ).areavisdata = NULL;
+	} else if ( ( *aasworld ).areavisibility ) {
 		for ( i = 0; i < ( *aasworld ).numareas; i++ )
 		{
 			if ( ( *aasworld ).areavisibility[i] ) {
@@ -1217,13 +1220,30 @@ int AAS_ReadRouteCache( void ) {
 	  // read the visareas
 	( *aasworld ).areavisibility = (byte **) GetClearedMemory( ( *aasworld ).numareas * sizeof( byte * ) );
 	( *aasworld ).decompressedvis = (byte *) GetClearedMemory( ( *aasworld ).numareas * sizeof( byte ) );
-	for ( i = 0; i < ( *aasworld ).numareas; i++ )
+	// all in one block, not a malloc each: the sizes first, then back for the data
 	{
-		botimport.FS_Read( &size, sizeof( size ), fp );
-		LL( size );
-		if ( size ) {
-			( *aasworld ).areavisibility[i] = (byte *) GetMemory( size );
-			botimport.FS_Read( ( *aasworld ).areavisibility[i], size, fp );
+		int skipped = 0, total = 0;
+		byte *vis;
+
+		for ( i = 0; i < ( *aasworld ).numareas; i++ )
+		{
+			botimport.FS_Read( &size, sizeof( size ), fp );
+			LL( size );
+			botimport.FS_Seek( fp, size, FS_SEEK_CUR );
+			skipped += sizeof( size ) + size;
+			total += size;
+		}
+		botimport.FS_Seek( fp, -skipped, FS_SEEK_CUR );
+		vis = ( *aasworld ).areavisdata = total ? (byte *) GetMemory( total ) : NULL;
+		for ( i = 0; i < ( *aasworld ).numareas; i++ )
+		{
+			botimport.FS_Read( &size, sizeof( size ), fp );
+			LL( size );
+			if ( size ) {
+				( *aasworld ).areavisibility[i] = vis;
+				botimport.FS_Read( vis, size, fp );
+				vis += size;
+			}
 		}
 	}
 	// read the area waypoints

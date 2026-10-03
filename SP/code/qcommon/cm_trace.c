@@ -200,7 +200,7 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 		// need to test the remainder
 		for ( i = 6 ; i < brush->numsides ; i++ ) {
 			side = brush->sides + i;
-			plane = side->plane;
+			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for radius
 			dist = plane->dist + tw->sphere.radius;
@@ -223,7 +223,7 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 		// need to test the remainder
 		for ( i = 6 ; i < brush->numsides ; i++ ) {
 			side = brush->sides + i;
-			plane = side->plane;
+			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for mins/maxs
 			dist = plane->dist - DotProduct( tw->offsets[ plane->signbits ], plane->normal );
@@ -525,7 +525,7 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 		//
 		for ( i = 0; i < brush->numsides; i++ ) {
 			side = brush->sides + i;
-			plane = side->plane;
+			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for radius
 			dist = plane->dist + tw->sphere.radius;
@@ -590,7 +590,7 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 		//
 		for ( i = 0; i < brush->numsides; i++ ) {
 			side = brush->sides + i;
-			plane = side->plane;
+			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for mins/maxs
 			dist = plane->dist - DotProduct( tw->offsets[ plane->signbits ], plane->normal );
@@ -661,7 +661,7 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 				tw->trace.plane = *clipplane;
 			}
 			if (leadside != NULL) {
-				tw->trace.surfaceFlags = leadside->surfaceFlags;
+				tw->trace.surfaceFlags = CM_SideSurfaceFlags( leadside );
 			}
 			tw->trace.contents = brush->contents;
 		}

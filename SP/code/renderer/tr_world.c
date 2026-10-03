@@ -492,9 +492,13 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 
 		if ( !r_nocull->integer ) {
 			int r;
+			vec3_t mins, maxs;
+
+			VectorCopy( node->mins, mins );
+			VectorCopy( node->maxs, maxs );
 
 			if ( planeBits & 1 ) {
-				r = BoxOnPlaneSide( node->mins, node->maxs, &tr.viewParms.frustum[0] );
+				r = BoxOnPlaneSide( mins, maxs, &tr.viewParms.frustum[0] );
 				if ( r == 2 ) {
 					return;                     // culled
 				}
@@ -504,7 +508,7 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 			}
 
 			if ( planeBits & 2 ) {
-				r = BoxOnPlaneSide( node->mins, node->maxs, &tr.viewParms.frustum[1] );
+				r = BoxOnPlaneSide( mins, maxs, &tr.viewParms.frustum[1] );
 				if ( r == 2 ) {
 					return;                     // culled
 				}
@@ -514,7 +518,7 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 			}
 
 			if ( planeBits & 4 ) {
-				r = BoxOnPlaneSide( node->mins, node->maxs, &tr.viewParms.frustum[2] );
+				r = BoxOnPlaneSide( mins, maxs, &tr.viewParms.frustum[2] );
 				if ( r == 2 ) {
 					return;                     // culled
 				}
@@ -524,7 +528,7 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 			}
 
 			if ( planeBits & 8 ) {
-				r = BoxOnPlaneSide( node->mins, node->maxs, &tr.viewParms.frustum[3] );
+				r = BoxOnPlaneSide( mins, maxs, &tr.viewParms.frustum[3] );
 				if ( r == 2 ) {
 					return;                     // culled
 				}
@@ -721,7 +725,9 @@ static void R_MarkLeaves( void ) {
 
 	vis = R_ClusterPVS( tr.viewCluster );
 
-	for ( i = 0,leaf = tr.world->nodes ; i < tr.world->numnodes ; i++, leaf++ ) {
+	// the leaves (the decision nodes, first, have no cluster: only the
+	// leaves under them make them visible)
+	for ( i = tr.world->numDecisionNodes, leaf = tr.world->nodes + i ; i < tr.world->numnodes ; i++, leaf++ ) {
 		cluster = leaf->cluster;
 		if ( cluster < 0 || cluster >= tr.world->numClusters ) {
 			continue;

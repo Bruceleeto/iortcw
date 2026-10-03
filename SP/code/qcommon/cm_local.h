@@ -63,9 +63,13 @@ typedef struct cmodel_s {
 } cmodel_t;
 
 typedef struct {
-	cplane_t    *plane;
-	int surfaceFlags;           // its shader's
+	unsigned short planeNum;    // into cm.planes (CM_SidePlane)
+	unsigned short shaderNum;   // whose surfaceFlags it has (CM_SideSurfaceFlags), or CM_NO_SHADER
 } cbrushside_t;
+
+#define CM_NO_SHADER    0xffff  // a box hull side's: no surfaceFlags
+#define CM_SidePlane( s )           ( &cm.planes[( s )->planeNum] )
+#define CM_SideSurfaceFlags( s )    ( ( s )->shaderNum == CM_NO_SHADER ? 0 : cm.shaders[( s )->shaderNum].surfaceFlags )
 
 typedef struct {
 	int shaderNum;              // the shader that determined the contents

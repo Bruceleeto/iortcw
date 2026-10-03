@@ -117,6 +117,69 @@ void CG_ResetPlayerEntities( void ) {
 	}
 	cg.predictedPlayerEntity.pe = &cg.predictedPlayerPe;
 }
+static centExtra_t **cg_centExtras;    // every centExtra_t made, to free
+static int cg_numCentExtras, cg_maxCentExtras;
+
+/*
+=================
+CG_CentExtra
+
+A centity's centExtra_t, to write to: made, all zeros, the first time
+=================
+*/
+centExtra_t *CG_CentExtra( centity_t *cent ) {
+	if ( !cent->extra ) {
+		if ( cg_numCentExtras == cg_maxCentExtras ) {
+			cg_maxCentExtras = cg_maxCentExtras * 2 + 32;
+			cg_centExtras = realloc( cg_centExtras, cg_maxCentExtras * sizeof( *cg_centExtras ) );
+			if ( !cg_centExtras ) {
+				CG_Error( "CG_CentExtra: out of memory" );
+			}
+		}
+		cent->extra = calloc( 1, sizeof( centExtra_t ) );
+		if ( !cent->extra ) {
+			CG_Error( "CG_CentExtra: out of memory" );
+		}
+		cg_centExtras[cg_numCentExtras++] = cent->extra;
+	}
+	return cent->extra;
+}
+
+/*
+=================
+CG_CentExtraRead
+
+A centity's centExtra_t, to read: all zeros if it hasn't one
+=================
+*/
+const centExtra_t *CG_CentExtraRead( const centity_t *cent ) {
+	static const centExtra_t none;
+
+	return cent->extra ? cent->extra : &none;
+}
+
+/*
+=================
+CG_FreeCentExtras
+
+When the centities are cleared: their centExtra_ts with them
+=================
+*/
+void CG_FreeCentExtras( void ) {
+	int i;
+
+	for ( i = 0 ; i < cg_numCentExtras ; i++ ) {
+		free( cg_centExtras[i] );
+	}
+	free( cg_centExtras );
+	cg_centExtras = NULL;
+	cg_numCentExtras = cg_maxCentExtras = 0;
+	for ( i = 0 ; i < MAX_GENTITIES ; i++ ) {
+		cg_entities[i].extra = NULL;
+	}
+	cg.predictedPlayerEntity.extra = NULL;
+}
+
 weaponInfo_t cg_weapons[WP_NUM_WEAPONS];  // the weapons there are, not MAX_WEAPONS (64)
 itemInfo_t cg_items[MAX_ITEMS];
 
@@ -655,6 +718,7 @@ void CG_SetupDlightstyles( void ) {
 	char        *token;
 	int entnum;
 	centity_t   *cent;
+	centExtra_t *ex;
 
 	cg.lightstylesInited = qtrue;
 
@@ -668,38 +732,39 @@ void CG_SetupDlightstyles( void ) {
 		token = COM_Parse( &str );   // ent num
 		entnum = atoi( token );
 		cent = &cg_entities[entnum];
+		ex = CG_CentExtra( cent );
 
 		token = COM_Parse( &str );   // stylestring
-		Q_strncpyz( cent->dl_stylestring, token, strlen( token ) );
+		Q_strncpyz( ex->dl_stylestring, token, strlen( token ) );
 
 		token = COM_Parse( &str );   // offset
-		cent->dl_frame      = atoi( token );
-		cent->dl_oldframe   = cent->dl_frame - 1;
-		if ( cent->dl_oldframe < 0 ) {
-			cent->dl_oldframe = strlen( cent->dl_stylestring );
+		ex->dl_frame      = atoi( token );
+		ex->dl_oldframe   = ex->dl_frame - 1;
+		if ( ex->dl_oldframe < 0 ) {
+			ex->dl_oldframe = strlen( ex->dl_stylestring );
 		}
 
 		token = COM_Parse( &str );   // sound id
-		cent->dl_sound = atoi( token );
+		ex->dl_sound = atoi( token );
 
 		token = COM_Parse( &str );   // attenuation
-		cent->dl_atten = atoi( token );
+		ex->dl_atten = atoi( token );
 
-		for ( j = 0; j < strlen( cent->dl_stylestring ); j++ ) {
+		for ( j = 0; j < strlen( ex->dl_stylestring ); j++ ) {
 
-			cent->dl_stylestring[j] += cent->dl_atten;  // adjust character for attenuation/amplification
+			ex->dl_stylestring[j] += ex->dl_atten;  // adjust character for attenuation/amplification
 
 			// clamp result
-			if ( cent->dl_stylestring[j] < 'a' ) {
-				cent->dl_stylestring[j] = 'a';
+			if ( ex->dl_stylestring[j] < 'a' ) {
+				ex->dl_stylestring[j] = 'a';
 			}
-			if ( cent->dl_stylestring[j] > 'z' ) {
-				cent->dl_stylestring[j] = 'z';
+			if ( ex->dl_stylestring[j] > 'z' ) {
+				ex->dl_stylestring[j] = 'z';
 			}
 		}
 
-		cent->dl_backlerp   = 0.0;
-		cent->dl_time       = cg.time;
+		ex->dl_backlerp   = 0.0;
+		ex->dl_time       = cg.time;
 	}
 
 }
@@ -2308,6 +2373,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence ) {
 	const char  *s;
 
 	// clear everything
+	CG_FreeCentExtras();
 	memset( &cgs, 0, sizeof( cgs ) );
 	memset( &cg, 0, sizeof( cg ) );
 	memset( cg_entities, 0, sizeof( cg_entities ) );
@@ -2467,6 +2533,7 @@ void CG_Shutdown( void ) {
 	CG_PoolStatsReport();
 #endif
 	CG_FreeEffectPools();
+	CG_FreeCentExtras();
 }
 
 void CG_S_AddLoopingSound( int entityNum, const vec3_t origin, const vec3_t velocity, sfxHandle_t sfx, int volume ) {

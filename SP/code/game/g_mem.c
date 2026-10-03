@@ -36,7 +36,10 @@ If you have questions concerning this license or the applicable additional terms
 // What G_Alloc hands out comes from blocks malloc'd as the level needs them,
 // all freed when it ends (G_FreeMemory): nothing is held for the worst level.
 // Not the hunk, as some of it is allocated in play, after the hunk's mark.
-#define MEM_BLOCK       ( 128 * 1024 )
+// Small blocks, any with room filled, and anything big a block of its own:
+// little is left unused at the end of a block.
+#define MEM_BLOCK       ( 32 * 1024 )
+#define MEM_OWN_BLOCK   ( 4 * 1024 )       // bigger: a block of its own
 #define MEM_ALIGN( x )  ( ( ( x ) + 7 ) & ~7 )
 
 typedef struct memBlock_s {
@@ -46,7 +49,7 @@ typedef struct memBlock_s {
 
 #define MEM_HEADER      MEM_ALIGN( sizeof( memBlock_t ) )
 
-static memBlock_t *memBlocks;  // the one being filled first
+static memBlock_t *memBlocks;  // the ones being filled first
 static int memUsed, memHeld;
 
 static memBlock_t *G_NewMemBlock( int size ) {
@@ -68,7 +71,7 @@ void *G_Alloc( int size ) {
 
 	size = MEM_ALIGN( size );
 
-	if ( size > MEM_BLOCK / 2 ) {
+	if ( size > MEM_OWN_BLOCK ) {
 		// a block of its own, behind the one being filled
 		b = G_NewMemBlock( size );
 		if ( memBlocks ) {
@@ -79,8 +82,9 @@ void *G_Alloc( int size ) {
 			memBlocks = b;
 		}
 	} else {
-		b = memBlocks;
-		if ( !b || b->used + size > b->size ) {
+		for ( b = memBlocks ; b && b->used + size > b->size ; b = b->next ) {
+		}
+		if ( !b ) {
 			b = G_NewMemBlock( MEM_BLOCK );
 			b->next = memBlocks;
 			memBlocks = b;

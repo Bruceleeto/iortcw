@@ -815,21 +815,23 @@ typedef struct msurface_s {
 #define CONTENTS_NODE       -1
 typedef struct mnode_s {
 	// common with leaf and node
-	int contents;               // -1 for nodes, to differentiate from leafs
+	short contents;             // -1 for nodes, to differentiate from leafs
+	short area;                 // leaf
+	short mins[3], maxs[3];     // for bounding box culling; a map's are whole numbers, and fit
 	int visframe;               // node needs to be traversed if current
-	vec3_t mins, maxs;          // for bounding box culling
 	struct mnode_s  *parent;
 
-	// node specific
-	cplane_t    *plane;
-	struct mnode_s  *children[2];
-
-	// leaf specific
-	int cluster;
-	int area;
-
-	msurface_t  **firstmarksurface;
-	int nummarksurfaces;
+	union {
+		struct {                // node specific
+			cplane_t    *plane;
+			struct mnode_s  *children[2];
+		};
+		struct {                // leaf specific
+			int cluster;
+			msurface_t  **firstmarksurface;
+			int nummarksurfaces;
+		};
+	};
 } mnode_t;
 
 typedef struct {

@@ -226,14 +226,14 @@ CM_BoundBrush
 =================
 */
 void CM_BoundBrush( cbrush_t *b ) {
-	b->bounds[0][0] = -b->sides[0].plane->dist;
-	b->bounds[1][0] = b->sides[1].plane->dist;
+	b->bounds[0][0] = -CM_SidePlane( &b->sides[0] )->dist;
+	b->bounds[1][0] = CM_SidePlane( &b->sides[1] )->dist;
 
-	b->bounds[0][1] = -b->sides[2].plane->dist;
-	b->bounds[1][1] = b->sides[3].plane->dist;
+	b->bounds[0][1] = -CM_SidePlane( &b->sides[2] )->dist;
+	b->bounds[1][1] = CM_SidePlane( &b->sides[3] )->dist;
 
-	b->bounds[0][2] = -b->sides[4].plane->dist;
-	b->bounds[1][2] = b->sides[5].plane->dist;
+	b->bounds[0][2] = -CM_SidePlane( &b->sides[4] )->dist;
+	b->bounds[1][2] = CM_SidePlane( &b->sides[5] )->dist;
 }
 
 
@@ -435,6 +435,10 @@ void CMod_LoadBrushSides( bspLump_t *l ) {
 	}
 	count = l->len / sizeof( *in );
 
+	// their plane and shader numbers in shorts: the box hull's planes too
+	if ( cm.numPlanes + BOX_PLANES > 0x10000 || cm.numShaders >= CM_NO_SHADER ) {
+		Com_Error( ERR_DROP, "CMod_LoadBrushSides: %i planes, %i shaders: too many", cm.numPlanes, cm.numShaders );
+	}
 	cm.brushsides = Hunk_Alloc( ( BOX_SIDES + count ) * sizeof( *cm.brushsides ), h_high );
 	cm.numBrushSides = count;
 
@@ -442,12 +446,15 @@ void CMod_LoadBrushSides( bspLump_t *l ) {
 
 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
 		num = LittleLong( in->planeNum );
-		out->plane = &cm.planes[num];
+		if ( num < 0 || num >= cm.numPlanes ) {
+			Com_Error( ERR_DROP, "CMod_LoadBrushSides: bad planeNum: %i", num );
+		}
+		out->planeNum = num;
 		shaderNum = LittleLong( in->shaderNum );
 		if ( shaderNum < 0 || shaderNum >= cm.numShaders ) {
 			Com_Error( ERR_DROP, "CMod_LoadBrushSides: bad shaderNum: %i", shaderNum );
 		}
-		out->surfaceFlags = cm.shaders[shaderNum].surfaceFlags;
+		out->shaderNum = shaderNum;
 	}
 }
 
@@ -1103,8 +1110,8 @@ void CM_InitBoxHull( void ) {
 
 		// brush sides
 		s = &cm.brushsides[cm.numBrushSides + i];
-		s->plane =  cm.planes + ( cm.numPlanes + i * 2 + side );
-		s->surfaceFlags = 0;
+		s->planeNum = cm.numPlanes + i * 2 + side;
+		s->shaderNum = CM_NO_SHADER;
 
 		// planes
 		p = &box_planes[i * 2];

@@ -402,49 +402,52 @@ void CG_AddLightstyle( centity_t *cent ) {
 	int otime;
 	int lastch, nextch;
 
-	if ( cent->dl_stylestring[0] == '\0' ) {
+	centExtra_t *ex;
+
+	if ( CG_CentExtraRead( cent )->dl_stylestring[0] == '\0' ) {
 		return;
 	}
+	ex = CG_CentExtra( cent );
 
-	otime = cg.time - cent->dl_time;
-	stringlength = strlen( cent->dl_stylestring );
+	otime = cg.time - ex->dl_time;
+	stringlength = strlen( ex->dl_stylestring );
 
 	// it's been a long time since you were updated, lets assume a reset
 	if ( otime > 2 * LS_FRAMETIME ) {
 		otime = 0;
-		cent->dl_frame = cent->dl_oldframe = 0;
-		cent->dl_backlerp = 0;
+		ex->dl_frame = ex->dl_oldframe = 0;
+		ex->dl_backlerp = 0;
 	}
 
-	cent->dl_time = cg.time;
+	ex->dl_time = cg.time;
 
 	offset = ( (float)otime ) / LS_FRAMETIME;
 
-	cent->dl_backlerp += offset;
+	ex->dl_backlerp += offset;
 
 
-	if ( cent->dl_backlerp > 1 ) {                     // we're moving on to the next frame
-		cent->dl_oldframe   = cent->dl_oldframe + (int)cent->dl_backlerp;
-		cent->dl_frame      = cent->dl_oldframe + 1;
-		if ( cent->dl_oldframe >= stringlength ) {
-			cent->dl_oldframe = ( cent->dl_oldframe ) % stringlength;
-			if ( cent->dl_oldframe < 3 && cent->dl_sound ) { // < 3 so if an alarm comes back into the pvs it will only start a sound if it's going to be closely synced with the light, otherwise wait till the next cycle
-				trap_S_StartSound( NULL, cent->currentState.number, CHAN_AUTO, cgs.gameSounds[cent->dl_sound] );
+	if ( ex->dl_backlerp > 1 ) {                     // we're moving on to the next frame
+		ex->dl_oldframe   = ex->dl_oldframe + (int)ex->dl_backlerp;
+		ex->dl_frame      = ex->dl_oldframe + 1;
+		if ( ex->dl_oldframe >= stringlength ) {
+			ex->dl_oldframe = ( ex->dl_oldframe ) % stringlength;
+			if ( ex->dl_oldframe < 3 && ex->dl_sound ) { // < 3 so if an alarm comes back into the pvs it will only start a sound if it's going to be closely synced with the light, otherwise wait till the next cycle
+				trap_S_StartSound( NULL, cent->currentState.number, CHAN_AUTO, cgs.gameSounds[ex->dl_sound] );
 			}
 		}
 
-		if ( cent->dl_frame >= stringlength ) {
-			cent->dl_frame = ( cent->dl_frame ) % stringlength;
+		if ( ex->dl_frame >= stringlength ) {
+			ex->dl_frame = ( ex->dl_frame ) % stringlength;
 		}
 
-		cent->dl_backlerp = cent->dl_backlerp - (int)cent->dl_backlerp;
+		ex->dl_backlerp = ex->dl_backlerp - (int)ex->dl_backlerp;
 	}
 
 
-	lastch = cent->dl_stylestring[cent->dl_oldframe] - 'a';
-	nextch = cent->dl_stylestring[cent->dl_frame] - 'a';
+	lastch = ex->dl_stylestring[ex->dl_oldframe] - 'a';
+	nextch = ex->dl_stylestring[ex->dl_frame] - 'a';
 
-	lightval = ( lastch * ( 1.0 - cent->dl_backlerp ) ) + ( nextch * cent->dl_backlerp );
+	lightval = ( lastch * ( 1.0 - ex->dl_backlerp ) ) + ( nextch * ex->dl_backlerp );
 
 	lightval = ( lightval * ( 1000.0f / 24.0f ) ) - 200.0f;  // they want 'm' as the "middle" value as 300
 
@@ -520,7 +523,7 @@ static void CG_EntityEffects( centity_t *cent ) {
 		float i, r, g, b;
 
 
-		if ( cent->dl_stylestring[0] != 0 ) {  // it's probably a dlight
+		if ( CG_CentExtraRead( cent )->dl_stylestring[0] != 0 ) {  // it's probably a dlight
 			CG_AddLightstyle( cent );
 		} else
 		{
@@ -1478,18 +1481,19 @@ CG_RunAnim
 ==============
 */
 static void CG_RunAnim( centity_t *cent, int *frame, int *oldframe, float *backlerp ) {
+	centExtra_t *ex = CG_CentExtra( cent );
 
 	// transition to new anim if requested (rather than letting it get done in cg_runlerpframe() since that expects a player ent)
-	if ( ( cent->lerpFrame.animationNumber != cent->currentState.frame ) || !cent->lerpFrame.animation ) {
-		CG_SetAnim( cent, &cent->lerpFrame, cent->currentState.frame );
+	if ( ( ex->lerpFrame.animationNumber != cent->currentState.frame ) || !ex->lerpFrame.animation ) {
+		CG_SetAnim( cent, &ex->lerpFrame, cent->currentState.frame );
 	}
 
 	// run it
-	CG_RunLerpFrame( NULL, &cent->lerpFrame, 0, 1 );
+	CG_RunLerpFrame( NULL, &ex->lerpFrame, 0, 1 );
 
-	*frame      = cent->lerpFrame.frame;
-	*oldframe   = cent->lerpFrame.oldFrame;
-	*backlerp   = cent->lerpFrame.backlerp;
+	*frame      = ex->lerpFrame.frame;
+	*oldframe   = ex->lerpFrame.oldFrame;
+	*backlerp   = ex->lerpFrame.backlerp;
 }
 
 /*
@@ -1499,6 +1503,7 @@ CG_Trap
 ==============
 */
 static void CG_Trap( centity_t *cent ) {
+	centExtra_t *ex = CG_CentExtra( cent );
 	refEntity_t ent;
 	entityState_t       *cs;
 	animation_t         *trapAnim;
@@ -1510,7 +1515,7 @@ static void CG_Trap( centity_t *cent ) {
 	cs = &cent->currentState;
 
 	// initial setup.  set pointer to animation table and setup anim
-	if ( !cent->lerpFrame.oldFrameTime ) {
+	if ( !ex->lerpFrame.oldFrameTime ) {
 
 		// DHM - Nerve :: teamNum specifies which set of animations to use (only 1 exists right now)
 		if ( cgs.gametype == GT_WOLF ) {
@@ -1527,7 +1532,7 @@ static void CG_Trap( centity_t *cent ) {
 		}
 		// dhm - end
 
-		CG_NewAnim( cent, &cent->lerpFrame, trapAnim, cs->frame );
+		CG_NewAnim( cent, &ex->lerpFrame, trapAnim, cs->frame );
 	}
 
 	CG_RunAnim( cent, &ent.frame, &ent.oldframe, &ent.backlerp );
@@ -1624,18 +1629,20 @@ static void CG_Efx( centity_t *cent ) {
 	float movePerUpdate;
 
 	if ( cent->currentState.eType == ET_TESLA_EF ) {
+		centExtra_t *ex = CG_CentExtra( cent );
+
 		rnd = cent->currentState.angles2[0];
 
 		for ( i = 0; i < MAX_TESLA_BOLTS; i++ ) {
-			if ( cent->boltTimes[i] < cg.time ) {
-				VectorSet( cent->boltLocs[i], crandom(), crandom(), crandom() );
-				VectorNormalize2( cent->boltLocs[i], cent->boltLocs[i] );
-				VectorMA( cent->currentState.origin2, rnd, cent->boltLocs[i], cent->boltLocs[i] );
+			if ( ex->boltTimes[i] < cg.time ) {
+				VectorSet( ex->boltLocs[i], crandom(), crandom(), crandom() );
+				VectorNormalize2( ex->boltLocs[i], ex->boltLocs[i] );
+				VectorMA( cent->currentState.origin2, rnd, ex->boltLocs[i], ex->boltLocs[i] );
 
-				cent->boltTimes[i] = cg.time + rand() % cent->currentState.time2;     // hold this position for ~1 second ('stickytime' value is stored in .time2)
+				ex->boltTimes[i] = cg.time + rand() % cent->currentState.time2;     // hold this position for ~1 second ('stickytime' value is stored in .time2)
 
 				// cut the bolt short if it collides w/ something
-				CG_Trace( &trace, cent->currentState.origin, NULL, NULL, cent->boltLocs[i], -1, MASK_SOLID | CONTENTS_BODY );
+				CG_Trace( &trace, cent->currentState.origin, NULL, NULL, ex->boltLocs[i], -1, MASK_SOLID | CONTENTS_BODY );
 
 				if ( trace.fraction < 1 ) {
 					// take damage
@@ -1644,7 +1651,7 @@ static void CG_Efx( centity_t *cent ) {
 //						cg_entities[trace.entityNum].pe->teslaDamagedTime = cg.time;
 					}
 
-					VectorCopy( trace.endpos, cent->boltLocs[i] );
+					VectorCopy( trace.endpos, ex->boltLocs[i] );
 
 					// store perpendicular vector so end can 'crawl'
 					PerpendicularVector( perpvec, trace.plane.normal );
@@ -1652,13 +1659,13 @@ static void CG_Efx( centity_t *cent ) {
 					RotatePointAroundVector( stickPoint, trace.plane.normal, perpvec, crandom() * 360 );
 
 					// scale it so it won't move too far with bolts that have long boltTimer's
-					movePerUpdate = 1.0f / (float)( cent->boltTimes[i] - cg.time );
+					movePerUpdate = 1.0f / (float)( ex->boltTimes[i] - cg.time );
 
 					// move a max of 64 away from the 'original' target location
-					VectorScale( stickPoint, movePerUpdate * trace.fraction * 64.0f, cent->boltCrawlDirs[i] );
+					VectorScale( stickPoint, movePerUpdate * trace.fraction * 64.0f, ex->boltCrawlDirs[i] );
 
 				} else {
-					VectorSet( cent->boltCrawlDirs[i], 0, 0, 0 );
+					VectorSet( ex->boltCrawlDirs[i], 0, 0, 0 );
 				}
 
 			}
@@ -1666,10 +1673,10 @@ static void CG_Efx( centity_t *cent ) {
 
 		for ( i = 0; i < MAX_TESLA_BOLTS; i++ ) {
 
-			if ( cent->boltCrawlDirs[0] || cent->boltCrawlDirs[1] || cent->boltCrawlDirs[2] ) {
-				VectorMA( cent->boltLocs[i], cent->boltTimes[i] - cg.time, cent->boltCrawlDirs[i], perpvec );
+			if ( ex->boltCrawlDirs[0] || ex->boltCrawlDirs[1] || ex->boltCrawlDirs[2] ) {
+				VectorMA( ex->boltLocs[i], ex->boltTimes[i] - cg.time, ex->boltCrawlDirs[i], perpvec );
 			} else {
-				VectorCopy( cent->boltLocs[i], perpvec );
+				VectorCopy( ex->boltLocs[i], perpvec );
 			}
 
 			CG_DynamicLightningBolt(    cgs.media.lightningBoltShader,  // shader
@@ -1804,28 +1811,29 @@ static void CG_Explosive( centity_t *cent ) {
 
 //----(SA)	added animation stuff
 	if ( cent->currentState.modelindex2 ) {    // there's a 'model2'
+		centExtra_t *ex = CG_CentExtra( cent );
 
 		// first time initialize
-		if ( !cent->lerpFrame.oldFrameTime ) {
+		if ( !ex->lerpFrame.oldFrameTime ) {
 			// note:	effect3Time and density will be invalidated when this explodes.
 			//			they get re-used for explosion parameters.  seems like this
 			//			could be re-arranged a bit better in the future.
 			//			(this is why the above check for currentstate.effect3Time is commented out)
-			cent->centAnim[0].name[0]       = 0;
-			cent->centAnim[0].firstFrame    = 0;
-			cent->centAnim[0].numFrames     = cent->currentState.effect3Time;
-			cent->centAnim[0].loopFrames    = cent->currentState.effect3Time;
-			cent->centAnim[0].frameLerp     = 1000.0f / 15.0f;
-			cent->centAnim[0].initialLerp   = 1000.0f / 15.0f;
+			ex->centAnim[0].name[0]       = 0;
+			ex->centAnim[0].firstFrame    = 0;
+			ex->centAnim[0].numFrames     = cent->currentState.effect3Time;
+			ex->centAnim[0].loopFrames    = cent->currentState.effect3Time;
+			ex->centAnim[0].frameLerp     = 1000.0f / 15.0f;
+			ex->centAnim[0].initialLerp   = 1000.0f / 15.0f;
 
-			cent->centAnim[1].name[0]       = 0;
-			cent->centAnim[1].firstFrame    = cent->currentState.effect3Time;
-			cent->centAnim[1].numFrames     = cent->currentState.density;
-			cent->centAnim[1].loopFrames    = 0;
-			cent->centAnim[1].frameLerp     = 1000.0f / 15.0f;
-			cent->centAnim[1].initialLerp   = 1000.0f / 15.0f;
+			ex->centAnim[1].name[0]       = 0;
+			ex->centAnim[1].firstFrame    = cent->currentState.effect3Time;
+			ex->centAnim[1].numFrames     = cent->currentState.density;
+			ex->centAnim[1].loopFrames    = 0;
+			ex->centAnim[1].frameLerp     = 1000.0f / 15.0f;
+			ex->centAnim[1].initialLerp   = 1000.0f / 15.0f;
 
-			CG_NewAnim( cent, &cent->lerpFrame, &cent->centAnim[0], s1->frame );
+			CG_NewAnim( cent, &ex->lerpFrame, &ex->centAnim[0], s1->frame );
 		}
 
 		CG_RunAnim( cent, &ent.frame, &ent.oldframe, &ent.backlerp );

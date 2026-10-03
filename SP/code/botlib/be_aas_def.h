@@ -269,6 +269,7 @@ typedef struct aas_s
 	byte *decompressedvis;
 	int decompressedvisarea;
 	byte **areavisibility;
+	byte *areavisdata;                  // what areavisibility points into, if read in one block
 	// done.
 	// Ridah, store the area's waypoint for hidepos calculations (center traced downwards)
 	vec3_t *areawaypoints;

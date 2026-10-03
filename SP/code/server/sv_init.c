@@ -109,6 +109,15 @@ void SV_UpdateConfigstrings(client_t *client)
 	}
 }
 
+// every empty configstring (most of them) is this one, not a malloc of its own
+static char sv_emptyConfigstring[1];
+
+static void SV_FreeConfigstring( int index ) {
+	if ( sv.configstrings[index] != sv_emptyConfigstring ) {
+		Z_Free( sv.configstrings[index] );
+	}
+}
+
 /*
 ===============
 SV_SetConfigstring
@@ -133,8 +142,8 @@ void SV_SetConfigstring( int index, const char *val ) {
 	}
 
 	// change the string in sv
-	Z_Free( sv.configstrings[index] );
-	sv.configstrings[index] = CopyString( val );
+	SV_FreeConfigstring( index );
+	sv.configstrings[index] = val[0] ? CopyString( val ) : sv_emptyConfigstring;
 
 	// send it to all the clients if we aren't
 	// spawning a new server
@@ -319,7 +328,8 @@ void SV_InitReliableCommandsForClient( client_t *cl, int commands ) {
 		Com_Memset( &cl->reliableCommands, 0, sizeof( cl->reliableCommands ) );
 	}
 	//
-	cl->reliableCommands.bufSize = commands * RELIABLE_COMMANDS_CHARS;
+	// starts small and grows when full (SV_GrowReliableCommands): few are pending at once
+	cl->reliableCommands.bufSize = commands ? RELIABLE_COMMANDS_START : 0;
 	cl->reliableCommands.buf = Z_Malloc( cl->reliableCommands.bufSize );
 	cl->reliableCommands.commandLengths = Z_Malloc( commands * sizeof( *cl->reliableCommands.commandLengths ) );
 	cl->reliableCommands.commands = Z_Malloc( commands * sizeof( *cl->reliableCommands.commands ) );
@@ -363,6 +373,34 @@ char *SV_GetReliableCommand( client_t *cl, int index ) {
 
 /*
 ===============
+SV_GrowReliableCommands
+
+A bigger buffer, the commands moved into it, the rover at its new space
+===============
+*/
+static void SV_GrowReliableCommands( client_t *cl, int length ) {
+	reliableCommands_t *rc = &cl->reliableCommands;
+	int oldSize = rc->bufSize, i;
+	char *buf;
+
+	while ( rc->bufSize - oldSize < length + 2 ) {
+		rc->bufSize *= 2;
+	}
+	buf = Z_Malloc( rc->bufSize );
+	Com_Memcpy( buf, rc->buf, oldSize );
+	for ( i = 0; i < MAX_RELIABLE_COMMANDS; i++ ) {
+		if ( rc->commands[i] ) {
+			rc->commands[i] = buf + ( rc->commands[i] - rc->buf );
+		}
+	}
+	Z_Free( rc->buf );
+	rc->buf = buf;
+	// past the old end's terminator: the rest is all free
+	rc->rover = buf + oldSize + 1;
+}
+
+/*
+===============
 SV_AddReliableCommand
 ===============
 */
@@ -387,6 +425,8 @@ qboolean SV_AddReliableCommand( client_t *cl, int index, const char *cmd ) {
 	}
 	// if the test failed
 	if ( i ) {
+		qboolean found = qfalse;
+
 		// find a valid spot to place the new string
 		// start at the beginning (keep it simple)
 		for ( i = 0, ch = cl->reliableCommands.buf; i < cl->reliableCommands.bufSize; i++, ch++ ) {
@@ -399,16 +439,20 @@ qboolean SV_AddReliableCommand( client_t *cl, int index, const char *cmd ) {
 				if ( j == length + 1 ) {
 					// valid segment found
 					cl->reliableCommands.rover = ch;
+					found = qtrue;
 					break;
 				}
 				//
 				if ( i == cl->reliableCommands.bufSize - 1 ) {
 					// ran out of room, not enough space for string
-					return qfalse;
+					break;
 				}
 				//
 				ch = &cl->reliableCommands.buf[i];  // continue where ch2 left off
 			}
+		}
+		if ( !found ) {
+			SV_GrowReliableCommands( cl, length );
 		}
 	}
 	//
@@ -662,9 +706,7 @@ static void SV_ClearServer(void) {
 	int i;
 
 	for ( i = 0 ; i < MAX_CONFIGSTRINGS ; i++ ) {
-		if ( sv.configstrings[i] ) {
-			Z_Free( sv.configstrings[i] );
-		}
+		SV_FreeConfigstring( i );
 	}
 	Com_Memset( &sv, 0, sizeof( sv ) );
 }
@@ -817,7 +859,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	// allocate empty config strings
 	for ( i = 0 ; i < MAX_CONFIGSTRINGS ; i++ ) {
-		sv.configstrings[i] = CopyString( "" );
+		sv.configstrings[i] = sv_emptyConfigstring;
 	}
 
 	// Ridah

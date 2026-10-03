@@ -773,6 +773,28 @@ static void R_SetParent( mnode_t *node, mnode_t *parent ) {
 
 /*
 =================
+R_NodeBounds
+
+A node's bounds into its shorts: an error, not a wrong cull, if they don't fit
+=================
+*/
+static void R_NodeBounds( mnode_t *out, const int *mins, const int *maxs ) {
+	int j, lo, hi;
+
+	for ( j = 0 ; j < 3 ; j++ )
+	{
+		lo = LittleLong( mins[j] );
+		hi = LittleLong( maxs[j] );
+		if ( lo < -32768 || hi > 32767 ) {
+			ri.Error( ERR_DROP, "LoadMap: node bounds %i %i too big in %s", lo, hi, s_worldData.name );
+		}
+		out->mins[j] = lo;
+		out->maxs[j] = hi;
+	}
+}
+
+/*
+=================
 R_LoadNodesAndLeafs
 =================
 */
@@ -800,11 +822,7 @@ static void R_LoadNodesAndLeafs( bspLump_t *nodeLump, bspLump_t *leafLump ) {
 	// load nodes
 	for ( i = 0 ; i < numNodes; i++, in++, out++ )
 	{
-		for ( j = 0 ; j < 3 ; j++ )
-		{
-			out->mins[j] = LittleLong( in->mins[j] );
-			out->maxs[j] = LittleLong( in->maxs[j] );
-		}
+		R_NodeBounds( out, in->mins, in->maxs );
 
 		p = LittleLong( in->planeNum );
 		out->plane = s_worldData.planes + p;
@@ -826,11 +844,7 @@ static void R_LoadNodesAndLeafs( bspLump_t *nodeLump, bspLump_t *leafLump ) {
 	inLeaf = leafLump->data;
 	for ( i = 0 ; i < numLeafs ; i++, inLeaf++, out++ )
 	{
-		for ( j = 0 ; j < 3 ; j++ )
-		{
-			out->mins[j] = LittleLong( inLeaf->mins[j] );
-			out->maxs[j] = LittleLong( inLeaf->maxs[j] );
-		}
+		R_NodeBounds( out, inLeaf->mins, inLeaf->maxs );
 
 		out->cluster = LittleLong( inLeaf->cluster );
 		out->area = LittleLong( inLeaf->area );

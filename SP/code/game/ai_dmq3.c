@@ -103,6 +103,7 @@ bot_goal_t ctf_blueflag;
 BotCTFCarryingFlag
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotCTFCarryingFlag( bot_state_t *bs ) {
 	if ( gametype != GT_CTF ) {
 		return CTF_FLAG_NONE;
@@ -115,6 +116,7 @@ int BotCTFCarryingFlag( bot_state_t *bs ) {
 	}
 	return CTF_FLAG_NONE;
 }
+#endif
 
 /*
 ==================
@@ -146,6 +148,7 @@ int BotCTFTeam( bot_state_t *bs ) {
 BotCTFRetreatGoals
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotCTFRetreatGoals( bot_state_t *bs ) {
 	//when carrying a flag in ctf the bot should rush to the base
 	if ( BotCTFCarryingFlag( bs ) ) {
@@ -157,12 +160,14 @@ void BotCTFRetreatGoals( bot_state_t *bs ) {
 		}
 	}
 }
+#endif
 
 /*
 ==================
 BotCTFSeekGoals
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotCTFSeekGoals( bot_state_t *bs ) {
 	float rnd;
 
@@ -221,6 +226,7 @@ void BotCTFSeekGoals( bot_state_t *bs ) {
 	BotPrintTeamGoal( bs );
 #endif //DEBUG
 }
+#endif
 
 #endif //CTF
 
@@ -391,6 +397,7 @@ char *EasyClientName( int client, char *buf, int size ) {
 BotChooseWeapon
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotChooseWeapon( bot_state_t *bs ) {
 	int newweaponnum;
 
@@ -409,6 +416,7 @@ void BotChooseWeapon( bot_state_t *bs ) {
 		trap_EA_SelectWeapon( bs->client, bs->weaponnum );
 	}
 }
+#endif
 
 /*
 ==================
@@ -457,6 +465,7 @@ void BotSetupForMovement( bot_state_t *bs ) {
 BotUpdateInventory
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotUpdateInventory( bot_state_t *bs ) {
 	//armor
 	bs->inventory[INVENTORY_ARMOR] = bs->cur_ps.stats[STAT_ARMOR];
@@ -490,12 +499,14 @@ void BotUpdateInventory( bot_state_t *bs ) {
 	bs->inventory[INVENTORY_BLUEFLAG] = bs->cur_ps.powerups[PW_BLUEFLAG] != 0;
 	//
 }
+#endif
 
 /*
 ==================
 BotUpdateBattleInventory
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotUpdateBattleInventory( bot_state_t *bs, int enemy ) {
 	vec3_t dir;
 	aas_entityinfo_t entinfo;
@@ -507,12 +518,14 @@ void BotUpdateBattleInventory( bot_state_t *bs, int enemy ) {
 	bs->inventory[ENEMY_HORIZONTAL_DIST] = (int) VectorLength( dir );
 	//FIXME: add num visible enemies and num visible team mates to the inventory
 }
+#endif
 
 /*
 ==================
 BotBattleUseItems
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotBattleUseItems( bot_state_t *bs ) {
 	if ( bs->inventory[INVENTORY_HEALTH] < 40 ) {
 		if ( bs->inventory[INVENTORY_TELEPORTER] > 0 ) {
@@ -523,6 +536,7 @@ void BotBattleUseItems( bot_state_t *bs ) {
 		}
 	}
 }
+#endif
 
 /*
 ==================
@@ -761,6 +775,7 @@ FIXME: move this to external fuzzy logic
   NOTE!!: I made no changes to this code for wolf weapon awareness.  (SA)
 ==================
 */
+#ifndef NO_DM_BOTS
 float BotAggression( bot_state_t *bs ) {
 	//if the bot has quad
 	if ( bs->inventory[INVENTORY_QUAD] ) {
@@ -817,12 +832,14 @@ float BotAggression( bot_state_t *bs ) {
 	//otherwise the bot is not feeling too good
 	return 0;
 }
+#endif
 
 /*
 ==================
 BotWantsToRetreat
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotWantsToRetreat( bot_state_t *bs ) {
 #ifdef CTF
 	//always retreat when carrying a CTF flag
@@ -839,12 +856,14 @@ int BotWantsToRetreat( bot_state_t *bs ) {
 	}
 	return qfalse;
 }
+#endif
 
 /*
 ==================
 BotWantsToChase
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotWantsToChase( bot_state_t *bs ) {
 #ifdef CTF
 	//always retreat when carrying a CTF flag
@@ -861,6 +880,7 @@ int BotWantsToChase( bot_state_t *bs ) {
 	}
 	return qfalse;
 }
+#endif
 
 /*
 ==================
@@ -876,6 +896,7 @@ int BotWantsToHelp( bot_state_t *bs ) {
 BotCanAndWantsToRocketJump
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotCanAndWantsToRocketJump( bot_state_t *bs ) {
 	float rocketjumper;
 
@@ -912,12 +933,14 @@ int BotCanAndWantsToRocketJump( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
 BotGoCamp
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotGoCamp( bot_state_t *bs, bot_goal_t *goal ) {
 	float camper;
 
@@ -939,12 +962,14 @@ void BotGoCamp( bot_state_t *bs, bot_goal_t *goal ) {
 	//do NOT type arrive message
 	bs->arrive_time = 1;
 }
+#endif
 
 /*
 ==================
 BotWantsToCamp
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotWantsToCamp( bot_state_t *bs ) {
 	float camper;
 	int cs, traveltime, besttraveltime;
@@ -1002,6 +1027,7 @@ int BotWantsToCamp( bot_state_t *bs ) {
 	//
 	return qtrue;
 }
+#endif
 
 /*
 ==================
@@ -1423,6 +1449,7 @@ float BotEntityVisible( int viewer, vec3_t eye, vec3_t viewangles, float fov, in
 BotFindEnemy
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotFindEnemy( bot_state_t *bs, int curenemy ) {
 	int i, healthdecrease;
 	float fov, dist, curdist, alertness, easyfragger, vis;
@@ -1532,6 +1559,7 @@ int BotFindEnemy( bot_state_t *bs, int curenemy ) {
 	}
 	return qfalse;
 }
+#endif
 
 /*
 ==================
@@ -2223,6 +2251,7 @@ void BotModelMinsMaxs( int modelindex, vec3_t mins, vec3_t maxs ) {
 BotAIBlocked
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotAIBlocked( bot_state_t *bs, bot_moveresult_t *moveresult, int activate ) {
 	int movetype, ent, i, areas[10], numareas, modelindex;
 	char classname[128], model[128];
@@ -2514,12 +2543,14 @@ void BotAIBlocked( bot_state_t *bs, bot_moveresult_t *moveresult, int activate )
 		bs->ltg_time = 0;
 	}
 }
+#endif
 
 /*
 ==================
 BotCheckConsoleMessages
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotCheckConsoleMessages( bot_state_t *bs ) {
 	char botname[MAX_NETNAME], message[MAX_MESSAGE_SIZE], netname[MAX_NETNAME];
 	float chat_reply;
@@ -2611,12 +2642,14 @@ void BotCheckConsoleMessages( bot_state_t *bs ) {
 		trap_BotRemoveConsoleMessage( bs->cs, handle );
 	}
 }
+#endif
 
 /*
 ==================
 BotCheckEvents
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotCheckEvents( bot_state_t *bs, entityState_t *state ) {
 	int event;
 	char buf[128];
@@ -2716,12 +2749,14 @@ void BotCheckEvents( bot_state_t *bs, entityState_t *state ) {
 	}
 	}
 }
+#endif
 
 /*
 ==================
 BotCheckSnapshot
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotCheckSnapshot( bot_state_t *bs ) {
 	int ent;
 	entityState_t state;
@@ -2740,6 +2775,7 @@ void BotCheckSnapshot( bot_state_t *bs ) {
 	//
 	BotCheckEvents( bs, &state );
 }
+#endif
 
 /*
 ==================
@@ -2747,11 +2783,15 @@ BotCheckAir
 ==================
 */
 void BotCheckAir( bot_state_t *bs ) {
+#ifndef NO_DM_BOTS     // else no inventory: never an environment suit
 	if ( bs->inventory[INVENTORY_ENVIRONMENTSUIT] <= 0 ) {
+#endif
 		if ( trap_AAS_PointContents( bs->eye ) & ( CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA ) ) {
 			return;
 		}
+#ifndef NO_DM_BOTS
 	}
+#endif
 	bs->lastair_time = trap_AAS_Time();
 }
 
@@ -2760,6 +2800,7 @@ void BotCheckAir( bot_state_t *bs ) {
 BotDeathmatchAI
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotDeathmatchAI( bot_state_t *bs, float thinktime ) {
 	char gender[144], name[144];
 	char userinfo[MAX_INFO_STRING];
@@ -2845,6 +2886,7 @@ void BotDeathmatchAI( bot_state_t *bs, float thinktime ) {
 	bs->lastframe_health = bs->inventory[INVENTORY_HEALTH];
 	bs->lasthitcount = bs->cur_ps.persistant[PERS_HITS];
 }
+#endif
 
 /*
 ==================

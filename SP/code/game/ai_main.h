@@ -99,7 +99,9 @@ typedef struct bot_state_s
 	playerState_t cur_ps;                           //current player state
 	int last_eFlags;                                //last ps flags
 	usercmd_t lastucmd;                             //usercmd from last frame
+#ifndef NO_DM_BOTS     // the rest of these #ifndefs too: only the deathmatch AI's (ai_dmq3.c, ai_dmnet.c, ai_cmd.c, ai_team.c)
 	int entityeventTime[MAX_GENTITIES];                      //last entity event time
+#endif
 	//
 	bot_settings_t settings;                        //several bot settings
 	int ( *ainode )( struct bot_state_s *bs );          //current AI node
@@ -109,7 +111,9 @@ typedef struct bot_state_s
 	int presencetype;                               //presence type of the bot
 	vec3_t eye;                                     //eye coordinates of the bot
 	int areanum;                                    //the number of the area the bot is in
+#ifndef NO_DM_BOTS
 	int inventory[MAX_ITEMS];                       //string with items amounts the bot has
+#endif
 	int tfl;                                        //the travel flags the bot uses
 	int flags;                                      //several flags
 	int respawn_wait;                               //wait until respawned
@@ -183,19 +187,25 @@ typedef struct bot_state_s
 	int ltgtype;                                    //long term goal type
 	//
 	int teammate;                                   //team mate
+#ifndef NO_DM_BOTS
 	bot_goal_t teamgoal;                            //the team goal
+#endif
 	float teammessage_time;                         //time to message team mates what the bot is doing
 	float teamgoal_time;                            //time to stop helping team mate
 	float teammatevisible_time;                     //last time the team mate was NOT visible
 	//
 	int lead_teammate;                              //team mate the bot is leading
+#ifndef NO_DM_BOTS
 	bot_goal_t lead_teamgoal;                       //team goal while leading
+#endif
 	float lead_time;                                //time leading someone
 	float leadvisible_time;                         //last time the team mate was visible
 	float leadmessage_time;                         //last time a messaged was sent to the team mate
 	float leadbackup_time;                          //time backing up towards team mate
 	//
+#ifndef NO_DM_BOTS
 	char teamleader[MAX_NETNAME];                            //netname of the team leader
+#endif
 	float askteamleader_time;                       //time asked for team leader
 	float becometeamleader_time;                    //time the bot will become the team leader
 	float teamgiveorders_time;                      //time to give team orders
@@ -205,9 +215,13 @@ typedef struct bot_state_s
 	int flagstatuschanged;                          //flag status changed
 	int forceorders;                                //true if forced to give orders
 	int flagcarrier;                                //team mate carrying the enemy flag
+#ifndef NO_DM_BOTS
 	char subteam[32];                               //sub team name
+#endif
 	float formation_dist;                           //formation team mate intervening space
+#ifndef NO_DM_BOTS
 	bot_goal_t activategoal;                        //goal to activate (buttons etc.)
+#endif
 	bot_waypoint_t *checkpoints;                    //check points
 	bot_waypoint_t *patrolpoints;                   //patrol points
 	bot_waypoint_t *curpatrolpoint;                 //current patrol point the bot is going for

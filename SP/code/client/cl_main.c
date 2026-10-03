@@ -822,16 +822,21 @@ menu: New Game (play.menu's action), the pregame menu's arrow after each
 load (uiScript playerstart), skip the cutscene as a key does, then
 quit 10 seconds into escape1; at once on an error, and after a minute
 whatever happens. 2: die 3 seconds into escape1 (kill), fire till the
-level is loaded again as dying does, and quit 10 seconds after
+level is loaded again as dying does, and quit 10 seconds after.
++set dcsim_map <map>: straight to that map (spmap) instead, for escape1
 ==================
 */
 static void CL_DCSimNewGame( void ) {
 	static int start, started, escape, lastSkip, pregameServerId = -1;
 	static int killed, killedServerId, lastFire, reloaded;
 	int now = Sys_Milliseconds();
+	const char *map = Cvar_VariableString( "dcsim_map" );
 
 	if ( !Cvar_VariableIntegerValue( "dcsim_newgame" ) ) {
 		return;
+	}
+	if ( !map[0] ) {
+		map = "escape1";
 	}
 	if ( !start ) {
 		start = now;
@@ -845,7 +850,7 @@ static void CL_DCSimNewGame( void ) {
 		// the menu is up
 		if ( clc.state == CA_DISCONNECTED && ( Key_GetCatcher() & KEYCATCH_UI ) && now - start > 1000 ) {
 			Com_Printf( "DCSIM newgame: New Game\n" );
-			Cbuf_AddText( "set g_gameskill 1; spmap cutscene1\n" );
+			Cbuf_AddText( va( "set g_gameskill 1; spmap %s\n", Q_stricmp( map, "escape1" ) ? map : "cutscene1" ) );
 			started = now;
 		}
 		return;
@@ -893,13 +898,13 @@ static void CL_DCSimNewGame( void ) {
 		}
 		return;
 	}
-	if ( !Q_stricmp( Cvar_VariableString( "mapname" ), "escape1" ) ) {
+	if ( !Q_stricmp( Cvar_VariableString( "mapname" ), map ) ) {
 		if ( !escape ) {
-			Com_Printf( "DCSIM newgame: in escape1\n" );
+			Com_Printf( "DCSIM newgame: in %s\n", map );
 			escape = now;
 		} else if ( now - escape > 10000 ) {
-			Com_Printf( "DCSIM newgame: 10 seconds into escape1, quitting\n" );
-			Com_MemoryReport( "10 seconds into escape1" );
+			Com_Printf( "DCSIM newgame: 10 seconds into %s, quitting\n", map );
+			Com_MemoryReport( va( "10 seconds into %s", map ) );
 			Cbuf_AddText( "quit\n" );
 			escape = now + 100000;
 		}

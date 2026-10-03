@@ -59,6 +59,7 @@ If you have questions concerning this license or the applicable additional terms
 BotValidTeamLeader
 ==================
 */
+#ifndef NO_DM_BOTS
 int BotValidTeamLeader( bot_state_t *bs ) {
 	if ( !strlen( bs->teamleader ) ) {
 		return qfalse;
@@ -68,6 +69,7 @@ int BotValidTeamLeader( bot_state_t *bs ) {
 	}
 	return qtrue;
 }
+#endif
 
 /*
 ==================
@@ -509,6 +511,7 @@ void BotTeamOrders( bot_state_t *bs ) {
 BotTeamAI
 ==================
 */
+#ifndef NO_DM_BOTS
 void BotTeamAI( bot_state_t *bs ) {
 	int numteammates, flagstatus;
 	char netname[MAX_NETNAME];
@@ -602,5 +605,6 @@ void BotTeamAI( bot_state_t *bs ) {
 	}
 	}
 }
+#endif
 
 

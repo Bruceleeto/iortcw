@@ -276,6 +276,29 @@ typedef struct {
 
 // centity_t have a direct corespondence with gentity_t in the game, but
 // only the entityState_t is directly communicated to the cgame
+// what only a few centities use (lights' styles, traps' and explosives'
+// animations, tesla bolts): a centity's own once it first writes any of it,
+// until the level's over (CG_CentExtra)
+typedef struct {
+	// client side dlights
+	int dl_frame;
+	int dl_oldframe;
+	float dl_backlerp;
+	int dl_time;
+	char dl_stylestring[64];
+	int dl_sound;
+	int dl_atten;
+
+	lerpFrame_t lerpFrame;      //----(SA)	added
+
+	// client-side lightning
+	int boltTimes[MAX_TESLA_BOLTS];
+	vec3_t boltLocs[MAX_TESLA_BOLTS];
+	vec3_t boltCrawlDirs[MAX_TESLA_BOLTS];
+
+	animation_t centAnim[2];
+} centExtra_t;
+
 typedef struct centity_s {
 	entityState_t currentState;     // from cg.frame
 	entityState_t nextState;        // from cg.nextFrame, if available
@@ -307,33 +330,18 @@ typedef struct centity_s {
 	vec3_t fireRiseDir;             // if standing still this will be up, otherwise it'll point away from movement dir
 	int lastWeaponClientFrame;
 
-	// client side dlights
-	int dl_frame;
-	int dl_oldframe;
-	float dl_backlerp;
-	int dl_time;
-	char dl_stylestring[64];
-	int dl_sound;
-	int dl_atten;
+	centExtra_t *extra;         // NULL: all zeros (CG_CentExtra)
 
-	lerpFrame_t lerpFrame;      //----(SA)	added
 	vec3_t highlightOrigin;             // center of the geometry.  for things like corona placement on treasure
 	qboolean usehighlightOrigin;
 
 	refEntity_t refEnt;
 	int processedFrame;                 // frame we were last added to the scene
 
-	// client-side lightning
-	int boltTimes[MAX_TESLA_BOLTS];
-	vec3_t boltLocs[MAX_TESLA_BOLTS];
-	vec3_t boltCrawlDirs[MAX_TESLA_BOLTS];
-
 	// item highlighting
 
 	int highlightTime;
 	qboolean highlighted;
-
-	animation_t centAnim[2];
 
 	// (SA) added to help akimbo effects attach to the correct model
 	qboolean akimboFire;
@@ -1582,6 +1590,9 @@ typedef struct {
 extern cgs_t cgs;
 extern cg_t cg;
 extern centity_t cg_entities[MAX_GENTITIES];
+centExtra_t *CG_CentExtra( centity_t *cent );
+const centExtra_t *CG_CentExtraRead( const centity_t *cent );
+void CG_FreeCentExtras( void );
 extern playerEntity_t *cg_playerEntities;
 extern weaponInfo_t cg_weapons[WP_NUM_WEAPONS];
 extern itemInfo_t cg_items[MAX_ITEMS];

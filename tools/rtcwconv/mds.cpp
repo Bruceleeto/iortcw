@@ -137,14 +137,44 @@ static std::vector<int> ReduceKeys( int numFrames, int maxSpan, Fits fits ) {
 	return keys;
 }
 
+/* a track's keys, as a list or a bitmap, whichever is smaller (mdsc.h) */
 static void PutKeys( Out &o, size_t trackAt, size_t base, const std::vector<int> &keys ) {
-	o.set32( trackAt, (int32_t)keys.size() );
-	o.set32( trackAt + 4, (int32_t)( o.pos() - base ) );
-	for ( int k : keys ) {
-		uint16_t f = (uint16_t)k;
-		o.put( &f, 2 );
+	const int numBlocks = keys.back() / MDSC_KEY_BLOCK + 1;
+	const size_t listSize = ( keys.size() * 2 + 3 ) & ~3;
+	const size_t bitmapSize = ( ( 1 + numBlocks ) * 2 + 3 & ~3 ) + numBlocks * 8;
+	const bool bitmap = bitmapSize < listSize;
+
+	if ( keys[0] != 0 || keys.size() > 0xffff || numBlocks > 0xffff ) {
+		fprintf( stderr, "PutKeys: keys not from frame 0, or too many\n" );
+		exit( 1 );
 	}
-	o.align();
+	o.set32( trackAt, (int32_t)keys.size() | ( bitmap ? MDSC_KEYS_BITMAP : 0 ) );
+	o.set32( trackAt + 4, (int32_t)( o.pos() - base ) );
+	if ( bitmap ) {
+		std::vector<uint16_t> rank( numBlocks, 0 );
+		std::vector<uint32_t> bits( numBlocks * 2, 0 );
+		uint16_t n = (uint16_t)numBlocks;
+
+		for ( int k : keys ) {
+			bits[k >> 5] |= 1u << ( k & 31 );
+		}
+		for ( int b = 1, c = 0; b < numBlocks; b++ ) {
+			for ( int w = ( b - 1 ) * 2; w < b * 2; w++ ) {
+				c += __builtin_popcount( bits[w] );
+			}
+			rank[b] = (uint16_t)c;
+		}
+		o.put( &n, 2 );
+		o.put( rank.data(), numBlocks * 2 );
+		o.align();
+		o.put( bits.data(), bits.size() * 4 );
+	} else {
+		for ( int k : keys ) {
+			uint16_t f = (uint16_t)k;
+			o.put( &f, 2 );
+		}
+		o.align();
+	}
 	o.set32( trackAt + 8, (int32_t)( o.pos() - base ) );
 }
 

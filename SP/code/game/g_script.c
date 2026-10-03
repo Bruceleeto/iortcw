@@ -287,7 +287,8 @@ G_Script_ScriptParse
 #define MAX_SCRIPT_EVENTS   64
 g_script_event_t g_temp_events[MAX_SCRIPT_EVENTS];
 // theirs, while parsing: MAX_SCRIPT_EVENTS of them, shared with AICast_ScriptParse
-extern g_script_stack_item_t( *const g_temp_items )[G_MAX_SCRIPT_STACK_ITEMS];
+void *G_ScriptParseItems( qboolean ai );   // ai_cast_script.c
+void G_FreeScriptParseItems( void );
 void G_Script_ScriptParse( gentity_t *ent ) {
 	char        *pScript;
 	char        *token;
@@ -304,6 +305,7 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 	int i;
 	int bracketLevel;
 	qboolean buildScript;       //----(SA)	added
+	g_script_stack_item_t ( *g_temp_items )[G_MAX_SCRIPT_STACK_ITEMS];
 
 	if ( !ent->scriptName ) {
 		return;
@@ -313,6 +315,7 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 	}
 
 	buildScript = qtrue;
+	g_temp_items = G_ScriptParseItems( qfalse );
 
 	pScript = level.scriptEntity;
 	wantName = qtrue;
@@ -403,6 +406,8 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 				}
 
 				curEvent->stack.items[curEvent->stack.numItems].action = action;
+				// the parse buffer's shared, never cleared: no params unless it has some
+				curEvent->stack.items[curEvent->stack.numItems].params = NULL;
 
 				memset( params, 0, sizeof( params ) );
 				token = COM_ParseExt( &pScript, qfalse );
@@ -490,6 +495,7 @@ void G_Script_ScriptParse( gentity_t *ent ) {
 		}
 		ent->numScriptEvents = numEventItems;
 	}
+	G_FreeScriptParseItems();
 }
 
 /*
