@@ -41,7 +41,7 @@ static unsigned char s_gammatable[256];
 int gl_filter_min = GL_LINEAR_MIPMAP_NEAREST;
 int gl_filter_max = GL_LINEAR;
 
-#define FILE_HASH_SIZE      4096
+#define FILE_HASH_SIZE      1024    // (was 4096) buckets: a few hundred images
 static image_t*        hashTable[FILE_HASH_SIZE];
 
 

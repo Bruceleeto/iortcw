@@ -706,8 +706,7 @@ typedef struct {
 	int warmupModificationCount;            // for detecting if g_warmup is changed
 
 	// voting state
-	char voteString[MAX_STRING_CHARS];
-	char voteDisplayString[MAX_STRING_CHARS];
+	char voteString[256];               // (was MAX_STRING_CHARS: multiplayer's)
 	int voteTime;                       // level.time vote was called
 	int voteExecuteTime;                // time the vote is executed
 	int voteYes;
@@ -715,7 +714,6 @@ typedef struct {
 	int numVotingClients;               // set by CalculateRanks
 
 	// team voting state
-	char teamVoteString[2][MAX_STRING_CHARS];
 	int teamVoteTime[2];                // level.time vote was called
 	int teamVoteYes[2];
 	int teamVoteNo[2];

@@ -341,7 +341,7 @@ DEBUG GRAPH
 */
 
 static int current;
-static float values[1024];
+static float values[128];       // (was 1024: it repeats across the screen)
 
 /*
 ==============

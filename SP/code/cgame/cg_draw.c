@@ -58,22 +58,25 @@ int CG_Text_Width( const char *text, int font, float scale, int limit ) {
 	glyphInfo_t *glyph;
 	float useScale;
 	const char *s = text;
-	fontInfo_t *fnt = &cgDC.Assets.textFont;
+	fontInfo_t *fnt = cgDC.Assets.textFont;
 
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= cg_smallFont.value ) {
-			fnt = &cgDC.Assets.smallFont;
+			fnt = cgDC.Assets.smallFont;
 		} else if ( scale > cg_bigFont.value ) {
-			fnt = &cgDC.Assets.bigFont;
+			fnt = cgDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &cgDC.Assets.bigFont;
+		fnt = cgDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &cgDC.Assets.smallFont;
+		fnt = cgDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &cgDC.Assets.handwritingFont;
+		fnt = cgDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return 0;
+	}
 	useScale = scale * fnt->glyphScale;
 	out = 0;
 	if ( text ) {
@@ -103,22 +106,25 @@ int CG_Text_Height( const char *text, int font, float scale, int limit ) {
 	glyphInfo_t *glyph;
 	float useScale;
 	const char *s = text;
-	fontInfo_t *fnt = &cgDC.Assets.textFont;
+	fontInfo_t *fnt = cgDC.Assets.textFont;
 
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= cg_smallFont.value ) {
-			fnt = &cgDC.Assets.smallFont;
+			fnt = cgDC.Assets.smallFont;
 		} else if ( scale > cg_bigFont.value ) {
-			fnt = &cgDC.Assets.bigFont;
+			fnt = cgDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &cgDC.Assets.bigFont;
+		fnt = cgDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &cgDC.Assets.smallFont;
+		fnt = cgDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &cgDC.Assets.handwritingFont;
+		fnt = cgDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return 0;
+	}
 	useScale = scale * fnt->glyphScale;
 	max = 0;
 	if ( text ) {
@@ -157,22 +163,25 @@ void CG_Text_Paint( float x, float y, int font, float scale, vec4_t color, const
 	vec4_t newColor;
 	glyphInfo_t *glyph;
 	float useScale;
-	fontInfo_t *fnt = &cgDC.Assets.textFont;
+	fontInfo_t *fnt = cgDC.Assets.textFont;
 
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= cg_smallFont.value ) {
-			fnt = &cgDC.Assets.smallFont;
+			fnt = cgDC.Assets.smallFont;
 		} else if ( scale > cg_bigFont.value ) {
-			fnt = &cgDC.Assets.bigFont;
+			fnt = cgDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &cgDC.Assets.bigFont;
+		fnt = cgDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &cgDC.Assets.smallFont;
+		fnt = cgDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &cgDC.Assets.handwritingFont;
+		fnt = cgDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return;
+	}
 	useScale = scale * fnt->glyphScale;
 
 	color[3] *= cg_hudAlpha.value;  // (SA) adjust for cg_hudalpha

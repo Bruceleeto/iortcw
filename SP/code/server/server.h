@@ -38,7 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 #define PERS_SCORE              0       // !!! MUST NOT CHANGE, SERVER AND
 										// GAME BOTH REFERENCE !!!
 
-#define MAX_ENT_CLUSTERS    16
+#define MAX_ENT_CLUSTERS    8       // (was 16) past it, the range lastCluster gives is checked
 
 
 typedef struct svEntity_s {
@@ -126,7 +126,7 @@ typedef struct {
 typedef struct client_s {
 	clientState_t state;
 	qboolean bot;                           // an AI, not the player
-	char userinfo[MAX_INFO_STRING];                 // name, etc
+	char userinfo[MAX_INFO_STRING / 2];             // name, etc (was MAX_INFO_STRING: SP's are short)
 
 	reliableCommands_t reliableCommands;
 	int reliableSequence;                   // last added reliable message, not necesarily sent or acknowledged yet

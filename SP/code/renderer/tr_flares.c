@@ -92,7 +92,7 @@ typedef struct flare_s {
 	int id;
 } flare_t;
 
-#define     MAX_FLARES      256
+#define     MAX_FLARES      64      // (was 256) when they're used up, the rest aren't drawn
 
 flare_t r_flareStructs[MAX_FLARES];
 flare_t     *r_activeFlares, *r_inactiveFlares;

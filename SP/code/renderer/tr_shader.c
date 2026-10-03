@@ -38,6 +38,7 @@ static char *shTextStart;       // FindShaderInShaderText's shader: where its na
 static shaderStage_t stages[MAX_SHADER_STAGES];
 static shader_t shader;
 static texModInfo_t texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS];
+static deformStage_t deforms[MAX_SHADER_DEFORMS];  // shader.deforms, while it's parsed
 
 #define FILE_HASH_SIZE      1024    // a map has some 1400 shaders
 
@@ -52,7 +53,9 @@ typedef struct shaderStringPointer_s
 	struct shaderStringPointer_s *next;
 } shaderStringPointer_t;
 //
-shaderStringPointer_t shaderChecksumLookup[FILE_HASH_SIZE];
+// (FILE_HASH_SIZE of them, on the hunk, only with the shader text: the
+// baked shaders have none)
+shaderStringPointer_t *shaderChecksumLookup;
 // done.
 
 /*
@@ -2006,6 +2009,7 @@ static void ComputeStageIteratorFunc( void ) {
 	//
 	// see if this can go into an optimized LM, multitextured path
 	//
+#if NUM_TEXTURE_BUNDLES > 1
 	if ( shader.numUnfoggedPasses == 1 ) {
 		if ( ( stages[0].rgbGen == CGEN_IDENTITY ) && ( stages[0].alphaGen == AGEN_IDENTITY ) ) {
 			if ( stages[0].bundle[0].tcGen == TCGEN_TEXTURE &&
@@ -2020,6 +2024,7 @@ static void ComputeStageIteratorFunc( void ) {
 			}
 		}
 	}
+#endif
 }
 
 typedef struct {
@@ -2030,6 +2035,7 @@ typedef struct {
 	int multitextureBlend;
 } collapse_t;
 
+#if NUM_TEXTURE_BUNDLES > 1
 static collapse_t collapse[] = {
 	{ 0, GLS_DSTBLEND_SRC_COLOR | GLS_SRCBLEND_ZERO,
 	  GL_MODULATE, 0 },
@@ -2060,7 +2066,9 @@ static collapse_t collapse[] = {
 #endif
 	{ -1 }
 };
+#endif
 
+#if NUM_TEXTURE_BUNDLES > 1
 /*
 ================
 CollapseMultitexture
@@ -2171,6 +2179,7 @@ static qboolean CollapseMultitexture( void ) {
 
 	return qtrue;
 }
+#endif
 
 /*
 =============
@@ -2301,6 +2310,11 @@ static shader_t *GeneratePermanentShader( void ) {
 	newShader = ri.Hunk_Alloc( sizeof( shader_t ), h_low );
 
 	*newShader = shader;
+	newShader->deforms = NULL;
+	if ( shader.numDeforms ) {
+		newShader->deforms = ri.Hunk_Alloc( shader.numDeforms * sizeof( deformStage_t ), h_low );
+		memcpy( newShader->deforms, deforms, shader.numDeforms * sizeof( deformStage_t ) );
+	}
 
 	if ( shader.sort <= SS_OPAQUE ) {
 		newShader->fogPass = FP_EQUAL;
@@ -2447,6 +2461,8 @@ static void InitShader( const char *name, int lightmapIndex ) {
 	Com_Memset( &shader, 0, sizeof( shader ) );
 	Com_Memset( &stages, 0, sizeof( stages ) );
 	Com_Memset( &texMods, 0, sizeof( texMods ) );   // not what the last shader left in what its tcMods didn't set
+	Com_Memset( &deforms, 0, sizeof( deforms ) );
+	shader.deforms = deforms;
 
 	Q_strncpyz( shader.name, name, sizeof( shader.name ) );
 	shader.lightmapIndex = lightmapIndex;
@@ -2614,9 +2630,11 @@ static shader_t *FinishShader( void ) {
 	//
 	// look for multitexture potential
 	//
+#if NUM_TEXTURE_BUNDLES > 1
 	if ( stage > 1 && CollapseMultitexture() ) {
 		stage--;
 	}
+#endif
 
 	if ( shader.lightmapIndex >= 0 && !hasLightmapStage ) {
 		if ( vertexLightmap ) {
@@ -2678,7 +2696,7 @@ static char *FindShaderInShaderText( const char *shadername ) {
 		checksum = generateHashValue( shadername );
 
 		// if it's known, skip straight to it's position
-		pShaderString = &shaderChecksumLookup[checksum];
+		pShaderString = shaderChecksumLookup ? &shaderChecksumLookup[checksum] : NULL;
 		while ( pShaderString && pShaderString->pStr ) {
 			p = pShaderString->pStr;
 
@@ -2728,7 +2746,7 @@ BAKED SHADERS
 */
 
 #define SHBIN_IDENT     ( ( 'N' << 24 ) + ( 'B' << 16 ) + ( 'H' << 8 ) + 'S' )
-#define SHBIN_VERSION   1
+#define SHBIN_VERSION   2       // (2: one texture bundle with USE_PVR)
 #define SHBIN_TEXT      0xffffffffu     // a shader that's parsed from its text: no bake of it
 
 // what the parse depends on besides its text: a bake's for these only
@@ -3226,22 +3244,25 @@ static void SetSideEffects( const shSideEffects_t *s ) {
 static shader_t savedShader;
 static shaderStage_t savedStages[MAX_SHADER_STAGES];
 static texModInfo_t savedTexMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS];
+static deformStage_t savedDeforms[MAX_SHADER_DEFORMS];
 
 static void SaveShader( void ) {
 	savedShader = shader;
 	memcpy( savedStages, stages, sizeof( stages ) );
 	memcpy( savedTexMods, texMods, sizeof( texMods ) );
+	memcpy( savedDeforms, deforms, sizeof( deforms ) );
 }
 
 static void RestoreShader( void ) {
 	shader = savedShader;
 	memcpy( stages, savedStages, sizeof( stages ) );
 	memcpy( texMods, savedTexMods, sizeof( texMods ) );
+	memcpy( deforms, savedDeforms, sizeof( deforms ) );
 }
 
 static qboolean SameAsSaved( void ) {
 	return !memcmp( &shader, &savedShader, sizeof( shader ) ) && !memcmp( stages, savedStages, sizeof( stages ) ) &&
-		   !memcmp( texMods, savedTexMods, sizeof( texMods ) );
+		   !memcmp( texMods, savedTexMods, sizeof( texMods ) ) && !memcmp( deforms, savedDeforms, sizeof( deforms ) );
 }
 
 static int shChecked, shCheckBad, shCheckText;
@@ -4068,8 +4089,10 @@ void    R_ShaderList_f( void ) {
 			ri.Printf( PRINT_ALL, "gen " );
 		} else if ( shader->optimalStageIteratorFunc == RB_StageIteratorSky ) {
 			ri.Printf( PRINT_ALL, "sky " );
+#if NUM_TEXTURE_BUNDLES > 1
 		} else if ( shader->optimalStageIteratorFunc == RB_StageIteratorLightmappedMultitexture ) {
 			ri.Printf( PRINT_ALL, "lmmt" );
+#endif
 		} else if ( shader->optimalStageIteratorFunc == RB_StageIteratorVertexLitTexture ) {
 			ri.Printf( PRINT_ALL, "vlt " );
 		} else {
@@ -4105,7 +4128,8 @@ static void BuildShaderChecksumLookup( void ) {
 	int chunkUsed = SHADER_STRING_POINTER_CHUNK;
 
 	// initialize the checksums
-	memset( shaderChecksumLookup, 0, sizeof( shaderChecksumLookup ) );
+	shaderChecksumLookup = ri.Hunk_Alloc( FILE_HASH_SIZE * sizeof( *shaderChecksumLookup ), h_low );
+	memset( shaderChecksumLookup, 0, FILE_HASH_SIZE * sizeof( *shaderChecksumLookup ) );
 
 	if ( !p ) {
 		return;
@@ -4174,7 +4198,7 @@ static void ScanAndLoadShaderFiles( void ) {
 	long sum = 0, summand;
 
 	s_shaderText = NULL;
-	memset( shaderChecksumLookup, 0, sizeof( shaderChecksumLookup ) );
+	shaderChecksumLookup = NULL;
 
 	// baked, they're made with no text (but r_bakeShaders bakes the text,
 	// and r_checkShaders checks the bake against it)

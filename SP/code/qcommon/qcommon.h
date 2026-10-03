@@ -375,7 +375,7 @@ issues.
 #define NUM_ID_PAKS	6
 #define NUM_SP_PAKS	4
 
-#define MAX_FILE_HANDLES    64
+#define MAX_FILE_HANDLES    32      // (was 64) a few are open at once in SP
 
 #ifdef DEDICATED
 #	define Q3CONFIG_CFG "wolfconfig_server.cfg"

@@ -1495,7 +1495,7 @@ extern soundScript_t *soundScripts;
 // be cleared when a tournement restart is done, allowing
 // all clients to begin playing instantly
 typedef struct {
-	gameState_t gameState;              // gamestate from server
+	const gameState_t *gameState;       // gamestate from server: the client's (one binary), not a copy
 	glconfig_t glconfig;                // rendering configuration
 	float screenXScale;                 // derived from glconfig
 	float screenYScale;
@@ -2396,7 +2396,7 @@ void        trap_GetGlconfig( glconfig_t *glconfig );
 
 // the gamestate should be grabbed at startup, and whenever a
 // configstring changes
-void        trap_GetGameState( gameState_t *gamestate );
+void        trap_GetGameState( const gameState_t **gamestate );
 
 // cgame will poll each frame to see if a newer snapshot has arrived
 // that it is interested in.  The time is returned seperately so that
@@ -2429,7 +2429,7 @@ void        testPrintInt( char *string, int i );
 void        testPrintFloat( char *string, float f );
 
 int         trap_MemoryRemaining( void );
-void        trap_R_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font );
+void        trap_R_RegisterFont( const char *fontName, int pointSize, fontInfo_t **font );
 qboolean    trap_Key_IsDown( int keynum );
 int         trap_Key_GetCatcher( void );
 void        trap_Key_SetCatcher( int catcher );

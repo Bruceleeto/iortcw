@@ -160,25 +160,6 @@ int AAS_IndexFromModel( char *modelname ) {
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
-void AAS_UpdateStringIndexes( int numconfigstrings, char *configstrings[] ) {
-	int i;
-	//set string pointers and copy the strings
-	for ( i = 0; i < numconfigstrings; i++ )
-	{
-		if ( configstrings[i] ) {
-			//if ((*aasworld).configstrings[i]) FreeMemory((*aasworld).configstrings[i]);
-			( *aasworld ).configstrings[i] = (char *) GetMemory( strlen( configstrings[i] ) + 1 );
-			strcpy( ( *aasworld ).configstrings[i], configstrings[i] );
-		} //end if
-	} //end for
-	( *aasworld ).indexessetup = qtrue;
-} //end of the function AAS_UpdateStringIndexes
-//===========================================================================
-//
-// Parameter:				-
-// Returns:					-
-// Changes Globals:		-
-//===========================================================================
 int AAS_Loaded( void ) {
 	return ( *aasworld ).loaded;
 } //end of the function AAS_Loaded

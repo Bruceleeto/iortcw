@@ -405,6 +405,7 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	// done.
 }
 
+#if NUM_TEXTURE_BUNDLES > 1
 /*
 ===================
 DrawMultitextured
@@ -476,6 +477,7 @@ static void DrawMultitextured( shaderCommands_t *input, int stage ) {
 
 	GL_SelectTexture( 0 );
 }
+#endif
 
 
 /*
@@ -1186,9 +1188,11 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 		//
 		// do multitexture
 		//
+#if NUM_TEXTURE_BUNDLES > 1
 		if ( pStage->bundle[1].image[0] != 0 ) {
 			DrawMultitextured( input, stage );
 		} else
+#endif
 		{
 			int fadeStart, fadeEnd;
 
@@ -1258,7 +1262,11 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			R_DrawElements( input->numIndexes, input->indexes );
 		}
 		// allow skipping out to show just lightmaps during development
-		if ( r_lightmap->integer && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) ) {
+		if ( r_lightmap->integer && ( pStage->bundle[0].isLightmap
+#if NUM_TEXTURE_BUNDLES > 1
+								  || pStage->bundle[1].isLightmap
+#endif
+								  ) ) {
 			break;
 		}
 	}
@@ -1494,6 +1502,7 @@ void RB_StageIteratorVertexLitTexture( void ) {
 #endif
 }
 
+#if NUM_TEXTURE_BUNDLES > 1
 //define	REPLACE_MODE
 
 void RB_StageIteratorLightmappedMultitexture( void ) {
@@ -1537,6 +1546,10 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	qglDisableClientState( GL_COLOR_ARRAY );
 	qglColor3f( 1, 1, 1 );
 	qglShadeModel( GL_FLAT );
+#elif defined( USE_PVR )
+	// (pvr_gl has no multitexture: never here)
+	qglDisableClientState( GL_COLOR_ARRAY );
+	qglColor4f( 1, 1, 1, 1 );
 #else
 	qglEnableClientState( GL_COLOR_ARRAY );
 	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.constantColor255 );
@@ -1622,6 +1635,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	}
 #endif
 }
+#endif
 
 /*
 ** RB_EndSurface

@@ -853,7 +853,6 @@ void SetWolfSpawnWeapons( gclient_t *client ) {
 
 	// All players start with a knife (not OR-ing so that it clears previous weapons)
 	client->ps.weapons[0] = 0;
-	client->ps.weapons[1] = 0;
 	COM_BitSet( client->ps.weapons, WP_KNIFE );
 
 	client->ps.ammo[BG_FindAmmoForWeapon( WP_KNIFE )] = 1;

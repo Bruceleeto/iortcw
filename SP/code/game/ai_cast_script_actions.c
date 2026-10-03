@@ -1429,7 +1429,7 @@ qboolean AICast_ScriptAction_TakeWeapon( cast_state_t *cs, char *params ) {
 
 	}
 
-	if ( !( g_entities[cs->entityNum].client->ps.weapons[0] ) && !( g_entities[cs->entityNum].client->ps.weapons[1] ) ) {
+	if ( !( g_entities[cs->entityNum].client->ps.weapons[0] ) ) {
 		if ( cs->bs ) {
 			cs->weaponNum = WP_NONE;
 		} else {

@@ -1816,19 +1816,22 @@ static void CG_Text_Paint_Limit( float *maxX, float x, float y, int font, float 
 		const char *s = text;
 		float max = *maxX;
 		float useScale;
-		fontInfo_t *fnt = &cgDC.Assets.textFont;
+		fontInfo_t *fnt = cgDC.Assets.textFont;
 		if ( font == UI_FONT_DEFAULT ) {
 			if ( scale <= cg_smallFont.value ) {
-				fnt = &cgDC.Assets.smallFont;
+				fnt = cgDC.Assets.smallFont;
 			} else if ( scale > cg_bigFont.value ) {
-				fnt = &cgDC.Assets.bigFont;
+				fnt = cgDC.Assets.bigFont;
 			}
 		} else if ( font == UI_FONT_BIG ) {
-			fnt = &cgDC.Assets.bigFont;
+			fnt = cgDC.Assets.bigFont;
 		} else if ( font == UI_FONT_SMALL ) {
-			fnt = &cgDC.Assets.smallFont;
+			fnt = cgDC.Assets.smallFont;
 		} else if ( font == UI_FONT_HANDWRITING ) {
-			fnt = &cgDC.Assets.handwritingFont;
+			fnt = cgDC.Assets.handwritingFont;
+		}
+		if ( !fnt ) {	// (none registered yet)
+			return;
 		}
 		useScale = scale * fnt->glyphScale;
 		trap_R_SetColor( color );

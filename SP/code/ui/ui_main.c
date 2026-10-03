@@ -231,21 +231,24 @@ int Text_Width( const char *text, int font, float scale, int limit ) {
 	float useScale;
 	const char *s = text;
 
-	fontInfo_t *fnt = &uiInfo.uiDC.Assets.textFont;
+	fontInfo_t *fnt = uiInfo.uiDC.Assets.textFont;
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= ui_smallFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.smallFont;
+			fnt = uiInfo.uiDC.Assets.smallFont;
 		} else if ( scale > ui_bigFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.bigFont;
+			fnt = uiInfo.uiDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &uiInfo.uiDC.Assets.bigFont;
+		fnt = uiInfo.uiDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &uiInfo.uiDC.Assets.smallFont;
+		fnt = uiInfo.uiDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &uiInfo.uiDC.Assets.handwritingFont;
+		fnt = uiInfo.uiDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return 0;
+	}
 	useScale = scale * fnt->glyphScale;
 	out = 0;
 	if ( text ) {
@@ -276,21 +279,24 @@ int Text_Height( const char *text, int font, float scale, int limit ) {
 	float useScale;
 	const char *s = text;
 
-	fontInfo_t *fnt = &uiInfo.uiDC.Assets.textFont;
+	fontInfo_t *fnt = uiInfo.uiDC.Assets.textFont;
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= ui_smallFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.smallFont;
+			fnt = uiInfo.uiDC.Assets.smallFont;
 		} else if ( scale > ui_bigFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.bigFont;
+			fnt = uiInfo.uiDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &uiInfo.uiDC.Assets.bigFont;
+		fnt = uiInfo.uiDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &uiInfo.uiDC.Assets.smallFont;
+		fnt = uiInfo.uiDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &uiInfo.uiDC.Assets.handwritingFont;
+		fnt = uiInfo.uiDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return 0;
+	}
 	useScale = scale * fnt->glyphScale;
 	max = 0;
 	if ( text ) {
@@ -330,21 +336,24 @@ void Text_Paint( float x, float y, int font, float scale, vec4_t color, const ch
 	glyphInfo_t *glyph;
 	float useScale;
 
-	fontInfo_t *fnt = &uiInfo.uiDC.Assets.textFont;
+	fontInfo_t *fnt = uiInfo.uiDC.Assets.textFont;
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= ui_smallFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.smallFont;
+			fnt = uiInfo.uiDC.Assets.smallFont;
 		} else if ( scale > ui_bigFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.bigFont;
+			fnt = uiInfo.uiDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &uiInfo.uiDC.Assets.bigFont;
+		fnt = uiInfo.uiDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &uiInfo.uiDC.Assets.smallFont;
+		fnt = uiInfo.uiDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &uiInfo.uiDC.Assets.handwritingFont;
+		fnt = uiInfo.uiDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return;
+	}
 	useScale = scale * fnt->glyphScale;
 	if ( text ) {
 		const char *s = text;
@@ -411,21 +420,24 @@ void Text_PaintWithCursor( float x, float y, int font, float scale, vec4_t color
 	float yadj;
 	float useScale;
 
-	fontInfo_t *fnt = &uiInfo.uiDC.Assets.textFont;
+	fontInfo_t *fnt = uiInfo.uiDC.Assets.textFont;
 	if ( font == UI_FONT_DEFAULT ) {
 		if ( scale <= ui_smallFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.smallFont;
+			fnt = uiInfo.uiDC.Assets.smallFont;
 		} else if ( scale > ui_bigFont.value ) {
-			fnt = &uiInfo.uiDC.Assets.bigFont;
+			fnt = uiInfo.uiDC.Assets.bigFont;
 		}
 	} else if ( font == UI_FONT_BIG ) {
-		fnt = &uiInfo.uiDC.Assets.bigFont;
+		fnt = uiInfo.uiDC.Assets.bigFont;
 	} else if ( font == UI_FONT_SMALL ) {
-		fnt = &uiInfo.uiDC.Assets.smallFont;
+		fnt = uiInfo.uiDC.Assets.smallFont;
 	} else if ( font == UI_FONT_HANDWRITING ) {
-		fnt = &uiInfo.uiDC.Assets.handwritingFont;
+		fnt = uiInfo.uiDC.Assets.handwritingFont;
 	}
 
+	if ( !fnt ) {	// (none registered yet)
+		return;
+	}
 	useScale = scale * fnt->glyphScale;
 	if ( text ) {
 		const char *s = text;
@@ -529,21 +541,24 @@ static void Text_Paint_Limit(float *maxX, float x, float y, int font, float scal
 		float max = *maxX;
 		float useScale;
 
-		fontInfo_t *fnt = &uiInfo.uiDC.Assets.textFont;
+		fontInfo_t *fnt = uiInfo.uiDC.Assets.textFont;
 		if(font == UI_FONT_DEFAULT) {
 			if (scale <= ui_smallFont.value) {
-				fnt = &uiInfo.uiDC.Assets.smallFont;
+				fnt = uiInfo.uiDC.Assets.smallFont;
 			} else if (scale > ui_bigFont.value) {
-				fnt = &uiInfo.uiDC.Assets.bigFont;
+				fnt = uiInfo.uiDC.Assets.bigFont;
 			}
 		} else if(font == UI_FONT_BIG) {
-			fnt = &uiInfo.uiDC.Assets.bigFont;
+			fnt = uiInfo.uiDC.Assets.bigFont;
 		} else if(font == UI_FONT_SMALL) {
-			fnt = &uiInfo.uiDC.Assets.smallFont;
+			fnt = uiInfo.uiDC.Assets.smallFont;
 		} else if(font == UI_FONT_HANDWRITING) {
-			fnt = &uiInfo.uiDC.Assets.handwritingFont;
+			fnt = uiInfo.uiDC.Assets.handwritingFont;
 		}
 
+		if ( !fnt ) {	// (none registered yet)
+			return;
+		}
 		useScale = scale * fnt->glyphScale;
 		trap_R_SetColor( color );
 		len = strlen(text);
@@ -689,10 +704,12 @@ void _UI_Shutdown( void ) {
 
 char *defaultMenu = NULL;
 
+// the file, in a buffer kept until the next call (gameinfo.txt's the only
+// one read)
 char *GetMenuBuffer( const char *filename ) {
 	int len;
 	fileHandle_t f;
-	static char buf[MAX_MENUFILE];
+	static char *buf;
 
 	len = trap_FS_FOpenFile( filename, &f, FS_READ );
 	if ( !f ) {
@@ -705,6 +722,12 @@ char *GetMenuBuffer( const char *filename ) {
 		return defaultMenu;
 	}
 
+	free( buf );
+	buf = malloc( len + 1 );
+	if ( !buf ) {
+		trap_FS_FCloseFile( f );
+		return defaultMenu;
+	}
 	trap_FS_Read( buf, len, f );
 	buf[len] = 0;
 	trap_FS_FCloseFile( f );
@@ -881,7 +904,7 @@ void Font_Report( void ) {
 	Com_Printf( "Font Info\n" );
 	Com_Printf( "=========\n" );
 	for ( i = 32; i < 96; i++ ) {
-		Com_Printf( "Glyph handle %i: %i\n", i, uiInfo.uiDC.Assets.textFont.glyphs[i].glyph );
+		Com_Printf( "Glyph handle %i: %i\n", i, uiInfo.uiDC.Assets.textFont->glyphs[i].glyph );
 	}
 }
 
@@ -971,6 +994,13 @@ qboolean Load_Menu( int handle ) {
 			return qtrue;
 		}
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		// the clipboards and books are lore only: not loaded (their
+		// popups do nothing, UI_SetActiveMenu)
+		if ( !Q_stricmp( token.string, "ui/clipboard.menu" ) || !Q_stricmpn( token.string, "ui/book", 7 ) ) {
+			continue;
+		}
+#endif
 		UI_ParseMenu( token.string );
 		LOAD_STEP( va( "ui %s", token.string ) );
 	}
@@ -1744,12 +1774,19 @@ static qboolean updateModel = qtrue;
 static qboolean q3Model = qfalse;
 
 static void UI_DrawPlayerModel( rectDef_t *rect ) {
-	static playerInfo_t info;
+	static playerInfo_t *info;     // allocated the first time it's drawn (MP's model previews)
 	char model[MAX_QPATH];
 	char team[256];
 	char head[256];
 	vec3_t viewangles;
 	static vec3_t moveangles = { 0, 0, 0 };
+
+	if ( !info ) {
+		if ( !( info = malloc( sizeof( *info ) ) ) ) {
+			return;
+		}
+		updateModel = qtrue;
+	}
 
 	if ( trap_Cvar_VariableValue( "ui_Q3Model" ) ) {
 		//	Q_strncpyz(model, UI_Cvar_VariableString("model"), sizeof(model));
@@ -1799,26 +1836,26 @@ static void UI_DrawPlayerModel( rectDef_t *rect ) {
 	}
 
 	if ( updateModel ) {      // NERVE - SMF - TEMPORARY
-		memset( &info, 0, sizeof( playerInfo_t ) );
+		memset( info, 0, sizeof( playerInfo_t ) );
 		viewangles[YAW]   = 180 - 10;
 		viewangles[PITCH] = 0;
 		viewangles[ROLL]  = 0;
 		//      VectorClear( moveangles );
 #ifdef MISSIONPACK
-		UI_PlayerInfo_SetModel( &info, model, head, team );
+		UI_PlayerInfo_SetModel( info, model, head, team );
 #else
-		UI_PlayerInfo_SetModel( &info, model );
+		UI_PlayerInfo_SetModel( info, model );
 #endif  // MISSIONPACK
-		UI_PlayerInfo_SetInfo( &info, LEGS_IDLE, TORSO_STAND, viewangles, moveangles, -1, qfalse );
-		//		UI_RegisterClientModelname( &info, model, head, team);
+		UI_PlayerInfo_SetInfo( info, LEGS_IDLE, TORSO_STAND, viewangles, moveangles, -1, qfalse );
+		//		UI_RegisterClientModelname( info, model, head, team);
 		updateModel = qfalse;
 	} else {
-		VectorCopy( moveangles, info.moveAngles );
+		VectorCopy( moveangles, info->moveAngles );
 	}
 
-	//	info.moveAngles[YAW] += 1;
-	//   UI_PlayerInfo_SetInfo( &info, LEGS_IDLE, TORSO_STAND, viewangles, moveangles, WP_MP40, qfalse );
-	UI_DrawPlayer( rect->x, rect->y, rect->w, rect->h, &info, uiInfo.uiDC.realTime / 2 );
+	//	info->moveAngles[YAW] += 1;
+	//   UI_PlayerInfo_SetInfo( info, LEGS_IDLE, TORSO_STAND, viewangles, moveangles, WP_MP40, qfalse );
+	UI_DrawPlayer( rect->x, rect->y, rect->w, rect->h, info, uiInfo.uiDC.realTime / 2 );
 
 }
 
@@ -1944,37 +1981,44 @@ static const char *UI_OpponentLeaderModel( void ) {
 
 static qboolean updateOpponentModel = qtrue;
 static void UI_DrawOpponent( rectDef_t *rect ) {
-	static playerInfo_t info2;
+	static playerInfo_t *info2;     // allocated the first time it's drawn (MP's model previews)
 	char model[MAX_QPATH];
 	char headmodel[MAX_QPATH];
 	vec3_t viewangles;
 	vec3_t moveangles;
+
+	if ( !info2 ) {
+		if ( !( info2 = malloc( sizeof( *info2 ) ) ) ) {
+			return;
+		}
+		updateOpponentModel = qtrue;
+	}
 
 	if ( updateOpponentModel ) {
 
 		Q_strncpyz(model, UI_Cvar_VariableString("ui_opponentModel"), sizeof(model));
 		Q_strncpyz(headmodel, UI_Cvar_VariableString("ui_opponentModel"), sizeof(headmodel));
 
-		memset( &info2, 0, sizeof( playerInfo_t ) );
+		memset( info2, 0, sizeof( playerInfo_t ) );
 		viewangles[YAW]   = 180 - 10;
 		viewangles[PITCH] = 0;
 		viewangles[ROLL]  = 0;
 		VectorClear( moveangles );
 #ifdef MISSIONPACK
-		UI_PlayerInfo_SetModel( &info2, model, headmodel, "" );
+		UI_PlayerInfo_SetModel( info2, model, headmodel, "" );
 #else
-		UI_PlayerInfo_SetModel( &info2, model );
+		UI_PlayerInfo_SetModel( info2, model );
 #endif  // #ifdef MISSIONPACK
-		UI_PlayerInfo_SetInfo( &info2, LEGS_IDLE, TORSO_STAND, viewangles, vec3_origin, WP_MP40, qfalse );
+		UI_PlayerInfo_SetInfo( info2, LEGS_IDLE, TORSO_STAND, viewangles, vec3_origin, WP_MP40, qfalse );
 #ifdef MISSIONPACK
-		UI_RegisterClientModelname( &info2, model, headmodel, team );
+		UI_RegisterClientModelname( info2, model, headmodel, team );
 #else
-		UI_RegisterClientModelname( &info2, model );
+		UI_RegisterClientModelname( info2, model );
 #endif  // #ifdef MISSIONPACK
 		updateOpponentModel = qfalse;
 	}
 
-	UI_DrawPlayer( rect->x, rect->y, rect->w, rect->h, &info2, uiInfo.uiDC.realTime / 2 );
+	UI_DrawPlayer( rect->x, rect->y, rect->w, rect->h, info2, uiInfo.uiDC.realTime / 2 );
 
 }
 
@@ -5900,6 +5944,14 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 			Menus_ActivateByName( "notebook" );
 			return;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		// not loaded (Load_Menu)
+		case UIMENU_BOOK1:
+		case UIMENU_BOOK2:
+		case UIMENU_BOOK3:
+		case UIMENU_CLIPBOARD:
+			return;
+#else
 		case UIMENU_BOOK1:
 		case UIMENU_BOOK2:
 		case UIMENU_BOOK3:
@@ -5915,6 +5967,7 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 			Menus_CloseAll();
 			Menus_ActivateByName( "clipboard" );
 			return;
+#endif
 
 //		case UIMENU_HELP:
 //			trap_Cvar_Set( "cl_paused", "1" );

@@ -365,7 +365,6 @@ void AICast_UpdateVisibility( gentity_t *srcent, gentity_t *destent, qboolean sh
 	vis->lastcheck_timestamp = level.time;
 	vis->visible_timestamp = level.time;
 	VectorCopy( destent->client->ps.origin, vis->visible_pos );
-	VectorCopy( destent->client->ps.velocity, vis->visible_vel );
 	vis->lastcheck_health = destent->health - 1;
 
 	// we may need to process this visibility at some point, even after they become not visible again

@@ -54,10 +54,21 @@ static int parseClient;
 
 // these are used globally during script parsing
 static int numDefines[NUM_ANIM_CONDITIONS];
-static char defineStrings[10000];       // stores the actual strings
 static int defineStringsOffset;
-static animStringItem_t defineStr[NUM_ANIM_CONDITIONS][MAX_ANIM_DEFINES];
-static int defineBits[NUM_ANIM_CONDITIONS][MAX_ANIM_DEFINES][2];
+
+// the defines, only while a script's parsed (BG_AnimParseAnimScript
+// allocates them, and lets them go at its end)
+typedef struct {
+	char strings[10000];        // stores the actual strings
+	animStringItem_t str[NUM_ANIM_CONDITIONS][MAX_ANIM_DEFINES];
+	int bits[NUM_ANIM_CONDITIONS][MAX_ANIM_DEFINES][2];
+} animDefines_t;
+
+static animDefines_t *animDefines;
+
+#define defineStrings   ( animDefines->strings )
+#define defineStr       ( animDefines->str )
+#define defineBits      ( animDefines->bits )
 
 static scriptAnimMoveTypes_t parseMovetype;
 static int parseEvent;
@@ -1158,10 +1169,14 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 	// This is done in each of the calling routines, and assumes all sorts of badness doing it this way anyway
 	//scriptData->clientModels[client] = 1 + (int)(modelInfo - *scriptData->modelInfo);
 
-	// init the global defines
+	// init the global defines (still there if the last parse failed)
 	globalFilename = filename;
-	memset( defineStr, 0, sizeof( defineStr ) );
-	memset( defineStrings, 0, sizeof( defineStrings ) );
+	free( animDefines );
+	animDefines = malloc( sizeof( *animDefines ) );
+	if ( !animDefines ) {
+		BG_AnimParseError( "BG_AnimParseAnimScript: out of memory" );
+	}
+	memset( animDefines, 0, sizeof( *animDefines ) );
 	memset( numDefines, 0, sizeof( numDefines ) );
 	defineStringsOffset = 0;
 
@@ -1477,6 +1492,8 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 	}
 
 	globalFilename = NULL;
+	free( animDefines );
+	animDefines = NULL;
 
 }
 

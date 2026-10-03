@@ -179,6 +179,13 @@ void SV_UserinfoChanged( client_t *cl ) {
 	// name for C code
 	Q_strncpyz( cl->name, Info_ValueForKey( cl->userinfo, "name" ), sizeof( cl->name ) );
 
+	// room for the handicap and ip set below (Info_SetValueForKey only
+	// keeps it in MAX_INFO_STRING, more than cl->userinfo)
+	if ( strlen( cl->userinfo ) + 32 >= sizeof( cl->userinfo ) ) {
+		SV_DropClient( cl, "userinfo string length exceeded" );
+		return;
+	}
+
 	val = Info_ValueForKey( cl->userinfo, "handicap" );
 	if ( strlen( val ) ) {
 		i = atoi( val );
@@ -188,11 +195,7 @@ void SV_UserinfoChanged( client_t *cl ) {
 	}
 
 	// the game expects an ip
-	if ( strlen( cl->userinfo ) + 16 >= MAX_INFO_STRING ) {
-		SV_DropClient( cl, "userinfo string length exceeded" );
-	} else {
-		Info_SetValueForKey( cl->userinfo, "ip", cl->bot ? "bot" : "localhost" );
-	}
+	Info_SetValueForKey( cl->userinfo, "ip", cl->bot ? "bot" : "localhost" );
 }
 
 

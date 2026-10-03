@@ -1337,7 +1337,6 @@ R_Init
 */
 void R_Init( void ) {
 	int err;
-	int i;
 	byte *ptr;
 
 	ri.Printf( PRINT_ALL, "----- R_Init -----\n" );
@@ -1357,7 +1356,9 @@ void R_Init( void ) {
 	if ( (intptr_t)tess.xyz & 15 ) {
 		ri.Printf( PRINT_WARNING, "tess.xyz not 16 byte aligned\n" );
 	}
+#ifndef USE_PVR
 	memset( tess.constantColor255, 255, sizeof( tess.constantColor255 ) );
+#endif
 
 	R_InitFogTable();
 

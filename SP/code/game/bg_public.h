@@ -596,6 +596,9 @@ typedef enum {
 
 } weapon_t;
 
+// the weapons fit the playerState's MAX_WEAPONS (q_shared.h)
+typedef char weaponsFitMaxWeapons_t[ WP_NUM_WEAPONS <= MAX_WEAPONS ? 1 : -1 ];
+
 
 typedef struct ammotable_s {
 	int maxammo;            //

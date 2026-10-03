@@ -1186,7 +1186,7 @@ previous strings
 */
 char    * QDECL va( char *format, ... ) {
 	va_list argptr;
-	#define MAX_VA_STRING   16384   // (was 32000, twice, in every module)
+	#define MAX_VA_STRING   4096    // (was 32000, twice, in every module; a copy in each)
 	static char string[MAX_VA_STRING];      // in case va is called by nested functions
 	static int index = 0;
 	char    *buf;

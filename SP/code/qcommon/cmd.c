@@ -31,7 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "../qcommon/q_shared.h"
 #include "qcommon.h"
 
-#define MAX_CMD_BUFFER  32*1024     // the biggest .cfg exec'd is ~9K
+#define MAX_CMD_BUFFER  16*1024     // the biggest .cfg exec'd is ~9K
 #define MAX_CMD_LINE    1024
 
 typedef struct {

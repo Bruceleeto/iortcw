@@ -618,10 +618,10 @@ typedef struct {
 
 // new ui stuff
 #define UI_NUMFX 7
-#define MAX_HEADS 64
-#define MAX_ALIASES 64
+#define MAX_HEADS 1          // (was 64) multiplayer's: SP has none
+#define MAX_ALIASES 1        // (was 64) multiplayer's
 #define MAX_HEADNAME  32
-#define MAX_TEAMS 64
+#define MAX_TEAMS 1          // (was 64) multiplayer's
 #define MAX_GAMETYPES 16
 #define MAX_MAPS 64      // the game has 32
 #define MAX_SPMAPS 16
@@ -641,8 +641,8 @@ typedef struct {
 #define GAMES_TOURNEY       3
 #define GAMES_CTF           4
 #define MAPS_PER_TIER 3
-#define MAX_TIERS 16
-#define MAX_MODS 64
+#define MAX_TIERS 1          // (was 16) multiplayer's
+#define MAX_MODS 4           // (was 64) the mods menu's
 #define MAX_MOVIES 256
 #define MAX_PLAYERMODELS 16     // multiplayer's
 #define MAX_SAVEGAMES 64
@@ -943,7 +943,7 @@ int             trap_MemoryRemaining( void );
 
 void            trap_GetCDKey( char *buf, int buflen );
 void            trap_SetCDKey( char *buf );
-void            trap_R_RegisterFont( const char *pFontname, int pointSize, fontInfo_t *font );
+void            trap_R_RegisterFont( const char *pFontname, int pointSize, fontInfo_t **font );
 void            trap_S_StopBackgroundTrack( void );
 void            trap_S_StartBackgroundTrack( const char *intro, const char *loop, int fadeupTime );
 int             trap_CIN_PlayCinematic( const char *arg0, int xpos, int ypos, int width, int height, int bits );

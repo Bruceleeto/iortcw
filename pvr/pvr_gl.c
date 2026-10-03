@@ -1287,7 +1287,7 @@ static void GrowCache( int count ) {
 	if ( count <= vcacheSize ) {
 		return;
 	}
-	vcacheSize = count + 1024;
+	vcacheSize = ( count + 255 ) & ~255;
 	vcache = realloc( vcache, vcacheSize * sizeof( *vcache ) );
 	vstamp = realloc( vstamp, vcacheSize * sizeof( *vstamp ) );
 	memset( vstamp, 0, vcacheSize * sizeof( *vstamp ) );

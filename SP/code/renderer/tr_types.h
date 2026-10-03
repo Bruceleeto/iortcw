@@ -36,7 +36,11 @@ If you have questions concerning this license or the applicable additional terms
 #define	REFENTITYNUM_MASK	((1<<REFENTITYNUM_BITS) - 1)
 // the last N-bit number (2^REFENTITYNUM_BITS - 1) is reserved for the special world refentity,
 //  and this is reflected by the value of MAX_REFENTITIES (which therefore is not a power-of-2)
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+#define	MAX_REFENTITIES		512		// (was 1023: a frame's drawn ones, past it they're dropped)
+#else
 #define	MAX_REFENTITIES		((1<<REFENTITYNUM_BITS) - 1)
+#endif
 #define	REFENTITYNUM_WORLD	((1<<REFENTITYNUM_BITS) - 1)
 
 // renderfx flags

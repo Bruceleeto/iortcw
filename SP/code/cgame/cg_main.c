@@ -180,7 +180,7 @@ void CG_FreeCentExtras( void ) {
 	cg.predictedPlayerEntity.extra = NULL;
 }
 
-weaponInfo_t cg_weapons[WP_NUM_WEAPONS];  // the weapons there are, not MAX_WEAPONS (64)
+weaponInfo_t cg_weapons[WP_NUM_WEAPONS];  // the weapons there are
 itemInfo_t cg_items[MAX_ITEMS];
 
 
@@ -1644,7 +1644,7 @@ const char *CG_ConfigString( int index ) {
 	if ( index < 0 || index >= MAX_CONFIGSTRINGS ) {
 		CG_Error( "CG_ConfigString: bad index: %i", index );
 	}
-	return cgs.gameState.stringData + cgs.gameState.stringOffsets[ index ];
+	return cgs.gameState->stringData + cgs.gameState->stringOffsets[ index ];
 }
 
 //==================================================================

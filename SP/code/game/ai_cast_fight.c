@@ -1186,14 +1186,14 @@ void AICast_ChooseWeapon( cast_state_t *cs, qboolean battleFunc ) {
 	}
 
 	if ( !gotOne && ( cs->weaponNum < WP_MONSTER_ATTACK1 || cs->weaponNum > WP_MONSTER_ATTACK3 ) ) {
-		if ( g_cheats.integer && ( !cs->bs->cur_ps.weapons[0] && !cs->bs->cur_ps.weapons[1] ) ) {
+		if ( g_cheats.integer && !cs->bs->cur_ps.weapons[0] ) {
 // (SA) the print statement is a bit much.  lots of actors have no ammo...
 //			G_Printf( "AI: %s has no ammo\n", g_entities[cs->entityNum].aiName);
 		}
 		// select no weapon
 		cs->weaponNum = WP_NONE;
 		// if we have no weapons at all, we dont need to switch
-		if ( !cs->bs->cur_ps.weapons[0] && !cs->bs->cur_ps.weapons[1] ) {
+		if ( !cs->bs->cur_ps.weapons[0] ) {
 			g_entities[cs->entityNum].client->ps.weapon = WP_NONE;
 		}
 	}

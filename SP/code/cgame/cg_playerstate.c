@@ -50,7 +50,7 @@ void CG_CheckAmmo( void ) {
 	// see about how many seconds of ammo we have remaining
 	memcpy( weapons, cg.snap->ps.weapons, sizeof( weapons ) );
 
-	if ( !weapons[0] && !weapons[1] ) { // (SA) we start out with no weapons, so don't make a click on startup
+	if ( !weapons[0] ) { // (SA) we start out with no weapons, so don't make a click on startup
 		return;
 	}
 

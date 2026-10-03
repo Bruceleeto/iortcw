@@ -57,6 +57,11 @@ QGL_3_0_PROCS;
 #define GL_RGB5					0x8050
 #define GL_INDEX_TYPE		GL_UNSIGNED_SHORT
 typedef unsigned short glIndex_t;
+#elif defined( USE_PVR )
+// a batch is at most SHADER_MAX_VERTEXES: 16 bits is plenty (pvr_gl takes
+// either)
+#define GL_INDEX_TYPE       GL_UNSIGNED_SHORT
+typedef unsigned short glIndex_t;
 #else
 #define GL_INDEX_TYPE       GL_UNSIGNED_INT
 typedef unsigned int glIndex_t;
@@ -326,7 +331,11 @@ typedef struct {
 	qboolean isVideoMap;
 } textureBundle_t;
 
+#ifdef USE_PVR
+#define NUM_TEXTURE_BUNDLES 1   // (was 2: the second's for multitexture, which pvr_gl hasn't)
+#else
 #define NUM_TEXTURE_BUNDLES 2
+#endif
 
 typedef struct {
 	qboolean active;
@@ -431,7 +440,7 @@ typedef struct shader_s {
 	qboolean noFog;
 
 	int numDeforms;
-	deformStage_t deforms[MAX_SHADER_DEFORMS];
+	deformStage_t *deforms;             // numDeforms of them, or NULL (few shaders have any)
 
 	int numUnfoggedPasses;
 	shaderStage_t   *stages[MAX_SHADER_STAGES];
@@ -928,7 +937,7 @@ typedef struct model_s {
 } model_t;
 
 
-#define MAX_MOD_KNOWN   2048
+#define MAX_MOD_KNOWN   1024    // (was 2048)
 
 void        R_ModelInit( void );
 mdsFrame_t  *R_MDSFrame( mdsHeader_t *header, int frame );
@@ -943,7 +952,7 @@ void        R_Modellist_f( void );
 extern refimport_t ri;
 
 #define MAX_DRAWIMAGES          2048
-#define MAX_SKINS               1024
+#define MAX_SKINS               256     // (was 1024)
 
 
 #define MAX_DRAWSURFS           0x2000      // a power of two; the world is a few big surfaces (.wld)
@@ -1554,17 +1563,18 @@ typedef struct shaderCommands_s
 	vec4_t		normal[SHADER_MAX_VERTEXES] QALIGN(16);
 	vec2_t		texCoords[SHADER_MAX_VERTEXES][2] QALIGN(16);
 	color4ub_t	vertexColors[SHADER_MAX_VERTEXES] QALIGN(16);
-	int			vertexDlightBits[SHADER_MAX_VERTEXES] QALIGN(16);
 
 	stageVars_t	svars QALIGN(16);
 
+#ifndef USE_PVR	// (multitexture's only: pvr_gl has none)
 	color4ub_t	constantColor255[SHADER_MAX_VERTEXES] QALIGN(16);
+#endif
 
 	shader_t    *shader;
 	double shaderTime;
 	int fogNum;
 
-	int dlightBits;         // or together of all vertexDlightBits
+	int dlightBits;         // or together of all the surfaces' dlightBits
 
 	int numIndexes;
 	int numVertexes;
@@ -1980,7 +1990,7 @@ void RB_CalcDiffuseColor_altivec( unsigned char *colors );
 // font stuff
 void R_InitFreeType( void );
 void R_DoneFreeType( void );
-void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font );
+void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t **font );
 
 #ifdef USE_BLOOM
 //Bloom Stuff

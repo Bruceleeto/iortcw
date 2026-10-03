@@ -233,7 +233,6 @@ typedef struct
 	int visible_timestamp;          // time we last recorded a sighting
 	vec3_t visible_pos;             // position we last knew of them being at (could be hearing, etc)
 	vec3_t real_visible_pos;        // position we last physically saw them
-	vec3_t visible_vel;             // velocity during last sighting
 	int notvisible_timestamp;       // last time we didn't see the entity (used for reaction delay)
 	vec3_t chase_marker[MAX_CHASE_MARKERS];
 	int chase_marker_count;

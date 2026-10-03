@@ -518,8 +518,9 @@ the menu system first.
 */
 static void SV_SetSnapshotEntityCapacity( void ) {
 	// only the player's snapshots are built, and the client reads each
-	// one right away
-	svs.numSnapshotEntities = PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
+	// one right away: room for one (an older one that's been written over
+	// is dropped, SV_LocalSnapshot)
+	svs.numSnapshotEntities = MAX_SNAPSHOT_ENTITIES;
 }
 
 static void SV_Startup( void ) {

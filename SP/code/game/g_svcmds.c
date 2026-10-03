@@ -72,7 +72,7 @@ typedef struct ipFilter_s
 	unsigned compare;
 } ipFilter_t;
 
-#define MAX_IPFILTERS   1024
+#define MAX_IPFILTERS   1       // (was 1024) multiplayer's IP bans
 
 static ipFilter_t ipFilters[MAX_IPFILTERS];
 static int numIPFilters;

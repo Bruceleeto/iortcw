@@ -294,9 +294,6 @@ static void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 		*(int *)color = *(int *)dv->color;
 	}
 
-	for ( i = 0 ; i < srf->numVerts ; i++ ) {
-		tess.vertexDlightBits[ tess.numVertexes + i] = dlightBits;
-	}
 
 	tess.numVertexes += srf->numVerts;
 }
@@ -1285,7 +1282,6 @@ static void RB_SurfaceWorld( srfWorld_t *srf ) {
 		tess.texCoords[j][1][0] = 0;    // lit by vertex: no lightmap
 		tess.texCoords[j][1][1] = 0;
 		*(unsigned int *)tess.vertexColors[j] = *(const unsigned int *)v->color;
-		tess.vertexDlightBits[j] = dlightBits;
 	}
 
 	tess.numVertexes += srf->numVerts;
@@ -1338,7 +1334,6 @@ void RB_SurfaceFace( srfSurfaceFace_t *surf ) {
 		tess.texCoords[ndx][1][0] = v[5];
 		tess.texCoords[ndx][1][1] = v[6];
 		*( unsigned int * ) &tess.vertexColors[ndx] = *( unsigned int * ) &v[7];
-		tess.vertexDlightBits[ndx] = dlightBits;
 	}
 
 
@@ -1398,7 +1393,6 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 	int lodWidth, lodHeight;
 	int numVertexes;
 	int dlightBits;
-	int     *vDlightBits;
 	qboolean needsNormal;
 
 	dlightBits = cv->dlightBits;
@@ -1465,7 +1459,6 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 		normal = tess.normal[numVertexes];
 		texCoords = tess.texCoords[numVertexes][0];
 		color = ( unsigned char * ) &tess.vertexColors[numVertexes];
-		vDlightBits = &tess.vertexDlightBits[numVertexes];
 		needsNormal = tess.shader->needsNormal;
 
 		for ( i = 0 ; i < rows ; i++ ) {
@@ -1486,7 +1479,6 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 					normal[2] = dv->normal[2];
 				}
 				*( unsigned int * ) color = *( unsigned int * ) dv->color;
-				*vDlightBits++ = dlightBits;
 				xyz += 4;
 				normal += 4;
 				texCoords += 4;

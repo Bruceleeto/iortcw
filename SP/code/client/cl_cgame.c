@@ -49,8 +49,8 @@ extern qboolean SV_GetModelInfo( int clientNum, char *modelName, animModelInfo_t
 CL_GetGameState
 ====================
 */
-void CL_GetGameState( gameState_t *gs ) {
-	*gs = cl.gameState;
+void CL_GetGameState( const gameState_t **gs ) {
+	*gs = &cl.gameState;
 }
 
 /*

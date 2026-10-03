@@ -201,7 +201,9 @@ typedef struct {
 	char chatname[MAX_QPATH];
 } bot_ichatdata_t;
 
-bot_ichatdata_t ichatdata[MAX_CLIENTS];
+// (was MAX_CLIENTS: the AI has no chat, BotAISetupClient's NO_DM_BOTS)
+#define MAX_ICHATDATA   1
+bot_ichatdata_t ichatdata[MAX_ICHATDATA];
 
 bot_chatstate_t *botchatstates[MAX_CLIENTS + 1];
 //console message heap
@@ -2133,7 +2135,7 @@ int BotLoadChatFile( int chatstate, char *chatfile, char *chatname ) {
 
 	if ( !LibVarGetValue( "bot_reloadcharacters" ) ) {
 		avail = -1;
-		for ( n = 0; n < MAX_CLIENTS; n++ ) {
+		for ( n = 0; n < MAX_ICHATDATA; n++ ) {
 			if ( !ichatdata[n].inuse ) {
 				if ( avail == -1 ) {
 					avail = n;
@@ -2872,7 +2874,7 @@ void BotShutdownChatAI( void ) {
 		} //end if
 	} //end for
 	  //free all cached chats
-	for ( i = 0; i < MAX_CLIENTS; i++ )
+	for ( i = 0; i < MAX_ICHATDATA; i++ )
 	{
 		if ( ichatdata[i].inuse ) {
 			FreeMemory( ichatdata[i].chat );

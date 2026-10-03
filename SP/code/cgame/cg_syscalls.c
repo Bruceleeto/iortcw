@@ -290,7 +290,7 @@ qhandle_t trap_R_RegisterShaderNoMip( const char *name ) {
 	return syscall( CG_R_REGISTERSHADERNOMIP, name );
 }
 
-void trap_R_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
+void trap_R_RegisterFont( const char *fontName, int pointSize, fontInfo_t **font ) {
 	syscall( CG_R_REGISTERFONT, fontName, pointSize, font );
 }
 
@@ -366,7 +366,7 @@ void        trap_GetGlconfig( glconfig_t *glconfig ) {
 	syscall( CG_GETGLCONFIG, glconfig );
 }
 
-void        trap_GetGameState( gameState_t *gamestate ) {
+void        trap_GetGameState( const gameState_t **gamestate ) {
 	syscall( CG_GETGAMESTATE, gamestate );
 }
 

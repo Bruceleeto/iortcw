@@ -311,10 +311,11 @@ typedef struct {
 	const char  *fontStr;
 	const char  *cursorStr;
 	const char  *gradientStr;
-	fontInfo_t textFont;
-	fontInfo_t smallFont;
-	fontInfo_t bigFont;
-	fontInfo_t handwritingFont;
+	// the renderer's, shared (RE_RegisterFont): NULL till registered
+	fontInfo_t *textFont;
+	fontInfo_t *smallFont;
+	fontInfo_t *bigFont;
+	fontInfo_t *handwritingFont;
 	qhandle_t cursor;
 	qhandle_t gradientBar;
 	qhandle_t scrollBarArrowUp;
@@ -370,7 +371,7 @@ typedef struct {
 	void ( *clearScene )( void );
 	void ( *addRefEntityToScene )( const refEntity_t *re );
 	void ( *renderScene )( const refdef_t *fd );
-	void ( *registerFont )( const char *pFontname, int pointSize, fontInfo_t *font );
+	void ( *registerFont )( const char *pFontname, int pointSize, fontInfo_t **font );
 	void ( *ownerDrawItem )( float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, int font, float scale, vec4_t color, qhandle_t shader, int textStyle );
 	float ( *getValue )( int ownerDraw, int type );
 	qboolean ( *ownerDrawVisible )( int flags );

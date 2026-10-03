@@ -98,11 +98,11 @@ If you have questions concerning this license or the applicable additional terms
 FT_Library ftLibrary = NULL;
 #endif
 
+// one of each, that everything registering it shares; malloc'd as they're
+// first registered, and kept (a restart registers into them again)
 #define MAX_FONTS 6
 static int registeredFontCount = 0;
-#ifdef BUILD_FREETYPE
-static fontInfo_t registeredFont[MAX_FONTS];
-#endif
+static fontInfo_t *registeredFont[MAX_FONTS];
 
 #ifdef BUILD_FREETYPE
 void R_GetGlyphInfo( FT_GlyphSlot glyph, int *left, int *right, int *width, int *top, int *bottom, int *height, int *pitch ) {
@@ -343,7 +343,7 @@ float readFloat( void ) {
 	return me.ffred;
 }
 
-void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
+void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t **fontOut ) {
 #ifdef BUILD_FREETYPE
 	FT_Face face;
 	int j, k, xOut, yOut, lastStart, imageNumber;
@@ -360,6 +360,7 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 	int i, len;
 	char name[1024];
 	char shaderName[FONT_DAT_GLYPH_NAME];
+	fontInfo_t *font;
 
 	if (!fontName) {
 		ri.Printf(PRINT_ALL, "RE_RegisterFont: called with empty name\n");
@@ -372,24 +373,25 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 
 	R_IssuePendingRenderCommands();
 
-#ifdef BUILD_FREETYPE
+	Com_sprintf( name, sizeof( name ), "fonts/fontImage_%i.dat",pointSize );
+	for ( i = 0; i < registeredFontCount; i++ ) {
+		if ( Q_stricmp( name, registeredFont[i]->name ) == 0 ) {
+			*fontOut = registeredFont[i];
+			return;
+		}
+	}
+
 	if ( registeredFontCount >= MAX_FONTS ) {
 		ri.Printf( PRINT_WARNING, "RE_RegisterFont: Too many fonts registered already.\n" );
 		return;
 	}
-#endif
-
-	Com_sprintf( name, sizeof( name ), "fonts/fontImage_%i.dat",pointSize );
-#ifdef BUILD_FREETYPE
-	for ( i = 0; i < registeredFontCount; i++ ) {
-		if ( Q_stricmp( name, registeredFont[i].name ) == 0 ) {
-			Com_Memcpy( font, &registeredFont[i], sizeof( fontInfo_t ) );
-			return;
-		}
+	if ( !registeredFont[registeredFontCount] ) {
+		registeredFont[registeredFontCount] = ri.Z_Malloc( sizeof( fontInfo_t ) );
 	}
-#endif
-	// (without FreeType, no copy kept here: the caller has one, and a font
-	// asked for again is read again, its shaders already registered)
+	font = registeredFont[registeredFontCount++];
+	Com_Memset( font, 0, sizeof( *font ) );
+	Q_strncpyz( font->name, name, sizeof( font->name ) );     // (one that fails isn't tried again)
+	*fontOut = font;
 
 	len = ri.FS_ReadFile( name, NULL );
 	if ( len == FONT_DAT_SIZE ) {
@@ -420,9 +422,6 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 
 //		Com_Memcpy(font, faceData, sizeof(fontInfo_t));
 		Q_strncpyz( font->name, name, sizeof( font->name ) );
-#ifdef BUILD_FREETYPE
-		Com_Memcpy( &registeredFont[registeredFontCount++], font, sizeof( fontInfo_t ) );
-#endif
 		ri.FS_FreeFile(faceData);
 		return;
 	}
@@ -544,9 +543,7 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 	// we also need to adjust the scale based on point size relative to 48 points as the ui scaling is based on a 48 point font
 	glyphScale *= 48.0f / pointSize;
 
-	registeredFont[registeredFontCount].glyphScale = glyphScale;
 	font->glyphScale = glyphScale;
-	Com_Memcpy( &registeredFont[registeredFontCount++], font, sizeof( fontInfo_t ) );
 
 	if ( r_saveFontData->integer ) {
 		ri.FS_WriteFile( va( "fonts/fontImage_%i.dat", pointSize ), font, sizeof( fontInfo_t ) );
