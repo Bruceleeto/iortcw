@@ -47,14 +47,14 @@ typedef struct {
 } cNode_t;
 
 typedef struct {
-	int cluster;
-	int area;
+	short cluster;                  // checked at load (CMod_LoadLeafs)
+	short area;
 
-	int firstLeafBrush;
-	int numLeafBrushes;
-
+	int firstLeafBrush;             // not a short: submodels' are their own blocks' distances from cm.leafbrushes
 	int firstLeafSurface;
-	int numLeafSurfaces;
+
+	unsigned short numLeafBrushes;
+	unsigned short numLeafSurfaces;
 } cLeaf_t;
 
 typedef struct cmodel_s {
@@ -72,8 +72,7 @@ typedef struct {
 #define CM_SideSurfaceFlags( s )    ( ( s )->shaderNum == CM_NO_SHADER ? 0 : cm.shaders[( s )->shaderNum].surfaceFlags )
 
 typedef struct {
-	int shaderNum;              // the shader that determined the contents
-	int contents;
+	int contents;               // its shader's
 	vec3_t bounds[2];
 	int numsides;
 	cbrushside_t    *sides;
@@ -117,10 +116,10 @@ typedef struct {
 	cLeaf_t     *leafs;
 
 	int numLeafBrushes;
-	int         *leafbrushes;
+	unsigned short *leafbrushes;    // brushes and surfaces are under 64K (checked at load)
 
 	int numLeafSurfaces;
-	int         *leafsurfaces;
+	unsigned short *leafsurfaces;
 
 	int numSubModels;
 	cmodel_t    *cmodels;

@@ -38,7 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 //#define DEBUG
 #define CTF
 
-#define MAX_ITEMS                   256
+#define MAX_BOT_ITEMS               256 // inventory (inv.h), not bg_itemlist (MAX_ITEMS)
 //bot flags
 #define BFL_STRAFERIGHT             1   //strafe to the right
 #define BFL_ATTACKED                2   //bot has attacked last ai frame
@@ -112,7 +112,7 @@ typedef struct bot_state_s
 	vec3_t eye;                                     //eye coordinates of the bot
 	int areanum;                                    //the number of the area the bot is in
 #ifndef NO_DM_BOTS
-	int inventory[MAX_ITEMS];                       //string with items amounts the bot has
+	int inventory[MAX_BOT_ITEMS];                       //string with items amounts the bot has
 #endif
 	int tfl;                                        //the travel flags the bot uses
 	int flags;                                      //several flags

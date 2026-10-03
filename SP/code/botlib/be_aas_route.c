@@ -97,6 +97,10 @@ int numportalcacheupdates;
 int routingcachesize;
 int max_routingcachesize;
 
+//the routing algorithm's an area, for the biggest world (AAS_InitRoutingUpdate)
+static aas_routingupdate_t *areaupdate;
+static int numareaupdates;
+
 // Ridah, routing memory calls go here, so we can change between Hunk/Zone easily
 void *AAS_RoutingGetMemory( int size ) {
 	return GetClearedMemory( size );
@@ -810,8 +814,8 @@ void AAS_InitRoutingUpdate( void ) {
 //	int i, maxreachabilityareas;
 
 	//free routing update fields if already existing
-	if ( ( *aasworld ).areaupdate ) {
-		AAS_RoutingFreeMemory( ( *aasworld ).areaupdate );
+	if ( ( *aasworld ).areainlist ) {
+		AAS_RoutingFreeMemory( ( *aasworld ).areainlist );
 	}
 	//
 // Ridah, had to change it to numareas for hidepos checking
@@ -828,8 +832,17 @@ void AAS_InitRoutingUpdate( void ) {
 	(*aasworld).areaupdate = (aas_routingupdate_t *) AAS_RoutingGetMemory(
 									maxreachabilityareas * sizeof(aas_routingupdate_t));
 */
-	( *aasworld ).areaupdate = (aas_routingupdate_t *) AAS_RoutingGetMemory(
-		( *aasworld ).numareas * sizeof( aas_routingupdate_t ) );
+	//one for every world: a search is in one, and all its fields but inlist
+	//are set as an area is added to the list
+	if ( numareaupdates < ( *aasworld ).numareas ) {
+		if ( areaupdate ) {
+			AAS_RoutingFreeMemory( areaupdate );
+		}
+		areaupdate = (aas_routingupdate_t *) AAS_RoutingGetMemory(
+			( *aasworld ).numareas * sizeof( aas_routingupdate_t ) );
+		numareaupdates = ( *aasworld ).numareas;
+	}
+	( *aasworld ).areainlist = (byte *) AAS_RoutingGetMemory( ( *aasworld ).numareas );
 	//
 	if ( ( *aasworld ).portalupdate ) {
 		AAS_RoutingFreeMemory( ( *aasworld ).portalupdate );
@@ -1412,11 +1425,16 @@ void AAS_FreeRoutingCaches( void ) {
 		AAS_RoutingFreeMemory( ( *aasworld ).reversedreachability );
 	}
 	( *aasworld ).reversedreachability = NULL;
-	// free routing algorithm memory
-	if ( ( *aasworld ).areaupdate ) {
-		AAS_RoutingFreeMemory( ( *aasworld ).areaupdate );
+	// free routing algorithm memory (all the worlds' are freed together)
+	if ( areaupdate ) {
+		AAS_RoutingFreeMemory( areaupdate );
 	}
-	( *aasworld ).areaupdate = NULL;
+	areaupdate = NULL;
+	numareaupdates = 0;
+	if ( ( *aasworld ).areainlist ) {
+		AAS_RoutingFreeMemory( ( *aasworld ).areainlist );
+	}
+	( *aasworld ).areainlist = NULL;
 	if ( ( *aasworld ).portalupdate ) {
 		AAS_RoutingFreeMemory( ( *aasworld ).portalupdate );
 	}
@@ -1487,7 +1505,7 @@ void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 	//
 	memset( startareatraveltimes, 0, sizeof( startareatraveltimes ) );
 	//
-	curupdate = &( *aasworld ).areaupdate[clusterareanum];
+	curupdate = &areaupdate[clusterareanum];
 	curupdate->areanum = areacache->areanum;
 	//VectorCopy(areacache->origin, curupdate->start);
 	curupdate->areatraveltimes = AAS_AreaTravelTimes( areacache->areanum, 0 );
@@ -1508,7 +1526,7 @@ void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 		}
 		updateliststart = curupdate->next;
 		//
-		curupdate->inlist = qfalse;
+		( *aasworld ).areainlist[curupdate - areaupdate] = qfalse;
 		//check all reversed reachability links
 		revreach = &( *aasworld ).reversedreachability[curupdate->areanum];
 		numlinks = revreach[1].firstlink - revreach->firstlink;
@@ -1556,19 +1574,19 @@ void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 				 areacache->traveltimes[clusterareanum] > t ) {
 				areacache->traveltimes[clusterareanum] = t;
 				areacache->reachabilities[clusterareanum] = linknum - ( *aasworld ).areasettings[nextareanum].firstreachablearea;
-				nextupdate = &( *aasworld ).areaupdate[clusterareanum];
+				nextupdate = &areaupdate[clusterareanum];
 				nextupdate->areanum = nextareanum;
 				nextupdate->tmptraveltime = t;
 				//VectorCopy(reach->start, nextupdate->start);
 				nextupdate->areatraveltimes = AAS_AreaTravelTimes( nextareanum, linknum -
 																   ( *aasworld ).areasettings[nextareanum].firstreachablearea );
-				if ( !nextupdate->inlist ) {
+				if ( !( *aasworld ).areainlist[nextupdate - areaupdate] ) {
 					nextupdate->next = NULL;
 					if ( updatelistend ) {
 						updatelistend->next = nextupdate;
 					} else { updateliststart = nextupdate;}
 					updatelistend = nextupdate;
-					nextupdate->inlist = qtrue;
+					( *aasworld ).areainlist[nextupdate - areaupdate] = qtrue;
 				} //end if
 			} //end if
 		} //end for
@@ -2386,7 +2404,7 @@ int AAS_NearestHideArea( int srcnum, vec3_t origin, int areanum, int enemynum, v
 	//
 	badtravelflags = ~travelflags;
 	//
-	curupdate = &( *aasworld ).areaupdate[areanum];
+	curupdate = &areaupdate[areanum];
 	curupdate->areanum = areanum;
 	VectorCopy( origin, curupdate->start );
 	curupdate->areatraveltimes = AAS_AreaTravelTimes( areanum, 0 );
@@ -2405,7 +2423,7 @@ int AAS_NearestHideArea( int srcnum, vec3_t origin, int areanum, int enemynum, v
 		}
 		updateliststart = curupdate->next;
 		//
-		curupdate->inlist = qfalse;
+		( *aasworld ).areainlist[curupdate - areaupdate] = qfalse;
 		//check all reversed reachability links
 		numreach = ( *aasworld ).areasettings[curupdate->areanum].numreachableareas;
 		reach = &( *aasworld ).reachability[( *aasworld ).areasettings[curupdate->areanum].firstreachablearea];
@@ -2530,20 +2548,20 @@ int AAS_NearestHideArea( int srcnum, vec3_t origin, int areanum, int enemynum, v
 				// otherwise, add this to the list so we check is reachables
 				// disabled, this should only store the raw traveltime, not the adjusted time
 				//(*aasworld).hidetraveltimes[nextareanum] = t;
-				nextupdate = &( *aasworld ).areaupdate[nextareanum];
+				nextupdate = &areaupdate[nextareanum];
 				nextupdate->areanum = nextareanum;
 				nextupdate->tmptraveltime = t;
 				//remember where we entered this area
 				VectorCopy( reach->end, nextupdate->start );
 				//if this update is not in the list yet
-				if ( !nextupdate->inlist ) {
+				if ( !( *aasworld ).areainlist[nextupdate - areaupdate] ) {
 					//add the new update to the end of the list
 					nextupdate->next = NULL;
 					if ( updatelistend ) {
 						updatelistend->next = nextupdate;
 					} else { updateliststart = nextupdate;}
 					updatelistend = nextupdate;
-					nextupdate->inlist = qtrue;
+					( *aasworld ).areainlist[nextupdate - areaupdate] = qtrue;
 				} //end if
 			} //end if
 		} //end for
@@ -2605,7 +2623,7 @@ int AAS_FindAttackSpotWithinRange( int srcnum, int rangenum, int enemynum, float
 	//
 	badtravelflags = ~travelflags;
 	//
-	curupdate = &( *aasworld ).areaupdate[rangearea];
+	curupdate = &areaupdate[rangearea];
 	curupdate->areanum = rangearea;
 	VectorCopy( rangeorg, curupdate->start );
 	curupdate->areatraveltimes = AAS_AreaTravelTimes( srcarea, 0 );
@@ -2624,7 +2642,7 @@ int AAS_FindAttackSpotWithinRange( int srcnum, int rangenum, int enemynum, float
 		}
 		updateliststart = curupdate->next;
 		//
-		curupdate->inlist = qfalse;
+		( *aasworld ).areainlist[curupdate - areaupdate] = qfalse;
 		//check all reversed reachability links
 		numreach = ( *aasworld ).areasettings[curupdate->areanum].numreachableareas;
 		reach = &( *aasworld ).reachability[( *aasworld ).areasettings[curupdate->areanum].firstreachablearea];
@@ -2699,20 +2717,20 @@ int AAS_FindAttackSpotWithinRange( int srcnum, int rangenum, int enemynum, float
 				} //end if
 			}
 			( *aasworld ).hidetraveltimes[nextareanum] = t;
-			nextupdate = &( *aasworld ).areaupdate[nextareanum];
+			nextupdate = &areaupdate[nextareanum];
 			nextupdate->areanum = nextareanum;
 			nextupdate->tmptraveltime = t;
 			//remember where we entered this area
 			VectorCopy( reach->end, nextupdate->start );
 			//if this update is not in the list yet
-			if ( !nextupdate->inlist ) {
+			if ( !( *aasworld ).areainlist[nextupdate - areaupdate] ) {
 				//add the new update to the end of the list
 				nextupdate->next = NULL;
 				if ( updatelistend ) {
 					updatelistend->next = nextupdate;
 				} else { updateliststart = nextupdate;}
 				updatelistend = nextupdate;
-				nextupdate->inlist = qtrue;
+				( *aasworld ).areainlist[nextupdate - areaupdate] = qtrue;
 			} //end if
 		} //end for
 	} //end while

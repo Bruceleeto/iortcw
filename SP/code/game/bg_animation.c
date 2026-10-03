@@ -73,6 +73,19 @@ static animDefines_t *animDefines;
 static scriptAnimMoveTypes_t parseMovetype;
 static int parseEvent;
 
+// the scripts' items as they're parsed, each with room for all its
+// conditions and commands, and the scripts' lists of them; till the model
+// is fitted (BG_AnimFitModelInfo) and BG_AnimParseFree
+typedef struct {
+	animScriptItem_t items[MAX_ANIMSCRIPT_ITEMS_PER_MODEL];
+	animScriptCondition_t conditions[MAX_ANIMSCRIPT_ITEMS_PER_MODEL][NUM_ANIM_CONDITIONS];
+	animScriptCommand_t commands[MAX_ANIMSCRIPT_ITEMS_PER_MODEL][MAX_ANIMSCRIPT_ANIMCOMMANDS];
+	animScriptItem_t *lists[MAX_ANIMSCRIPT_ITEMS_PER_MODEL][MAX_ANIMSCRIPT_ITEMS];  // one a script with items, which has one at least
+	int numLists;
+} animParse_t;
+
+static animParse_t *animParse;
+
 animStringItem_t weaponStrings[WP_NUM_WEAPONS];
 qboolean weaponStringsInited = qfalse;
 
@@ -972,6 +985,9 @@ qboolean BG_ParseConditions( char **text_pp, animScriptItem_t *scriptItem ) {
 		}
 
 		// now append this condition to the item
+		if ( scriptItem->numConditions >= NUM_ANIM_CONDITIONS ) {
+			BG_AnimParseError( "BG_ParseConditions: too many conditions" );
+		}
 		scriptItem->conditions[scriptItem->numConditions].index = conditionIndex;
 		scriptItem->conditions[scriptItem->numConditions].value[0] = conditionValue[0];
 		scriptItem->conditions[scriptItem->numConditions].value[1] = conditionValue[1];
@@ -1145,6 +1161,22 @@ static animStringItem_t animParseModesStr[] =
 	{NULL, -1},
 };
 
+static animScriptItem_t *BG_AnimParseNewItem( animModelInfo_t *modelInfo, animScript_t *script, const animScriptItem_t *temp ) {
+	int n = modelInfo->numScriptItems++;
+	animScriptItem_t *item = &animParse->items[n];
+
+	if ( !script->numItems ) {
+		script->items = animParse->lists[animParse->numLists++];
+	}
+	script->items[script->numItems++] = item;
+	item->numConditions = temp->numConditions;
+	item->numCommands = 0;
+	item->conditions = animParse->conditions[n];
+	memcpy( item->conditions, temp->conditions, temp->numConditions * sizeof( item->conditions[0] ) );
+	item->commands = animParse->commands[n];
+	return item;
+}
+
 void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scriptData, int client, char *filename, char *input ) {
 	#define MAX_INDENT_LEVELS   3
 
@@ -1152,6 +1184,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 	animScriptParseMode_t parseMode;
 	animScript_t        *currentScript;
 	animScriptItem_t tempScriptItem, *currentScriptItem = NULL;    // TTimo: init
+	animScriptCondition_t tempConditions[NUM_ANIM_CONDITIONS];
 	int indexes[MAX_INDENT_LEVELS], indentLevel, oldState, newParseMode;
 	int i, defineType;
 
@@ -1178,6 +1211,13 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 	}
 	memset( animDefines, 0, sizeof( *animDefines ) );
 	memset( numDefines, 0, sizeof( numDefines ) );
+	if ( !animParse ) {
+		animParse = malloc( sizeof( *animParse ) );
+		if ( !animParse ) {
+			BG_AnimParseError( "BG_AnimParseAnimScript: out of memory" );
+		}
+	}
+	animParse->numLists = 0;
 	defineStringsOffset = 0;
 
 	for ( i = 0; i < MAX_INDENT_LEVELS; i++ )
@@ -1329,6 +1369,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 				}
 				//
 				memset( &tempScriptItem, 0, sizeof( tempScriptItem ) );
+				tempScriptItem.conditions = tempConditions;
 				indexes[indentLevel] = BG_ParseConditions( &text_p, &tempScriptItem );
 				// do we have enough room in this script for another item?
 				if ( currentScript->numItems >= MAX_ANIMSCRIPT_ITEMS ) {
@@ -1339,11 +1380,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 					BG_AnimParseError( "BG_AnimParseAnimScript: exceeded maximum global items (%i)", MAX_ANIMSCRIPT_ITEMS_PER_MODEL );   // RF mod
 				}
 				// it was parsed ok, so grab an item from the global list to use
-				currentScript->items[currentScript->numItems] = &modelInfo->scriptItems[ modelInfo->numScriptItems++ ];
-				currentScriptItem = currentScript->items[currentScript->numItems];
-				currentScript->numItems++;
-				// copy the data across from the temp script item
-				*currentScriptItem = tempScriptItem;
+				currentScriptItem = BG_AnimParseNewItem( modelInfo, currentScript, &tempScriptItem );
 
 			} else if ( indentLevel == 3 ) {
 
@@ -1451,6 +1488,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 				}
 				//
 				memset( &tempScriptItem, 0, sizeof( tempScriptItem ) );
+				tempScriptItem.conditions = tempConditions;
 				indexes[indentLevel] = BG_ParseConditions( &text_p, &tempScriptItem );
 				// do we have enough room in this script for another item?
 				if ( currentScript->numItems >= MAX_ANIMSCRIPT_ITEMS ) {
@@ -1461,11 +1499,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 					BG_AnimParseError( "BG_AnimParseAnimScript: exceeded maximum global items (%i)", MAX_ANIMSCRIPT_ITEMS_PER_MODEL );   // RF mod
 				}
 				// it was parsed ok, so grab an item from the global list to use
-				currentScript->items[currentScript->numItems] = &modelInfo->scriptItems[ modelInfo->numScriptItems++ ];
-				currentScriptItem = currentScript->items[currentScript->numItems];
-				currentScript->numItems++;
-				// copy the data across from the temp script item
-				*currentScriptItem = tempScriptItem;
+				currentScriptItem = BG_AnimParseNewItem( modelInfo, currentScript, &tempScriptItem );
 
 			} else if ( indentLevel == 2 ) {
 
@@ -1495,6 +1529,86 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 	free( animDefines );
 	animDefines = NULL;
 
+}
+
+/*
+=================
+BG_AnimFitModelInfo
+
+A parsed model in one block from alloc: the model, then its items, the
+scripts' lists of them, and the items' conditions and commands, just the
+ones there are. Its animations stop after its last, but not before
+MAX_ANIMATIONS: the code plays some by animNumber_t (pains, deaths, ...)
+=================
+*/
+animModelInfo_t *BG_AnimFitModelInfo( const animModelInfo_t *full, void *( *alloc )( int size ) ) {
+	animModelInfo_t *mi;
+	animScript_t *scripts[4];
+	int counts[4];
+	animScriptItem_t *items, **lists;
+	animScriptCondition_t *conditions;
+	animScriptCommand_t *commands;
+	const animScriptItem_t *in = animParse->items;
+	int numListed = 0, numConditions = 0, numCommands = 0;
+	int i, j, k, size;
+
+	for ( i = 0; i < full->numScriptItems; i++ ) {
+		numConditions += in[i].numConditions;
+		numCommands += in[i].numCommands;
+	}
+	size = (int)offsetof( animModelInfo_t, animations ) + MAX( full->numAnimations, MAX_ANIMATIONS ) * sizeof( animation_t );
+	size = PAD( size, sizeof( void * ) );
+	mi = alloc( size + full->numScriptItems * sizeof( *items ) + full->numScriptItems * sizeof( *lists ) +
+				numConditions * sizeof( *conditions ) + numCommands * sizeof( *commands ) );
+	memcpy( mi, full, size );
+	items = (animScriptItem_t *)( (byte *)mi + size );
+	lists = (animScriptItem_t **)( items + full->numScriptItems );
+	conditions = (animScriptCondition_t *)( lists + full->numScriptItems );
+	commands = (animScriptCommand_t *)( conditions + numConditions );
+
+	for ( i = 0; i < full->numScriptItems; i++ ) {
+		items[i] = in[i];
+		items[i].conditions = conditions;
+		memcpy( conditions, in[i].conditions, in[i].numConditions * sizeof( *conditions ) );
+		conditions += in[i].numConditions;
+		items[i].commands = commands;
+		memcpy( commands, in[i].commands, in[i].numCommands * sizeof( *commands ) );
+		commands += in[i].numCommands;
+	}
+
+	scripts[0] = &mi->scriptAnims[0][0];
+	counts[0] = sizeof( mi->scriptAnims ) / sizeof( animScript_t );
+	scripts[1] = &mi->scriptCannedAnims[0][0];
+	counts[1] = sizeof( mi->scriptCannedAnims ) / sizeof( animScript_t );
+	scripts[2] = &mi->scriptStateChange[0][0];
+	counts[2] = sizeof( mi->scriptStateChange ) / sizeof( animScript_t );
+	scripts[3] = mi->scriptEvents;
+	counts[3] = sizeof( mi->scriptEvents ) / sizeof( animScript_t );
+	for ( i = 0; i < 4; i++ ) {
+		for ( j = 0; j < counts[i]; j++ ) {
+			animScript_t *script = &scripts[i][j];
+
+			if ( !script->numItems ) {
+				script->items = NULL;
+				continue;
+			}
+			// an item is in one script's list, and listed once
+			if ( numListed + script->numItems > full->numScriptItems ) {
+				Com_Error( ERR_DROP, "BG_AnimFitModelInfo: %s: an item in more than one script", full->modelname );
+			}
+			for ( k = 0; k < script->numItems; k++ ) {
+				lists[numListed + k] = items + ( script->items[k] - in );
+			}
+			script->items = lists + numListed;
+			numListed += script->numItems;
+		}
+	}
+	return mi;
+}
+
+void BG_AnimParseFree( void ) {
+	free( animParse );
+	animParse = NULL;
 }
 
 //------------------------------------------------------------------------

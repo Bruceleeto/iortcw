@@ -867,23 +867,22 @@ static void R_LoadNodesAndLeafs( bspLump_t *nodeLump, bspLump_t *leafLump ) {
 /*
 =================
 R_LoadShaders
+
+Used in the lump, only while the surfaces load: R_FreeShaders
 =================
 */
 static void R_LoadShaders( bspLump_t *l ) {
 	int i, count;
-	dshader_t   *in, *out;
+	dshader_t   *out;
 
-	in = l->data;
-	if ( l->len % sizeof( *in ) ) {
+	out = l->data;
+	if ( l->len % sizeof( *out ) ) {
 		ri.Error( ERR_DROP, "LoadMap: funny lump size in %s",s_worldData.name );
 	}
-	count = l->len / sizeof( *in );
-	out = ri.Hunk_Alloc( count * sizeof( *out ), h_low );
+	count = l->len / sizeof( *out );
 
 	s_worldData.shaders = out;
 	s_worldData.numShaders = count;
-
-	memcpy( out, in, count * sizeof( *out ) );
 
 	for ( i = 0 ; i < count ; i++ ) {
 		out[i].surfaceFlags = LittleLong( out[i].surfaceFlags );
@@ -891,6 +890,12 @@ static void R_LoadShaders( bspLump_t *l ) {
 	}
 }
 
+
+static void R_FreeShaders( bspLump_t *l ) {
+	ri.CM_FreeLump( l );
+	s_worldData.shaders = NULL;
+	s_worldData.numShaders = 0;
+}
 
 /*
 =================
@@ -900,7 +905,7 @@ R_LoadMarksurfaces
 static void R_LoadMarksurfaces( bspLump_t *l ) {
 	int i, j, count;
 	int     *in;
-	msurface_t **out;
+	unsigned short *out;
 
 	in = l->data;
 	if ( l->len % sizeof( *in ) ) {
@@ -915,7 +920,10 @@ static void R_LoadMarksurfaces( bspLump_t *l ) {
 	for ( i = 0 ; i < count ; i++ )
 	{
 		j = LittleLong( in[i] );
-		out[i] = s_worldData.surfaces + j;
+		if ( j < 0 || j >= s_worldData.numsurfaces || j > 0xffff ) {
+			ri.Error( ERR_DROP, "LoadMap: bad surface %i in %s", j, s_worldData.name );
+		}
+		out[i] = j;
 	}
 }
 
@@ -1425,7 +1433,7 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 			if ( in->kind < WLD_PLANAR || in->kind > WLD_TRIANGLES ||
 				 in->firstVert < 0 || in->numVerts < 0 || in->firstVert + in->numVerts > numVerts ||
 				 in->firstIndex < 0 || in->numIndexes < 3 || in->numIndexes % 3 ||
-				 in->numStripIndexes < 3 || in->numStripIndexes > numIndexes - in->firstIndex ||
+				 in->numStripIndexes < 3 || in->numStripIndexes > numIndexes - in->firstIndex || in->numStripIndexes > 0xffff ||
 				 in->numVerts >= SHADER_MAX_VERTEXES || in->numIndexes >= SHADER_MAX_INDEXES ) {
 				ri.Error( ERR_DROP, "LoadMap: bad surface %d in %s", i, s_worldData.name );
 			}
@@ -1461,8 +1469,10 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 					ri.Error( ERR_DROP, "LoadMap: bad indexes in surface %d in %s", i, s_worldData.name );
 				}
 			}
-			VectorCopy( in->bounds[0], srf->bounds[0] );
-			VectorCopy( in->bounds[1], srf->bounds[1] );
+			for ( j = 0 ; j < 3 ; j++ ) {
+				srf->bounds[0][j] = (short)Com_Clamp( -32768, 32767, floor( in->bounds[0][j] ) );
+				srf->bounds[1][j] = (short)Com_Clamp( -32768, 32767, ceil( in->bounds[1][j] ) );
+			}
 			VectorCopy( in->origin, srf->origin );
 			srf->xyzStep = in->xyzStep;
 			srf->stOrigin[0] = in->stOrigin[0];
@@ -1544,7 +1554,7 @@ static qboolean R_LoadWld( void ) {
 	fileHandle_t f;
 	wldHeader_t h;
 	lump_t hl = { 0, sizeof( h ) };
-	bspLump_t a, b;
+	bspLump_t a, b, shaders;
 	int i;
 
 	COM_StripExtension( s_worldData.name, name, sizeof( name ) );
@@ -1563,9 +1573,8 @@ static qboolean R_LoadWld( void ) {
 	}
 
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
-	ri.CM_ReadLump( f, (lump_t *)&h.lumps[WLD_LUMP_SHADERS], &a );
-	R_LoadShaders( &a );
-	ri.CM_FreeLump( &a );
+	ri.CM_ReadLump( f, (lump_t *)&h.lumps[WLD_LUMP_SHADERS], &shaders );
+	R_LoadShaders( &shaders );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
 	R_LoadLightmaps( f, (lump_t *)&h.lumps[WLD_LUMP_LIGHTMAPS] );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
@@ -1575,6 +1584,7 @@ static qboolean R_LoadWld( void ) {
 	ri.CM_FreeLump( &a );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
 	R_LoadWldSurfaces( f, &h );
+	R_FreeShaders( &shaders );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
 	ri.CM_ReadLump( f, (lump_t *)&h.lumps[WLD_LUMP_LEAFSURFACES], &a );
 	R_LoadMarksurfaces( &a );
@@ -1607,15 +1617,14 @@ The .bsp, a lump at a time, sharing what the collision map has loaded
 static void R_LoadBsp( const char *name ) {
 	dheader_t header;
 	fileHandle_t f;
-	bspLump_t a, b, c;
+	bspLump_t a, b, c, shaders;
 
 	f = ri.CM_OpenBsp( name, &header );
 
 	// load into heap
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
-	ri.CM_ReadLump( f, &header.lumps[LUMP_SHADERS], &a );
-	R_LoadShaders( &a );
-	ri.CM_FreeLump( &a );
+	ri.CM_ReadLump( f, &header.lumps[LUMP_SHADERS], &shaders );
+	R_LoadShaders( &shaders );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
 	R_LoadLightmaps( f, &header.lumps[LUMP_LIGHTMAPS] );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
@@ -1636,6 +1645,7 @@ static void R_LoadBsp( const char *name ) {
 	ri.CM_FreeLump( &c );
 	ri.CM_FreeLump( &b );
 	ri.CM_FreeLump( &a );
+	R_FreeShaders( &shaders );
 	ri.Cmd_ExecuteText( EXEC_NOW, "updatescreen\n" );
 	ri.CM_ReadLump( f, &header.lumps[LUMP_LEAFSURFACES], &a );
 	R_LoadMarksurfaces( &a );

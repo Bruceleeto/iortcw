@@ -124,7 +124,12 @@ static qboolean R_CullWorldSurf( srfWorld_t *srf, shader_t *shader ) {
 		}
 	}
 
-	return R_CullLocalBox( srf->bounds ) == CULL_OUT;
+	{
+		vec3_t bounds[2];
+
+		R_WorldSurfBounds( srf, bounds );
+		return R_CullLocalBox( bounds ) == CULL_OUT;
+	}
 }
 
 /*
@@ -582,7 +587,8 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 	{
 		// leaf node, so add mark surfaces
 		int c;
-		msurface_t  *surf, **mark;
+		msurface_t  *surf;
+		unsigned short *mark;
 
 		// RF, hack, dlight elimination above is unreliable
 		dlightBits = 0xffffffff;
@@ -616,7 +622,7 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 		while ( c-- ) {
 			// the surface may have already been added if it
 			// spans multiple leafs
-			surf = *mark;
+			surf = tr.world->surfaces + *mark;
 			R_AddWorldSurface( surf, dlightBits );
 			mark++;
 		}

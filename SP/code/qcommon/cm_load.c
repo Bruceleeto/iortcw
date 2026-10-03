@@ -131,7 +131,7 @@ void CMod_LoadSubmodels( bspLump_t *l ) {
 	dmodel_t    *in;
 	cmodel_t    *out;
 	int i, j, count;
-	int         *indexes;
+	unsigned short *indexes;
 
 	in = l->data;
 	if ( l->len % sizeof( *in ) ) {
@@ -164,15 +164,20 @@ void CMod_LoadSubmodels( bspLump_t *l ) {
 		}
 
 		// make a "leaf" just to hold the model's brushes and surfaces
+		if ( (unsigned)LittleLong( in->numBrushes ) > 0xffff || (unsigned)LittleLong( in->numSurfaces ) > 0xffff
+			 || (unsigned)( LittleLong( in->firstBrush ) + LittleLong( in->numBrushes ) ) > 0x10000
+			 || (unsigned)( LittleLong( in->firstSurface ) + LittleLong( in->numSurfaces ) ) > 0x10000 ) {
+			Com_Error( ERR_DROP, "CMod_LoadSubmodels: model %i out of range", i );
+		}
 		out->leaf.numLeafBrushes = LittleLong( in->numBrushes );
-		indexes = Hunk_Alloc( out->leaf.numLeafBrushes * 4, h_high );
+		indexes = Hunk_Alloc( out->leaf.numLeafBrushes * sizeof( *indexes ), h_high );
 		out->leaf.firstLeafBrush = indexes - cm.leafbrushes;
 		for ( j = 0 ; j < out->leaf.numLeafBrushes ; j++ ) {
 			indexes[j] = LittleLong( in->firstBrush ) + j;
 		}
 
 		out->leaf.numLeafSurfaces = LittleLong( in->numSurfaces );
-		indexes = Hunk_Alloc( out->leaf.numLeafSurfaces * 4, h_high );
+		indexes = Hunk_Alloc( out->leaf.numLeafSurfaces * sizeof( *indexes ), h_high );
 		out->leaf.firstLeafSurface = indexes - cm.leafsurfaces;
 		for ( j = 0 ; j < out->leaf.numLeafSurfaces ; j++ ) {
 			indexes[j] = LittleLong( in->firstSurface ) + j;
@@ -246,13 +251,17 @@ CMod_LoadBrushes
 void CMod_LoadBrushes( bspLump_t *l ) {
 	dbrush_t    *in;
 	cbrush_t    *out;
-	int i, count;
+	int i, count, shaderNum;
 
 	in = l->data;
 	if ( l->len % sizeof( *in ) ) {
 		Com_Error( ERR_DROP, "MOD_LoadBmodel: funny lump size" );
 	}
 	count = l->len / sizeof( *in );
+	// cm.leafbrushes are shorts, the box brush's too
+	if ( BOX_BRUSHES + count > 0x10000 ) {
+		Com_Error( ERR_DROP, "CMod_LoadBrushes: too many brushes (%i)", count );
+	}
 
 	cm.brushes = Hunk_Alloc( ( BOX_BRUSHES + count ) * sizeof( *cm.brushes ), h_high );
 	cm.numBrushes = count;
@@ -263,11 +272,11 @@ void CMod_LoadBrushes( bspLump_t *l ) {
 		out->sides = cm.brushsides + LittleLong( in->firstSide );
 		out->numsides = LittleLong( in->numSides );
 
-		out->shaderNum = LittleLong( in->shaderNum );
-		if ( out->shaderNum < 0 || out->shaderNum >= cm.numShaders ) {
-			Com_Error( ERR_DROP, "CMod_LoadBrushes: bad shaderNum: %i", out->shaderNum );
+		shaderNum = LittleLong( in->shaderNum );
+		if ( shaderNum < 0 || shaderNum >= cm.numShaders ) {
+			Com_Error( ERR_DROP, "CMod_LoadBrushes: bad shaderNum: %i", shaderNum );
 		}
-		out->contents = cm.shaders[out->shaderNum].contentFlags;
+		out->contents = cm.shaders[shaderNum].contentFlags;
 
 		CM_BoundBrush( out );
 	}
@@ -301,12 +310,19 @@ void CMod_LoadLeafs( bspLump_t *l ) {
 	out = cm.leafs;
 	for ( i = 0 ; i < count ; i++, in++, out++ )
 	{
-		out->cluster = LittleLong( in->cluster );
-		out->area = LittleLong( in->area );
+		int cluster = LittleLong( in->cluster ), area = LittleLong( in->area );
+		int numBrushes = LittleLong( in->numLeafBrushes ), numSurfaces = LittleLong( in->numLeafSurfaces );
+
+		if ( cluster < -1 || cluster > 0x7fff || area < -1 || area > 0x7fff
+			 || (unsigned)numBrushes > 0xffff || (unsigned)numSurfaces > 0xffff ) {
+			Com_Error( ERR_DROP, "CMod_LoadLeafs: leaf %i out of range", i );
+		}
+		out->cluster = cluster;
+		out->area = area;
 		out->firstLeafBrush = LittleLong( in->firstLeafBrush );
-		out->numLeafBrushes = LittleLong( in->numLeafBrushes );
+		out->numLeafBrushes = numBrushes;
 		out->firstLeafSurface = LittleLong( in->firstLeafSurface );
-		out->numLeafSurfaces = LittleLong( in->numLeafSurfaces );
+		out->numLeafSurfaces = numSurfaces;
 
 		if ( out->cluster >= cm.numClusters ) {
 			cm.numClusters = out->cluster + 1;
@@ -370,7 +386,7 @@ CMod_LoadLeafBrushes
 */
 void CMod_LoadLeafBrushes( bspLump_t *l ) {
 	int i;
-	int         *out;
+	unsigned short *out;
 	int         *in;
 	int count;
 
@@ -387,6 +403,9 @@ void CMod_LoadLeafBrushes( bspLump_t *l ) {
 	out = cm.leafbrushes;
 
 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
+		if ( (unsigned)LittleLong( *in ) > 0xffff ) {
+			Com_Error( ERR_DROP, "CMod_LoadLeafBrushes: bad brush %i", LittleLong( *in ) );
+		}
 		*out = LittleLong( *in );
 	}
 }
@@ -398,7 +417,7 @@ CMod_LoadLeafSurfaces
 */
 void CMod_LoadLeafSurfaces( bspLump_t *l ) {
 	int i;
-	int         *out;
+	unsigned short *out;
 	int         *in;
 	int count;
 
@@ -414,6 +433,9 @@ void CMod_LoadLeafSurfaces( bspLump_t *l ) {
 	out = cm.leafsurfaces;
 
 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
+		if ( (unsigned)LittleLong( *in ) > 0xffff ) {
+			Com_Error( ERR_DROP, "CMod_LoadLeafSurfaces: bad surface %i", LittleLong( *in ) );
+		}
 		*out = LittleLong( *in );
 	}
 }

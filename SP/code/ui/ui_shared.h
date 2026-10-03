@@ -43,10 +43,11 @@ If you have questions concerning this license or the applicable additional terms
 #define MAX_MENUFILE 32768
 #ifdef UI_HUD_ONLY
 #define MAX_MENUS 12    // cgame's: ui/hud.txt has 7
+#define MAX_MENUITEMS 16    // and 4 items in one at most; items is menuDef_t's last, so cgame's pointers to them are the same
 #else
-#define MAX_MENUS 56    // ui/menus.txt and ui/ingame.txt have 45 between them, 46 with briefing
+#define MAX_MENUS 48    // ui/menus.txt and ui/ingame.txt have 45 between them, 46 with briefing
+#define MAX_MENUITEMS 256   // ui/notebook.menu has 253
 #endif
-#define MAX_MENUITEMS 256
 #define MAX_MENU_ONKEYS 4   // a menu's execKeys
 #define MAX_COLOR_RANGES 10
 #define MAX_OPEN_MENUS 16

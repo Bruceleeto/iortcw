@@ -145,7 +145,8 @@ R_BoxSurfaces_r
 void R_BoxSurfaces_r( mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **list, int listsize, int *listlength, vec3_t dir ) {
 
 	int s, c;
-	msurface_t  *surf, **mark;
+	msurface_t  *surf;
+	unsigned short *mark;
 
 	// RF, if this node hasn't been rendered recently, ignore it
 	if ( node->visframe < tr.visCount - 2 ) { // allow us to be a few frames behind
@@ -179,7 +180,7 @@ void R_BoxSurfaces_r( mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **l
 			break;
 		}
 		//
-		surf = *mark;
+		surf = tr.world->surfaces + *mark;
 		// check if the surface has NOIMPACT or NOMARKS set
 		if ( ( surf->shader->surfaceFlags & ( SURF_NOIMPACT | SURF_NOMARKS ) )
 			 || ( surf->shader->contentFlags & CONTENTS_FOG ) ) {

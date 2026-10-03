@@ -225,7 +225,6 @@ extern AICharacterDefaults_t aiDefaults[NUM_CHARACTERS];
 // sight info
 typedef struct
 {
-	int flags;
 	int lastcheck_timestamp;
 	int real_visible_timestamp;
 	int real_update_timestamp;
@@ -235,8 +234,9 @@ typedef struct
 	vec3_t real_visible_pos;        // position we last physically saw them
 	int notvisible_timestamp;       // last time we didn't see the entity (used for reaction delay)
 	vec3_t chase_marker[MAX_CHASE_MARKERS];
-	int chase_marker_count;
 	int lastcheck_health;
+	byte flags;                     // AIVIS_*
+	byte chase_marker_count;        // up to MAX_CHASE_MARKERS
 } cast_visibility_t;
 //
 // starting weapons, ammo, etc

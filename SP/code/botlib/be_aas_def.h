@@ -152,7 +152,7 @@ typedef struct aas_routingupdate_s
 	unsigned short int areanum;                 //area number of the update
 	short cluster;
 	unsigned short int tmptraveltime;           //temporary travel time
-	byte inlist;                                //true if the update is in the list
+	byte inlist;                                //true if the update is in the list (a portal's; an area's is in areainlist)
 } aas_routingupdate_t;
 
 //reversed reachability link (the reachabilities under 64K, AAS_InitRouting)
@@ -245,7 +245,7 @@ typedef struct aas_s
 	//index to retrieve travel flag for a travel type
 	int travelflagfortype[MAX_TRAVELTYPES];
 	//routing update
-	aas_routingupdate_t *areaupdate;
+	byte *areainlist;                           //an area's update is in the list (be_aas_route.c's areaupdate, which the worlds share)
 	aas_routingupdate_t *portalupdate;
 	//number of routing updates during a frame (reset every frame)
 	int frameroutingupdates;

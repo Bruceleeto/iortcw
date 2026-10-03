@@ -1209,28 +1209,15 @@ G_GetModelInfo
 */
 qboolean G_ParseAnimationFiles( char *modelname, gclient_t *cl );
 
-// a parsed model, full size, to one with just the script items it has (most
-// models use a few dozen of the 256 there's room for, at 376 bytes each)
+// a parsed model, full size, to one with just the script items, conditions
+// and commands it has (BG_AnimFitModelInfo)
 static animModelInfo_t *G_FitModelInfo( animModelInfo_t *full ) {
-	int size = (int)( (byte *)&full->scriptItems[full->numScriptItems] - (byte *)full );
-	animModelInfo_t *mi = G_Alloc( size );
-	animScript_t *scripts[4] = { &mi->scriptAnims[0][0], &mi->scriptCannedAnims[0][0], &mi->scriptStateChange[0][0], mi->scriptEvents };
-	int counts[4] = { sizeof( mi->scriptAnims ) / sizeof( animScript_t ), sizeof( mi->scriptCannedAnims ) / sizeof( animScript_t ),
-					  sizeof( mi->scriptStateChange ) / sizeof( animScript_t ), sizeof( mi->scriptEvents ) / sizeof( animScript_t ) };
-	int i, j, k;
+	animModelInfo_t *mi = BG_AnimFitModelInfo( full, G_Alloc );
 
-	memcpy( mi, full, size );
-	// the scripts point into scriptItems
-	for ( i = 0; i < 4; i++ ) {
-		for ( j = 0; j < counts[i]; j++ ) {
-			for ( k = 0; k < scripts[i][j].numItems; k++ ) {
-				scripts[i][j].items[k] = mi->scriptItems + ( scripts[i][j].items[k] - full->scriptItems );
-			}
-		}
-	}
 	if ( !modelInfoHold ) {
 		free( modelInfoFull );
 		modelInfoFull = NULL;
+		BG_AnimParseFree();
 	}
 	return mi;
 }
@@ -1266,6 +1253,7 @@ void G_PreloadModelInfoDone( void ) {
 	modelInfoHold = qfalse;
 	free( modelInfoFull );
 	modelInfoFull = NULL;
+	BG_AnimParseFree();
 }
 
 qboolean G_GetModelInfo( int clientNum, char *modelName, animModelInfo_t **modelInfo ) {

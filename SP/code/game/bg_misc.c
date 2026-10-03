@@ -3464,6 +3464,8 @@ model="models/powerups/keys/key.md3"
 // END JOSEPH
 
 int	bg_numItems = ARRAY_LEN( bg_itemlist ) - 1;
+// cg_items, itemRegistered and the CS_ITEMS string hold MAX_ITEMS
+typedef char bg_itemlistFits[ARRAY_LEN( bg_itemlist ) <= MAX_ITEMS ? 1 : -1];
 
 
 /*

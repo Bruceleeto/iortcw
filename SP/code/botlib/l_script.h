@@ -56,7 +56,7 @@ If you have questions concerning this license or the applicable additional terms
 #define DOLLAR
 
 //maximum token length
-#define MAX_TOKEN                   1024
+#define MAX_TOKEN                   256     // the menus, all this parses, have 81 at most (adjacent strings merged): a define keeps a token_t a token
 
 //script flags
 #define SCFL_NOERRORS               0x0001

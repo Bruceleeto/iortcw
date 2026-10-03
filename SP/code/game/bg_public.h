@@ -42,7 +42,7 @@ If you have questions concerning this license or the applicable additional terms
 #define GIB_HEALTH          -40
 #define ARMOR_PROTECTION    0.66
 
-#define MAX_ITEMS           256
+#define MAX_ITEMS           72      // bg_itemlist has 70 (checked in bg_misc.c)
 
 #define RANK_TIED_FLAG      0x4000
 
@@ -1626,18 +1626,21 @@ typedef struct
 	short int accHideBits;      //----(SA)	added
 } animScriptCommand_t;
 
+// the conditions and commands it has, in BG_AnimFitModelInfo's block once
+// a model's parsed (a few of the NUM_ANIM_CONDITIONS and
+// MAX_ANIMSCRIPT_ANIMCOMMANDS there's room for while it's parsed)
 typedef struct
 {
-	int numConditions;
-	animScriptCondition_t conditions[NUM_ANIM_CONDITIONS];
-	int numCommands;
-	animScriptCommand_t commands[MAX_ANIMSCRIPT_ANIMCOMMANDS];
+	short numConditions;
+	short numCommands;
+	animScriptCondition_t *conditions;
+	animScriptCommand_t *commands;
 } animScriptItem_t;
 
 typedef struct
 {
 	int numItems;
-	animScriptItem_t    *items[MAX_ANIMSCRIPT_ITEMS];   // pointers into a global list of items
+	animScriptItem_t    **items;    // numItems of them (at most MAX_ANIMSCRIPT_ITEMS)
 } animScript_t;
 
 typedef struct
@@ -1652,7 +1655,6 @@ typedef struct
 	qboolean isSkeletal;
 
 	// parsed from cfg file
-	animation_t animations[MAX_MODEL_ANIMATIONS];           // anim names, frame ranges, etc
 	headAnimation_t headAnims[MAX_HEAD_ANIMS];
 	int numAnimations, numHeadAnims;
 
@@ -1662,11 +1664,10 @@ typedef struct
 	animScript_t scriptStateChange[MAX_AISTATES][MAX_AISTATES];             // state change events
 	animScript_t scriptEvents[NUM_ANIM_EVENTTYPES];                         // events that trigger special anims
 
-	// global list of script items for this model; last, so a parsed model
-	// keeps just the numScriptItems it has (G_GetModelInfo)
-	int numScriptItems;
-	animScriptItem_t scriptItems[MAX_ANIMSCRIPT_ITEMS_PER_MODEL];
+	int numScriptItems;     // the scripts' items, in the parse's buffer, then after this (BG_AnimFitModelInfo)
 
+	// last: a fitted one has just the ones it uses (BG_AnimFitModelInfo)
+	animation_t animations[MAX_MODEL_ANIMATIONS];           // anim names, frame ranges, etc
 } animModelInfo_t;
 
 // this is the main structure that is duplicated on the client and server
@@ -1734,6 +1735,8 @@ typedef enum
 animModelInfo_t *BG_ModelInfoForModelname( char *modelname );
 qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *filename, const char *input );
 void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scriptData, int client, char *filename, char *input );
+animModelInfo_t *BG_AnimFitModelInfo( const animModelInfo_t *full, void *( *alloc )( int size ) );
+void BG_AnimParseFree( void );
 int BG_AnimScriptAnimation( playerState_t *ps, aistateEnum_t state, scriptAnimMoveTypes_t movetype, qboolean isContinue );
 int BG_AnimScriptCannedAnimation( playerState_t *ps, aistateEnum_t state );
 int BG_AnimScriptStateChange( playerState_t *ps, aistateEnum_t newState, aistateEnum_t oldState );

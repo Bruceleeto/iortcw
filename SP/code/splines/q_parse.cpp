@@ -52,7 +52,7 @@ typedef struct {
 	char parseFile[MAX_QPATH];
 } parseInfo_t;
 
-#define MAX_PARSE_INFO  16
+#define MAX_PARSE_INFO  2     // idCameraDef::load's, which doesn't nest, and [0] outside one
 static parseInfo_t parseInfo[MAX_PARSE_INFO];
 static int parseInfoNum;
 static parseInfo_t  *pi = &parseInfo[0];
@@ -63,10 +63,8 @@ Com_BeginParseSession
 ===================
 */
 void Com_BeginParseSession( const char *filename ) {
-	if ( parseInfoNum == MAX_PARSE_INFO - 1 ) {
-		Com_Error( ERR_FATAL, "Com_BeginParseSession: session overflow" );
-	}
-	parseInfoNum++;
+	// never nested: one a Com_Error dropped out of didn't end
+	parseInfoNum = 1;
 	pi = &parseInfo[parseInfoNum];
 
 	pi->lines = 1;

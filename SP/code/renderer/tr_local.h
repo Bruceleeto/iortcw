@@ -719,20 +719,30 @@ typedef struct {
 typedef struct {
 	surfaceType_t surfaceType;
 	int dlightBits;
-	int kind;                       // WLD_PLANAR, WLD_CURVE or WLD_TRIANGLES
-	qboolean hasPlane;              // every triangle on plane
+	byte kind;                      // WLD_PLANAR, WLD_CURVE or WLD_TRIANGLES
+	byte hasPlane;                  // every triangle on plane
+	unsigned short numVerts;        // under SHADER_MAX_VERTEXES
+	unsigned short numIndexes;      // 3 a triangle, as drawn, under SHADER_MAX_INDEXES
+	unsigned short numStripIndexes;
 	cplane_t plane;
-	vec3_t bounds[2];
+	short bounds[2][3];             // whole units, out from the surface's (R_WorldSurfBounds)
 	vec3_t origin;                  // the verts' xyz are from here
 	float xyzStep;                  // in steps this big
 	vec2_t stOrigin;                // and the st from here
 	float stStep;                   // in steps this big
-	int numVerts;
-	int numIndexes;                 // 3 a triangle, as drawn
-	int numStripIndexes;
 	wldVert_t       *verts;
 	unsigned short  *indexes;       // its triangles as strips (wldfile.h)
 } srfWorld_t;
+
+// a world surface's bounds as floats
+static ID_INLINE void R_WorldSurfBounds( const srfWorld_t *srf, vec3_t bounds[2] ) {
+	bounds[0][0] = srf->bounds[0][0];
+	bounds[0][1] = srf->bounds[0][1];
+	bounds[0][2] = srf->bounds[0][2];
+	bounds[1][0] = srf->bounds[1][0];
+	bounds[1][1] = srf->bounds[1][1];
+	bounds[1][2] = srf->bounds[1][2];
+}
 
 qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] );
 
@@ -851,7 +861,7 @@ typedef struct mnode_s {
 		};
 		struct {                // leaf specific
 			int cluster;
-			msurface_t  **firstmarksurface;
+			unsigned short *firstmarksurface;   // into surfaces
 			int nummarksurfaces;
 		};
 	};
@@ -885,7 +895,7 @@ typedef struct {
 	msurface_t  *surfaces;
 
 	int nummarksurfaces;
-	msurface_t  **marksurfaces;
+	unsigned short *marksurfaces;   // surfaces are under 64K (R_LoadMarksurfaces)
 
 	int numfogs;
 	fog_t       *fogs;
