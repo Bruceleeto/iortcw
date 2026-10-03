@@ -997,7 +997,7 @@ void R_PlaneForSurface( surfaceType_t *surfType, cplane_t *plane ) {
 			int i;
 
 			for ( i = 0 ; i < 3 ; i++ ) {
-				R_WorldVertXyz( w, &w->verts[w->indexes[i]], p[i] );
+				R_WorldVertXyz( w, &w->verts[w->indexes[i] & ~WLD_STRIP_START], p[i] );
 			}
 			PlaneFromPoints( plane4, p[0], p[1], p[2] );
 			VectorCopy( plane4, plane->normal );

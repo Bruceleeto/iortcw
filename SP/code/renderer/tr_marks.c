@@ -511,16 +511,16 @@ typedef struct {
 	int indexes[3];
 } markFace_t;
 
-static qboolean R_WorldTriangleFace( srfWorld_t *srf, int n, markFace_t *out ) {
+static qboolean R_WorldTriangleFace( srfWorld_t *srf, int *k, int *n, markFace_t *out ) {
 	vec3_t p[3];
 	vec3_t e1, e2, normal, vertNormal;
-	int j;
+	int j, tri[3];
 
-	if ( n * 3 + 2 >= srf->numIndexes ) {
+	if ( !R_WorldNextTriangle( srf, k, n, tri ) ) {
 		return qfalse;
 	}
 	for ( j = 0 ; j < 3 ; j++ ) {
-		R_WorldVertXyz( srf, &srf->verts[srf->indexes[n * 3 + j]], p[j] );
+		R_WorldVertXyz( srf, &srf->verts[tri[j]], p[j] );
 		VectorCopy( p[j], &out->face.points[0][0] + VERTEXSIZE * j );
 		out->indexes[j] = j;
 	}
@@ -534,7 +534,7 @@ static qboolean R_WorldTriangleFace( srfWorld_t *srf, int n, markFace_t *out ) {
 		return qtrue;
 	}
 	// facing the way the face's normal does
-	R_WorldVertNormal( &srf->verts[srf->indexes[n * 3]], vertNormal );
+	R_WorldVertNormal( &srf->verts[tri[0]], vertNormal );
 	VectorSubtract( p[1], p[0], e1 );
 	VectorSubtract( p[2], p[0], e2 );
 	CrossProduct( e1, e2, normal );
@@ -741,7 +741,7 @@ int R_MarkFragments( int orientation, const vec3_t *points, const vec3_t project
 
 			markFace_t tmp;
 			srfSurfaceFace_t *surf;
-			int face;
+			int face, triK = 0, triN = 0;
 
 			// the face, or each triangle of a .wld surface as a face
 			for ( face = 0 ; ; face++ ) {
@@ -750,7 +750,7 @@ int R_MarkFragments( int orientation, const vec3_t *points, const vec3_t project
 						break;
 					}
 					surf = ( srfSurfaceFace_t * ) surfaces[i];
-				} else if ( !R_WorldTriangleFace( (srfWorld_t *)surfaces[i], face, &tmp ) ) {
+				} else if ( !R_WorldTriangleFace( (srfWorld_t *)surfaces[i], &triK, &triN, &tmp ) ) {
 					break;
 				} else {
 					surf = &tmp.face;
@@ -881,9 +881,11 @@ int R_MarkFragments( int orientation, const vec3_t *points, const vec3_t project
 			if ( surf->kind == WLD_TRIANGLES && !r_marksOnTriangleMeshes->integer ) {
 				continue;
 			}
-			for ( k = 0 ; k < surf->numIndexes ; k += 3 ) {
+			int triK = 0, triN = 0, tri[3];
+
+			for ( k = 0 ; R_WorldNextTriangle( surf, &triK, &triN, tri ) ; k += 3 ) {
 				for ( j = 0 ; j < 3 ; j++ ) {
-					wldVert_t *wv = &surf->verts[surf->indexes[k + j]];
+					wldVert_t *wv = &surf->verts[tri[j]];
 					R_WorldVertXyz( surf, wv, clipPoints[0][j] );
 					R_WorldVertNormal( wv, normal );
 					VectorMA( clipPoints[0][j], MARKER_OFFSET, normal, clipPoints[0][j] );

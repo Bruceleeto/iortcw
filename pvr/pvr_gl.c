@@ -1237,6 +1237,14 @@ static void EmitTriangle( listBuffer_t *l, const clipVert_t *a, const clipVert_t
 	}
 }
 
+/* a strip being sent (its vertexes so far not ended): its last made the end */
+static void EndStrip( listBuffer_t *l ) {
+	if ( !l->overflowed && l->used > l->whole ) {
+		*(uint32_t *)( l->blocks[( l->used - 32 ) / LIST_BLOCK] + ( l->used - 32 ) % LIST_BLOCK ) = PVR_CMD_VERTEX_EOL;
+		l->whole = l->used;
+	}
+}
+
 /* ===================================================================== */
 /* vertex fetch                                                          */
 /* ===================================================================== */
@@ -1351,11 +1359,46 @@ static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void 
 
 #define V( n ) FetchVertex( idx( indices, n ) )
 	switch ( mode ) {
-	case GL_TRIANGLES:
+	case GL_TRIANGLES: {
+		/* a triangle that goes on from the one before as in a strip (the
+		   converter puts them so) is sent as one more vertex of a PVR strip,
+		   unless it's to be culled or clipped, which ends the strip */
+		int last[3] = { -1, -1, -1 }, odd = 0, open = 0;
+
 		for ( i = 0; i + 2 < count; i += 3 ) {
-			EmitTriangle( l, V( i ), V( i + 1 ), V( i + 2 ), depthScale );
+			int a = idx( indices, i ), b = idx( indices, i + 1 ), c = idx( indices, i + 2 );
+			const clipVert_t *va = FetchVertex( a ), *vb = FetchVertex( b ), *vc = FetchVertex( c );
+			int on = odd ? a == last[0] && b == last[2] : a == last[2] && b == last[1];
+			int ca = OutCode( va ), cb = OutCode( vb ), cc = OutCode( vc );
+
+			odd = on ? !odd : 0;
+			last[0] = a; last[1] = b; last[2] = c;
+			if ( ( ca | cb | cc ) & 1 || ca & cb & cc || Culled( va, vb, vc ) ) {
+				if ( open ) {
+					EndStrip( l );
+					open = 0;
+				}
+				EmitTriangle( l, va, vb, vc, depthScale );
+				continue;
+			}
+			if ( !( on && open ) ) {
+				if ( open ) {
+					EndStrip( l );
+				}
+				/* every other triangle of a strip is turned (c b d after
+				   a b c): from one of those, b c d, so the next (c d e)
+				   goes on from its last two */
+				EmitVertex( l, odd ? vb : va, PVR_CMD_VERTEX, depthScale );
+				EmitVertex( l, odd ? va : vb, PVR_CMD_VERTEX, depthScale );
+				open = 1;
+			}
+			EmitVertex( l, vc, PVR_CMD_VERTEX, depthScale );
+		}
+		if ( open ) {
+			EndStrip( l );
 		}
 		break;
+	}
 	case GL_TRIANGLE_STRIP:
 		for ( i = 0; i + 2 < count; i++ ) {
 			if ( i & 1 ) {

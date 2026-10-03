@@ -17,8 +17,12 @@
  *   SURFACES      wldSurface_t
  *   VERTS         wldVert_t, each surface's from its firstVert; one a
  *                 surface for all its vertexes alike
- *   INDEXES       unsigned short, 3 a triangle, each surface's from its
- *                 firstIndex, counted from the surface's firstVert
+ *   INDEXES       unsigned short, each surface's numStripIndexes from its
+ *                 firstIndex, counted from the surface's firstVert: its
+ *                 triangles as strips, the first index of each with
+ *                 WLD_STRIP_START. A strip a b c d e is the triangles
+ *                 a b c, c b d, c d e, ... (every other one turned so they
+ *                 all keep their winding), in that order
  *   LEAFSURFACES  int, into SURFACES
  *   NODES, LEAFS  the .bsp's, leafs pointing into the LEAFSURFACES here,
  *                 nodes into the .col's planes (CM_WorldPlanes)
@@ -31,7 +35,7 @@
 #define WLDFILE_H
 
 #define WLD_IDENT       ( ( 'D' << 24 ) + ( 'L' << 16 ) + ( 'W' << 8 ) + 'R' )   // "RWLD"
-#define WLD_VERSION     5
+#define WLD_VERSION     6
 
 enum {
 	WLD_LUMP_SHADERS,
@@ -87,7 +91,10 @@ enum {
 
 // a surface never has more than this, so it fits the shader's tess at once
 #define WLD_MAX_VERTS       2048
-#define WLD_MAX_INDEXES     ( 3 * 2048 )
+#define WLD_MAX_INDEXES     ( 3 * 2048 )    // as triangles, 3 each
+
+// on the first index of a strip (a surface's vertexes are fewer)
+#define WLD_STRIP_START     0x8000
 
 typedef struct {
 	int kind;                       // WLD_*
@@ -95,7 +102,8 @@ typedef struct {
 	int lightmapNum;                // LIGHTMAP_BY_VERTEX for triangles and flares
 	int fogNum;                     // -1 for none, as in the .bsp
 	int firstVert, numVerts;
-	int firstIndex, numIndexes;
+	int firstIndex, numIndexes;     // numIndexes: 3 a triangle, as drawn
+	int numStripIndexes;            // what's at firstIndex: its strips
 	float bounds[2][3];
 	float origin[3];                // what the xyz are from, on the xyzStep grid
 	float xyzStep;                  // a power of two

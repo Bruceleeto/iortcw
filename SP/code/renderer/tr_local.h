@@ -719,10 +719,13 @@ typedef struct {
 	vec2_t stOrigin;                // and the st from here
 	float stStep;                   // in steps this big
 	int numVerts;
-	int numIndexes;
+	int numIndexes;                 // 3 a triangle, as drawn
+	int numStripIndexes;
 	wldVert_t       *verts;
-	unsigned short  *indexes;
+	unsigned short  *indexes;       // its triangles as strips (wldfile.h)
 } srfWorld_t;
+
+qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] );
 
 #define R_WorldVertXyz( srf, v, out ) VectorMA( ( srf )->origin, ( srf )->xyzStep, ( v )->xyz, out )
 #define R_WorldVertNormal( v, out ) R_LatLongToNormal( out, ( ( v )->normal[0] << 8 ) | ( v )->normal[1] )

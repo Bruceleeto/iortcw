@@ -1425,7 +1425,7 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 			if ( in->kind < WLD_PLANAR || in->kind > WLD_TRIANGLES ||
 				 in->firstVert < 0 || in->numVerts < 0 || in->firstVert + in->numVerts > numVerts ||
 				 in->firstIndex < 0 || in->numIndexes < 3 || in->numIndexes % 3 ||
-				 in->firstIndex + in->numIndexes > numIndexes ||
+				 in->numStripIndexes < 3 || in->numStripIndexes > numIndexes - in->firstIndex ||
 				 in->numVerts >= SHADER_MAX_VERTEXES || in->numIndexes >= SHADER_MAX_INDEXES ) {
 				ri.Error( ERR_DROP, "LoadMap: bad surface %d in %s", i, s_worldData.name );
 			}
@@ -1433,11 +1433,32 @@ static void R_LoadWldSurfaces( fileHandle_t f, const wldHeader_t *h ) {
 			srf->kind = in->kind;
 			srf->numVerts = in->numVerts;
 			srf->numIndexes = in->numIndexes;
+			srf->numStripIndexes = in->numStripIndexes;
 			srf->verts = verts + in->firstVert;
 			srf->indexes = indexes + in->firstIndex;
-			for ( j = 0 ; j < srf->numIndexes ; j++ ) {
-				if ( srf->indexes[j] >= srf->numVerts ) {
-					ri.Error( ERR_DROP, "LoadMap: bad index in surface %d in %s", i, s_worldData.name );
+			// strips at least a triangle long, of its vertexes, as many triangles as it says
+			{
+				int tris = 0, n = 0;
+
+				for ( j = 0 ; j < srf->numStripIndexes ; j++, n++ ) {
+					int x = srf->indexes[j];
+
+					if ( x & WLD_STRIP_START ) {
+						if ( j && n < 3 ) {
+							break;
+						}
+						n = 0;
+						x &= ~WLD_STRIP_START;
+					} else if ( !j ) {
+						break;
+					}
+					if ( x >= srf->numVerts ) {
+						break;
+					}
+					tris += n >= 2;
+				}
+				if ( j < srf->numStripIndexes || n < 3 || tris * 3 != srf->numIndexes ) {
+					ri.Error( ERR_DROP, "LoadMap: bad indexes in surface %d in %s", i, s_worldData.name );
 				}
 			}
 			VectorCopy( in->bounds[0], srf->bounds[0] );

@@ -186,6 +186,12 @@ void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 #else
 	int primitives;
 
+#ifdef USE_PVR
+	// in one go: the PVR backend sends the triangles that go on from each
+	// other as strips itself (pvr_gl.c), cheaper than a glBegin a strip
+	qglDrawElements( GL_TRIANGLES, numIndexes, GL_INDEX_TYPE, indexes );
+	return;
+#endif
 	primitives = r_primitives->integer;
 
 	// default is to use triangles if compiled vertex arrays are present

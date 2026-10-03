@@ -759,6 +759,53 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 		}
 	}
 
+	/* each surface's triangles as strips (wldfile.h) */
+	std::vector<uint16_t> outIndexes;
+	for ( wldSurface_t &s : b.surfaces ) {
+		std::vector<uint32_t> tris( b.indexes.begin() + s.firstIndex, b.indexes.begin() + s.firstIndex + s.numIndexes );
+		int stripTris;
+
+		if ( StripOrder( tris, &stripTris ) < 0 ) {
+			tris.assign( b.indexes.begin() + s.firstIndex, b.indexes.begin() + s.firstIndex + s.numIndexes );
+		}
+		s.firstIndex = outIndexes.size();
+		/* a triangle that goes on from the strip before is one index more */
+		int last[3] = { -1, -1, -1 }, odd = 0;
+		for ( size_t t = 0; t < tris.size(); t += 3 ) {
+			uint32_t a = tris[t], c = tris[t + 2], bb = tris[t + 1];
+			bool on = odd ? a == (uint32_t)last[0] && bb == (uint32_t)last[2] : a == (uint32_t)last[2] && bb == (uint32_t)last[1];
+			odd = on ? !odd : 0;
+			if ( !on ) {
+				outIndexes.insert( outIndexes.end(), { (uint16_t)( a | WLD_STRIP_START ), (uint16_t)bb } );
+				st.strips++;
+			}
+			outIndexes.push_back( (uint16_t)c );
+			last[0] = a; last[1] = bb; last[2] = c;
+		}
+		s.numStripIndexes = outIndexes.size() - s.firstIndex;
+
+		/* and back, as the renderer does it */
+		std::vector<uint32_t> back;
+		for ( int k = 0, n = 0; k < s.numStripIndexes; k++, n++ ) {
+			const uint16_t *p = &outIndexes[s.firstIndex];
+			if ( p[k] & WLD_STRIP_START ) {
+				n = 0;
+			}
+			if ( n >= 2 ) {
+				uint32_t x = p[k - 2] & ~WLD_STRIP_START, y = p[k - 1] & ~WLD_STRIP_START;
+				if ( n & 1 ) {
+					std::swap( x, y );
+				}
+				back.insert( back.end(), { x, y, (uint32_t)p[k] } );
+			}
+		}
+		if ( back != tris ) {
+			fprintf( stderr, "%s: strips didn't check out\n", name );
+			return false;
+		}
+	}
+	st.stripIndexes += outIndexes.size();
+
 	std::vector<wldVert_t> outVerts( b.verts.size() );
 	for ( const wldSurface_t &s : b.surfaces ) {
 		for ( int v = s.firstVert; v < s.firstVert + s.numVerts; v++ ) {
@@ -791,7 +838,7 @@ bool ConvertWld( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Wld
 	PutLump( out, h, WLD_LUMP_FOGS, outFogs.data(), outFogs.size() * sizeof( outFogs[0] ) );
 	PutLump( out, h, WLD_LUMP_SURFACES, b.surfaces.data(), b.surfaces.size() * sizeof( b.surfaces[0] ) );
 	PutLump( out, h, WLD_LUMP_VERTS, outVerts.data(), outVerts.size() * sizeof( outVerts[0] ) );
-	PutLump( out, h, WLD_LUMP_INDEXES, b.indexes.data(), b.indexes.size() * sizeof( b.indexes[0] ) );
+	PutLump( out, h, WLD_LUMP_INDEXES, outIndexes.data(), outIndexes.size() * sizeof( outIndexes[0] ) );
 	PutLump( out, h, WLD_LUMP_LEAFSURFACES, outLeafSurfaces.data(), outLeafSurfaces.size() * sizeof( outLeafSurfaces[0] ) );
 	/* the planes are the .col's (CM_WorldPlanes), the used ones renumbered */
 	std::vector<int32_t> planeRemap;

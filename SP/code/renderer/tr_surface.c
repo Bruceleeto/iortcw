@@ -1205,6 +1205,36 @@ RB_SurfaceWorld
 A .wld surface: copied as it is, the indexes counted on from the tess's
 ==============
 */
+/*
+=============
+R_WorldNextTriangle
+
+A world surface's next triangle from its strips, as RB_SurfaceWorld draws
+them: *k and *n 0 for its first, false after its last
+=============
+*/
+qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] ) {
+	const unsigned short *p = srf->indexes;
+
+	while ( *k < srf->numStripIndexes ) {
+		int i = ( *k )++;
+
+		if ( p[i] & WLD_STRIP_START ) {
+			*n = 0;
+		}
+		if ( ( *n )++ >= 2 ) {
+			int x = p[i - 2] & ~WLD_STRIP_START, y = p[i - 1] & ~WLD_STRIP_START;
+
+			// every other one turned, so it keeps its winding
+			tri[0] = *n & 1 ? x : y;
+			tri[1] = *n & 1 ? y : x;
+			tri[2] = p[i];
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
 static void RB_SurfaceWorld( srfWorld_t *srf ) {
 	int i, j, first;
 	const wldVert_t *v;
@@ -1216,10 +1246,28 @@ static void RB_SurfaceWorld( srfWorld_t *srf ) {
 	dlightBits = srf->dlightBits;
 	tess.dlightBits |= dlightBits;
 
+	// the strips as triangles, in the same order (wldfile.h): a strip's
+	// triangles go on from each other, which the PVR backend sends as a strip
 	first = tess.numVertexes;
 	tessIndexes = tess.indexes + tess.numIndexes;
-	for ( i = 0 ; i < srf->numIndexes ; i++ ) {
-		tessIndexes[i] = first + srf->indexes[i];
+	{
+		const unsigned short *p = srf->indexes, *end = p + srf->numStripIndexes;
+
+		while ( p < end ) {
+			glIndex_t a = first + ( *p++ & ~WLD_STRIP_START ), b = first + *p++, c;
+			int odd = 0;
+
+			do {
+				c = first + *p++;
+				tessIndexes[0] = odd ? b : a;
+				tessIndexes[1] = odd ? a : b;
+				tessIndexes[2] = c;
+				tessIndexes += 3;
+				a = b;
+				b = c;
+				odd ^= 1;
+			} while ( p < end && !( *p & WLD_STRIP_START ) );
+		}
 	}
 	tess.numIndexes += srf->numIndexes;
 

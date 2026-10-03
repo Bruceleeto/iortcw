@@ -405,6 +405,7 @@ int main( int argc, char **argv ) {
 		printf( "wld: %d files, %.1f MB of bsp -> %.1f MB; %ld surfaces -> %ld; %ld vertexes, %ld triangles; light grids %.1f MB -> %.1f MB\n",
 				wld.files, wld.bytesIn / 1048576.0, wld.bytesOut / 1048576.0, wld.surfacesIn, wld.surfacesOut,
 				wld.verts, wld.triangles, wld.gridIn / 1048576.0, wld.gridOut / 1048576.0 );
+		printf( "     the triangles as %ld strips, %ld indexes (%ld as a list)\n", wld.strips, wld.stripIndexes, wld.triangles * 3 );
 		if ( wld.dropped ) {
 			printf( "wld: %ld surfaces left out by map edits\n", wld.dropped );
 		}

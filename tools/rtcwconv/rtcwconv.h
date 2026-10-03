@@ -147,6 +147,7 @@ struct WldStats {
 	long surfacesIn, surfacesOut, verts, triangles;
 	size_t gridIn, gridOut;
 	long dropped;                   /* surfaces left out by a map edit */
+	long strips, stripIndexes;
 };
 
 /* .bsp -> .wld: the surfaces ready to draw, curves cut at r_subdivisions
