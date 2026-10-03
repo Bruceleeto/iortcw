@@ -75,7 +75,10 @@ char *Sys_DefaultHomePath(void)
 #endif
 
 #ifdef _arch_dreamcast
-	return "/cd";	// the same as the base path: nothing is written on a Dreamcast
+	// searched as well as the base path (/cd), and first: dcload's /pc, so the
+	// game runs from the host's main/ (dc-tool -c on the directory it's in)
+	// without a disc; nothing on a Dreamcast is written, there or anywhere
+	return "/pc";
 #endif
 
 	if( !*homePath && com_homepath != NULL )

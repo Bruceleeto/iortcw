@@ -5661,6 +5661,13 @@ void _UI_KeyEvent( int key, qboolean down ) {
 		if ( menu ) {
 			if ( key == K_ESCAPE && down && !Menus_AnyFullScreenVisible() ) {
 				Menus_CloseAll();
+			} else if ( ( key == K_ESCAPE || key == K_ENTER ) && down && menu->window.name &&
+						!Q_stricmp( menu->window.name, "pregame" ) ) {
+				// the briefing's arrow (bottom right) for the keys: a controller's Start
+				// or Y, or the keyboard, start the level without the cursor
+				char *script = "playerstart";
+
+				UI_RunMenuScript( &script );
 			} else {
 				Menu_HandleKey( menu, key, down );
 			}

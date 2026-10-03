@@ -3381,6 +3381,16 @@ void FS_AddGameDirectory( const char *path, const char *dir ) {
 	Q_strncpyz( search->dir->fullpath, curpath, sizeof( search->dir->fullpath ) );
 	Q_strncpyz( search->dir->gamedir, dir, sizeof( search->dir->gamedir ) );
 	FS_LoadDirIndex( search->dir );
+#ifdef _arch_dreamcast
+	// make disc gives every game dir a files.idx: without one there's nothing
+	// there (no disc in /cd, no dcload for /pc), and each look in it would be
+	// another try of the drive
+	if ( !search->dir->index ) {
+		Z_Free( search->dir );
+		Z_Free( search );
+		return;
+	}
+#endif
 	search->next = fs_searchpaths;
 	fs_searchpaths = search;
 

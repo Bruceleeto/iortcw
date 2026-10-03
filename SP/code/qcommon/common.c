@@ -1653,6 +1653,11 @@ void Com_MemoryReport( const char *when ) {
 	Com_Printf( "MEM %s: hunk %d K (temp %d K now, %d K peak); malloc %d K in use, %d K free\n",
 				when, hunk_low.permanent / 1024, hunk_high.temp / 1024, hunk_high.tempHighwater / 1024,
 				inUse / 1024, Hunk_FreeRAM() / 1024 );
+	{
+		extern size_t pvr_mem_available( void );    // dc/pvr.h: the texture memory left
+
+		Com_Printf( "MEM %s: VRAM %d K free\n", when, (int)( pvr_mem_available() / 1024 ) );
+	}
 #ifdef DCSIM
 	DCSim_DumpAllocs( when );
 	{

@@ -415,7 +415,9 @@ void AAS_ParseBSPEntities( void ) {
 			if ( !strcmp( token.string, "}" ) ) {
 				break;
 			}
-			bufsize += sizeof( bsp_epair_t );
+			// each pair on a pointer's alignment: the strings between them are
+			// any length, and the SH4 faults on a misaligned write
+			bufsize = PAD( bufsize, sizeof( void * ) ) + sizeof( bsp_epair_t );
 			if ( token.type != TT_STRING ) {
 				ScriptError( script, "invalid %s", token.string );
 				AAS_FreeBSPEntities();
@@ -463,6 +465,7 @@ void AAS_ParseBSPEntities( void ) {
 			if ( !strcmp( token.string, "}" ) ) {
 				break;
 			}
+			buftrav = PADP( buftrav, sizeof( void * ) );    // as bufsize was counted
 			epair = (bsp_epair_t *) buftrav; buftrav += sizeof( bsp_epair_t );
 			epair->next = ent->epairs;
 			ent->epairs = epair;
