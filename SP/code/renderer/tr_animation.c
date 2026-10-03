@@ -53,13 +53,13 @@ static glIndex_t *pIndexes;
 static int indexes;
 static int baseIndex, baseVertex, oldIndexes;
 static int numVerts;
-static mdsVertex_t     *v;
+static mdscVertex_t    *v;
 static mdsBoneFrame_t bones[MDS_MAX_BONES], rawBones[MDS_MAX_BONES], oldBones[MDS_MAX_BONES];
 static char validBones[MDS_MAX_BONES];
 static char newBones[ MDS_MAX_BONES ];
 static mdsBoneFrame_t  *bonePtr, *bone, *parentBone;
 static mdsBoneFrameCompressed_t    *cBonePtr, *cTBonePtr, *cOldBonePtr, *cOldTBonePtr, *cBoneList, *cOldBoneList, *cBoneListTorso, *cOldBoneListTorso;
-static mdsBoneInfo_t   *boneInfo, *thisBoneInfo, *parentBoneInfo;
+static mdscBoneInfo_t  *boneInfo, *thisBoneInfo, *parentBoneInfo;
 static mdsFrame_t      *frame, *torsoFrame;
 static mdsFrame_t      *oldFrame, *oldTorsoFrame;
 static short           *sh, *sh2;
@@ -70,7 +70,7 @@ static vec3_t vec, v2, dir;
 static float diff, a1, a2;
 static int render_count;
 static float lodRadius, lodScale;
-static int             *collapse_map, *pCollapseMap;
+static unsigned short  *collapse_map, *pCollapseMap;
 static short collapse[ MDS_MAX_VERTS ], *pCollapse;    // vertex numbers, < MDS_MAX_VERTS
 static int p0, p1, p2;
 static qboolean isTorso, fullTorso;
@@ -975,7 +975,7 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 	cBoneList = frame->bones;
 	cBoneListTorso = torsoFrame->bones;
 
-	boneInfo = ( mdsBoneInfo_t * )( (byte *)header + header->ofsBones );
+	boneInfo = ( mdscBoneInfo_t * )( (byte *)header + header->ofsBones );
 	boneRefs = boneList;
 	//
 	Matrix3Transpose( refent->torsoAxis, torsoAxis );
@@ -1154,7 +1154,7 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 
 //DBG_SHOWTIME
 
-	collapse_map   = ( int * )( ( byte * )surface + surface->ofsCollapseMap );
+	collapse_map   = ( unsigned short * )( ( byte * )surface + surface->ofsCollapseMap );
 	indexes = surface->numTriangles * 3;
 	baseIndex = tess.numIndexes;
 	baseVertex = tess.numVertexes;
@@ -1219,25 +1219,34 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	// deform the vertexes by the lerped bones
 	//
 	numVerts = surface->numVerts;
-	v = ( mdsVertex_t * )( (byte *)surface + surface->ofsVerts );
+	// packed in shorts and bytes (mdsc/mdsc.h)
+	v = ( mdscVertex_t * )( (byte *)surface + surface->ofsVerts );
 	tempVert = ( float * )( tess.xyz + baseVertex );
 	tempNormal = ( float * )( tess.normal + baseVertex );
 	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
-		mdsWeight_t *w;
+		const mdscWeight_t *w = (const mdscWeight_t *)( v + 1 );
+		vec3_t ofs;
 
 		VectorClear( tempVert );
 
-		w = v->weights;
 		for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
 			bone = &bones[w->boneIndex];
-			LocalAddScaledMatrixTransformVectorTranslate( w->offset, w->boneWeight, bone->matrix, bone->translation, tempVert );
+			ofs[0] = w->offset[0] * ( 1.0f / MDSC_OFS_SCALE );
+			ofs[1] = w->offset[1] * ( 1.0f / MDSC_OFS_SCALE );
+			ofs[2] = w->offset[2] * ( 1.0f / MDSC_OFS_SCALE );
+			LocalAddScaledMatrixTransformVectorTranslate( ofs, w->boneWeight * ( 1.0f / MDSC_WEIGHT_SCALE ),
+														  bone->matrix, bone->translation, tempVert );
 		}
-		LocalMatrixTransformVector( v->normal, bones[v->weights[0].boneIndex].matrix, tempNormal );
+		w = (const mdscWeight_t *)( v + 1 );
+		ofs[0] = v->normal[0] * ( 1.0f / MDSC_NORMAL_SCALE );
+		ofs[1] = v->normal[1] * ( 1.0f / MDSC_NORMAL_SCALE );
+		ofs[2] = v->normal[2] * ( 1.0f / MDSC_NORMAL_SCALE );
+		LocalMatrixTransformVector( ofs, bones[w->boneIndex].matrix, tempNormal );
 
-		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
-		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0] * ( 1.0f / MDSC_TC_SCALE );
+		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1] * ( 1.0f / MDSC_TC_SCALE );
 
-		v = (mdsVertex_t *)&v->weights[v->numWeights];
+		v = (mdscVertex_t *)( w + v->numWeights );
 	}
 
 	DBG_SHOWTIME
@@ -1338,7 +1347,7 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 R_RecursiveBoneListAdd
 ===============
 */
-void R_RecursiveBoneListAdd( int bi, int *boneList, int *numBones, mdsBoneInfo_t *boneInfoList ) {
+void R_RecursiveBoneListAdd( int bi, int *boneList, int *numBones, mdscBoneInfo_t *boneInfoList ) {
 
 	if ( boneInfoList[ bi ].parent >= 0 ) {
 
@@ -1359,7 +1368,7 @@ int R_GetBoneTag( orientation_t *outTag, mdsHeader_t *mds, int startTagIndex, co
 
 	int i;
 	mdsTag_t    *pTag;
-	mdsBoneInfo_t *boneInfoList;
+	mdscBoneInfo_t *boneInfoList;
 	int boneList[ MDS_MAX_BONES ];
 	int numBones;
 
@@ -1387,7 +1396,7 @@ int R_GetBoneTag( orientation_t *outTag, mdsHeader_t *mds, int startTagIndex, co
 
 	// now build the list of bones we need to calc to get this tag's bone information
 
-	boneInfoList = ( mdsBoneInfo_t * )( (byte *)mds + mds->ofsBones );
+	boneInfoList = ( mdscBoneInfo_t * )( (byte *)mds + mds->ofsBones );
 	numBones = 0;
 
 	R_RecursiveBoneListAdd( pTag->boneIndex, boneList, &numBones, boneInfoList );

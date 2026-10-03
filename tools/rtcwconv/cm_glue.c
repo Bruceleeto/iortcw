@@ -128,13 +128,14 @@ int ColGeneratePatch( int width, int height, const float *xyz, unsigned char **o
 		PutInt( &p, pc->planes[i].signbits );
 	}
 	for ( i = 0; i < pc->numFacets; i++ ) {
-		const facet_t *f = &pc->facets[i];
+		const cFacet_t *f = &pc->facets[i];
+		const unsigned short *b = pc->borders + f->firstBorder;
 		PutInt( &p, f->surfacePlane );
 		PutInt( &p, f->numBorders );
 		for ( j = 0; j < f->numBorders; j++ ) {
-			PutInt( &p, f->borderPlanes[j] );
-			PutInt( &p, f->borderInward[j] );
-			PutInt( &p, f->borderNoAdjust[j] );
+			PutInt( &p, BORDER_PLANE( b[j] ) );
+			PutInt( &p, BORDER_IS_INWARD( b[j] ) );
+			PutInt( &p, ( b[j] & BORDER_NOADJUST ) != 0 );
 		}
 	}
 	return size;

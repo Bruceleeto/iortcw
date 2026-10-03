@@ -10,8 +10,10 @@
  * relative to it, so is kept once. Every frame is then decoded again with the
  * game's own decoder to measure how far it moved.
  *
- * The bones, surfaces and tags are copied as they are, the triangles put in
- * strip order. The layout is described in mdsc/mdsc.h.
+ * The tags are copied as they are, the bones without their names, the
+ * triangles put in strip order, the vertexes packed in shorts and bytes (each
+ * checked against the .mds) and the collapse maps in shorts. The layout is
+ * described in mdsc/mdsc.h.
  */
 #include <algorithm>
 #include <map>
@@ -241,6 +243,55 @@ static bool ParseMds( const std::vector<uint8_t> &in, MdsSrc &s, const char *nam
 	return true;
 }
 
+/* the packed vertexes against the .mds's: the same weights, bones and
+   counts, and how far off the rest came out; too far fails the file */
+static void CheckVertexes( const uint8_t *src, const uint8_t *packed, int numVerts, MdsStats &st, const char *name,
+						   const char *surf ) {
+	for ( int i = 0; i < numVerts; i++ ) {
+		float normal[3], tc[2], len = 0, dot = 0;
+		int32_t numWeights;
+		mdscVertex_t v;
+		memcpy( normal, src, 12 );
+		memcpy( tc, src + 12, 8 );
+		memcpy( &numWeights, src + 20, 4 );
+		memcpy( &v, packed, sizeof( v ) );
+		bool bad = v.numWeights != numWeights;
+		for ( int j = 0; j < 2; j++ ) {
+			st.maxTcErr = std::max( st.maxTcErr, fabsf( v.texCoords[j] / MDSC_TC_SCALE - tc[j] ) );
+		}
+		for ( int j = 0; j < 3; j++ ) {
+			float n = v.normal[j] / MDSC_NORMAL_SCALE;
+			len += n * n;
+			dot += n * normal[j];
+		}
+		if ( len > 0 ) {
+			float angle = acosf( std::min( 1.0f, dot / sqrtf( len * ( normal[0] * normal[0] + normal[1] * normal[1]
+																	  + normal[2] * normal[2] ) ) ) ) * ( 180.0f / (float)M_PI );
+			st.maxNormalAngle = std::max( st.maxNormalAngle, angle );
+		}
+		for ( int k = 0; !bad && k < numWeights; k++ ) {
+			int32_t boneIndex;
+			float boneWeight, offset[3];
+			mdscWeight_t w;
+			memcpy( &boneIndex, src + 32 + k * 20, 4 );
+			memcpy( &boneWeight, src + 36 + k * 20, 4 );
+			memcpy( offset, src + 40 + k * 20, 12 );
+			memcpy( &w, packed + sizeof( v ) + k * sizeof( w ), sizeof( w ) );
+			bad = w.boneIndex != boneIndex;
+			st.maxWeightErr = std::max( st.maxWeightErr, fabsf( w.boneWeight / MDSC_WEIGHT_SCALE - boneWeight ) );
+			for ( int j = 0; j < 3; j++ ) {
+				st.maxOfsErr = std::max( st.maxOfsErr, fabsf( w.offset[j] / MDSC_OFS_SCALE - offset[j] ) );
+			}
+		}
+		if ( bad || st.maxTcErr > 0.001f || st.maxOfsErr > 0.01f || st.maxWeightErr > 0.001f || st.maxNormalAngle > 2.0f ) {
+			fprintf( stderr, "%s: %s: vertex %d packed wrong or too far off\n", name, surf, i );
+			exit( 1 );
+		}
+		src += 32 + numWeights * 20;
+		packed += sizeof( v ) + numWeights * sizeof( mdscWeight_t );
+	}
+}
+
 /* the header, then the bones, and the tags and surfaces (mesh), as they
    are but for the triangles put in strip order; the header's offsets set */
 static void PutMesh( Out &o, const MdsSrc &s, bool mesh, MdsStats &st, const char *name ) {
@@ -250,7 +301,13 @@ static void PutMesh( Out &o, const MdsSrc &s, bool mesh, MdsStats &st, const cha
 	o.put( &h, sizeof( h ) );
 
 	size_t ofsBones = o.pos();
-	o.put( in.data() + h.ofsBones, s.nb * BONE_INFO_SIZE );
+	for ( int b = 0; b < s.nb; b++ ) {
+		mdscBoneInfo_t bi;
+		memcpy( &bi, in.data() + h.ofsBones + b * BONE_INFO_SIZE + 64, sizeof( bi ) );
+		o.put( &bi, sizeof( bi ) );
+	}
+	st.meshIn += s.nb * BONE_INFO_SIZE;
+	st.meshOut += s.nb * sizeof( mdscBoneInfo_t );
 	size_t ofsTags = o.pos();
 	if ( mesh ) {
 		o.put( in.data() + h.ofsTags, h.numTags * TAG_SIZE );
@@ -273,29 +330,52 @@ static void PutMesh( Out &o, const MdsSrc &s, bool mesh, MdsStats &st, const cha
 		}
 		st.tris += surf.numTriangles;
 
-		/* the surface with its triangles as strips (MDSC_VERSION), the rest
-		   moved up into the room that leaves */
+		/* the surface: its header, its triangles as strips, its vertexes
+		   packed, its collapse map in shorts and its bone references */
 		long numStrips = 0;
 		std::vector<uint16_t> strip = StripIndexes( tris, &numStrips );
 		st.strips += numStrips;
 		strip.resize( ( strip.size() + 1 ) & ~1, 0 );
-		const int triBytes = surf.numTriangles * 12, stripBytes = strip.size() * 2, delta = triBytes - stripBytes;
-		size_t surfAt = o.pos();
-		o.put( in.data() + at, surf.ofsTriangles );
-		o.put( strip.data(), stripBytes );
-		o.put( in.data() + at + surf.ofsTriangles + triBytes, surf.ofsEnd - surf.ofsTriangles - triBytes );
-		o.set32( surfAt + offsetof( MdsSurface, ofsHeader ), -(int32_t)surfAt );
-		for ( size_t f : { offsetof( MdsSurface, ofsVerts ), offsetof( MdsSurface, ofsCollapseMap ),
-						   offsetof( MdsSurface, ofsBoneReferences ), offsetof( MdsSurface, ofsEnd ) } ) {
-			int32_t v;
-			memcpy( &v, &o.b[surfAt + f], 4 );
-			if ( v >= surf.ofsTriangles + triBytes ) {
-				o.set32( surfAt + f, v - delta );
-			} else if ( v > surf.ofsTriangles ) {
-				fprintf( stderr, "%s: %s: something in its triangles\n", name, surf.name );
+		const uint8_t *src = in.data() + at;
+		std::vector<uint8_t> verts( surf.ofsEnd );
+		int vertsIn = 0;
+		int vertsOut = MDSC_PackVertexes( src + surf.ofsVerts, surf.numVerts, verts.data(), &vertsIn );
+		if ( vertsOut < 0 || surf.ofsVerts + vertsIn > surf.ofsEnd ) {
+			fprintf( stderr, "%s: %s: a vertex doesn't fit an MDSC\n", name, surf.name );
+			exit( 1 );
+		}
+		verts.resize( vertsOut );
+		CheckVertexes( src + surf.ofsVerts, verts.data(), surf.numVerts, st, name, surf.name );
+		std::vector<uint16_t> collapse( surf.numVerts );
+		for ( int v = 0; v < surf.numVerts; v++ ) {
+			int32_t c;
+			memcpy( &c, src + surf.ofsCollapseMap + v * 4, 4 );
+			if ( c < 0 || c >= surf.numVerts ) {
+				fprintf( stderr, "%s: %s: bad collapse map\n", name, surf.name );
 				exit( 1 );
 			}
+			collapse[v] = (uint16_t)c;
 		}
+		st.meshIn += vertsIn + surf.numVerts * 4;
+		st.meshOut += vertsOut + surf.numVerts * 2;
+
+		size_t surfAt = o.pos();
+		MdsSurface os = surf;
+		o.put( &os, sizeof( os ) );
+		os.ofsTriangles = (int32_t)( o.pos() - surfAt );
+		o.put( strip.data(), strip.size() * 2 );
+		o.align();
+		os.ofsVerts = (int32_t)( o.pos() - surfAt );
+		o.put( verts.data(), verts.size() );
+		o.align();
+		os.ofsCollapseMap = (int32_t)( o.pos() - surfAt );
+		o.put( collapse.data(), collapse.size() * 2 );
+		o.align();
+		os.ofsBoneReferences = (int32_t)( o.pos() - surfAt );
+		o.put( src + surf.ofsBoneReferences, surf.numBoneReferences * 4 );
+		os.ofsEnd = (int32_t)( o.pos() - surfAt );
+		os.ofsHeader = -(int32_t)surfAt;
+		memcpy( &o.b[surfAt], &os, sizeof( os ) );
 
 		at += surf.ofsEnd;
 	}

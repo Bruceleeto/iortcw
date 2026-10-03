@@ -75,8 +75,8 @@ typedef struct {
 	int signbits;           // signx + (signy<<1) + (signz<<2), used as lookup during collision
 } patchPlane_t;
 
-// planes are a patch's, under MAX_PATCH_PLANES, or -1: shorts (some 1300
-// bytes a facet to 112)
+// a facet as it's made: planes are a patch's, under MAX_PATCH_PLANES, or -1
+// (CM_ValidateFacet drops a facet with one)
 typedef struct {
 	short surfacePlane;
 	short numBorders;           // 3 or four + 6 axial bevels + 4 or 3 * 4 edge bevels
@@ -85,12 +85,27 @@ typedef struct {
 	byte borderNoAdjust[4 + 6 + 16];
 } facet_t;
 
+// a facet as it's kept: its borders, numBorders of them, in the patch's
+// borders from firstBorder, each a plane and its two flags in a short
+// (a facet uses some 12 of facet_t's 26: 108 bytes to some 32)
+typedef struct {
+	short surfacePlane;
+	short numBorders;
+	int firstBorder;
+} cFacet_t;
+
+#define BORDER_INWARD           0x4000
+#define BORDER_NOADJUST         0x8000
+#define BORDER_PLANE( b )       ( (b) & 0x3fff )
+#define BORDER_IS_INWARD( b )   ( ( (b) >> 14 ) & 1 )
+
 typedef struct patchCollide_s {
 	vec3_t bounds[2];
 	int numPlanes;              // surface planes plus edge planes
 	patchPlane_t    *planes;
 	int numFacets;
-	facet_t *facets;
+	cFacet_t *facets;
+	unsigned short *borders;
 } patchCollide_t;
 
 

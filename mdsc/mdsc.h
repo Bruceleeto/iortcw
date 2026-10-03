@@ -28,11 +28,12 @@ extern "C" {
 #endif
 
 #define MDSC_IDENT          ( ( 'C' << 24 ) + ( 'S' << 16 ) + ( 'D' << 8 ) + 'M' )
-/* its surfaces' triangles as strips (STRIP_START in tr_local.h), the rest
-   of each surface moved up into the room that leaves (4 and 5 had them as
-   ints, 2 and 3 only key lists) */
-#define MDSC_VERSION        6
-#define MDSC_VERSION_SHARED 7       /* frames shared with another MDSC: mdscShare_t */
+/* its surfaces' triangles as strips (STRIP_START in tr_local.h), its
+   vertexes packed (mdscVertex_t), its collapse maps in shorts and its bones
+   without their names (mdscBoneInfo_t) (6 and 7 had them as in the .mds,
+   4 and 5 the triangles as ints, 2 and 3 only key lists) */
+#define MDSC_VERSION        8
+#define MDSC_VERSION_SHARED 9       /* frames shared with another MDSC: mdscShare_t */
 
 #define MDSC_MAX_BONES      128     /* MDS_MAX_BONES */
 #define MDSC_FRAME_FLOATS   13      /* bounds[2], localOrigin, radius, parentOffset */
@@ -101,6 +102,46 @@ typedef struct {
 	int ofsSegments;                /* mdscSegment_t[numSegments] by first, from the start of this */
 	int ofsAnim;                    /* its mdscAnim_t, from the start of this */
 } mdscShare_t;
+
+/*
+ * The mesh. A surface (mdsSurface_t) is its header, its triangles as strips,
+ * its vertexes, its collapse map (unsigned short[numVerts], padded to 4) and
+ * its bone references (int[numBoneReferences]). A vertex is an mdscVertex_t
+ * then its mdscWeight_t[numWeights], all in shorts and bytes (2-aligned).
+ * The renderer has an .mds's put the same way when it's loaded
+ * (MDSC_PackVertexes), so it has the one kind.
+ */
+#define MDSC_TC_SCALE       16384.0f    /* texture coordinates: within +-2 */
+#define MDSC_OFS_SCALE      256.0f      /* weight offsets: within +-128 */
+#define MDSC_WEIGHT_SCALE   65535.0f
+#define MDSC_NORMAL_SCALE   127.0f
+
+typedef struct {
+	short texCoords[2];             /* / MDSC_TC_SCALE */
+	signed char normal[3];          /* / MDSC_NORMAL_SCALE */
+	unsigned char numWeights;
+} mdscVertex_t;
+
+typedef struct {
+	short offset[3];                /* / MDSC_OFS_SCALE */
+	unsigned short boneWeight;      /* / MDSC_WEIGHT_SCALE */
+	unsigned char boneIndex, pad;
+} mdscWeight_t;
+
+/* an mdsBoneInfo_t without its name, which nothing reads */
+typedef struct {
+	int parent;
+	float torsoWeight;
+	float parentDist;
+	int flags;
+} mdscBoneInfo_t;
+
+/* Packs numVerts .mds vertexes (mdsVertex_t, its weights after it) from in
+ * to out, which may be in itself (none comes out bigger, each is read before
+ * it's written over). Returns the bytes written, -1 if one doesn't fit (a
+ * texture coordinate, offset or bone index out of range, or over 255
+ * weights); *inSize is set to the bytes read. */
+int MDSC_PackVertexes( const void *in, int numVerts, void *out, int *inSize );
 
 typedef float mdscMatrix_t[3][3];   /* rows are the bone's axes, as AnglesToAxis */
 

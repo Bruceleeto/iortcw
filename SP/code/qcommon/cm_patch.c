@@ -92,7 +92,7 @@ int c_totalPatchSurfaces;
 int c_totalPatchEdges;
 
 static const patchCollide_t *debugPatchCollide;
-static const facet_t        *debugFacet;
+static const cFacet_t       *debugFacet;
 static qboolean debugBlock;
 static vec3_t debugBlockPoints[4];
 
@@ -1016,6 +1016,33 @@ typedef enum {
 
 /*
 ==================
+CM_KeepFacets
+
+The facets as they're kept: each only the borders it has
+==================
+*/
+static void CM_KeepFacets( patchCollide_t *pf, const facet_t *in, int count ) {
+	int i, j, numBorders = 0;
+
+	for ( i = 0 ; i < count ; i++ ) {
+		numBorders += in[i].numBorders;
+	}
+	pf->facets = Hunk_Alloc( count * sizeof( *pf->facets ), h_high );
+	pf->borders = Hunk_Alloc( numBorders * sizeof( *pf->borders ), h_high );
+	numBorders = 0;
+	for ( i = 0 ; i < count ; i++, in++ ) {
+		pf->facets[i].surfacePlane = in->surfacePlane;
+		pf->facets[i].numBorders = in->numBorders;
+		pf->facets[i].firstBorder = numBorders;
+		for ( j = 0 ; j < in->numBorders ; j++ ) {
+			pf->borders[numBorders++] = in->borderPlanes[j] | ( in->borderInward[j] ? BORDER_INWARD : 0 ) |
+										( in->borderNoAdjust[j] ? BORDER_NOADJUST : 0 );
+		}
+	}
+}
+
+/*
+==================
 CM_PatchCollideFromGrid
 ==================
 */
@@ -1175,8 +1202,7 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	// copy the results out
 	pf->numPlanes = numPlanes;
 	pf->numFacets = numFacets;
-	pf->facets = Hunk_Alloc( numFacets * sizeof( *pf->facets ), h_high );
-	Com_Memcpy( pf->facets, facets, numFacets * sizeof( *pf->facets ) );
+	CM_KeepFacets( pf, facets, numFacets );
 	pf->planes = Hunk_Alloc( numPlanes * sizeof( *pf->planes ), h_high );
 	Com_Memcpy( pf->planes, planes, numPlanes * sizeof( *pf->planes ) );
 
@@ -1287,7 +1313,8 @@ void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollid
 	float intersection[MAX_PATCH_PLANES];
 	float intersect;
 	const patchPlane_t  *planes;
-	const facet_t   *facet;
+	const cFacet_t  *facet;
+	const unsigned short *border;
 	int i, j, k;
 	float offset;
 	float d1, d2;
@@ -1336,9 +1363,10 @@ void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollid
 		if ( intersect > tw->trace.fraction ) {
 			continue;       // already hit something closer
 		}
+		border = pc->borders + facet->firstBorder;
 		for ( j = 0 ; j < facet->numBorders ; j++ ) {
-			k = facet->borderPlanes[j];
-			if ( frontFacing[k] ^ facet->borderInward[j] ) {
+			k = BORDER_PLANE( border[j] );
+			if ( frontFacing[k] ^ BORDER_IS_INWARD( border[j] ) ) {
 				if ( intersection[k] > intersect ) {
 					break;
 				}
@@ -1432,7 +1460,8 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 	int i, j, hit, hitnum;
 	float offset, enterFrac, leaveFrac, t;
 	patchPlane_t *planes;
-	facet_t *facet;
+	const cFacet_t *facet;
+	const unsigned short *border;
 	float plane[4] = {0, 0, 0, 0}, bestplane[4] = {0, 0, 0, 0};
 	vec3_t startp, endp;
 #ifndef BSPC
@@ -1485,9 +1514,10 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 			Vector4Copy( plane, bestplane );
 		}
 
+		border = pc->borders + facet->firstBorder;
 		for ( j = 0; j < facet->numBorders; j++ ) {
-			planes = &pc->planes[ facet->borderPlanes[j] ];
-			if ( facet->borderInward[j] ) {
+			planes = &pc->planes[ BORDER_PLANE( border[j] ) ];
+			if ( border[j] & BORDER_INWARD ) {
 				VectorNegate( planes->plane, plane );
 				plane[3] = -planes->plane[3];
 			} else {
@@ -1572,7 +1602,8 @@ qboolean CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchColli
 	int i, j;
 	float offset, t;
 	patchPlane_t *planes;
-	facet_t *facet;
+	const cFacet_t *facet;
+	const unsigned short *border;
 	float plane[4];
 	vec3_t startp;
 
@@ -1606,9 +1637,10 @@ qboolean CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchColli
 			continue;
 		}
 
+		border = pc->borders + facet->firstBorder;
 		for ( j = 0; j < facet->numBorders; j++ ) {
-			planes = &pc->planes[ facet->borderPlanes[j] ];
-			if ( facet->borderInward[j] ) {
+			planes = &pc->planes[ BORDER_PLANE( border[j] ) ];
+			if ( border[j] & BORDER_INWARD ) {
 				VectorNegate( planes->plane, plane );
 				plane[3] = -planes->plane[3];
 			} else {
@@ -1671,7 +1703,8 @@ void CM_DrawDebugSurface( void ( *drawPoly )( int color, int numPoints, float *p
 	static cvar_t   *cv2;
 #endif
 	const patchCollide_t    *pc;
-	facet_t         *facet;
+	const cFacet_t  *facet;
+	const unsigned short *border;
 	winding_t       *w;
 	int i, j, k, n;
 	int curplanenum, planenum, curinward, inward;
@@ -1702,12 +1735,13 @@ void CM_DrawDebugSurface( void ( *drawPoly )( int color, int numPoints, float *p
 	pc = debugPatchCollide;
 
 	for ( i = 0, facet = pc->facets ; i < pc->numFacets ; i++, facet++ ) {
+		border = pc->borders + facet->firstBorder;
 
 		for ( k = 0 ; k < facet->numBorders + 1; k++ ) {
 			//
 			if ( k < facet->numBorders ) {
-				planenum = facet->borderPlanes[k];
-				inward = facet->borderInward[k];
+				planenum = BORDER_PLANE( border[k] );
+				inward = BORDER_IS_INWARD( border[k] );
 			} else {
 				planenum = facet->surfacePlane;
 				inward = qfalse;
@@ -1738,8 +1772,8 @@ void CM_DrawDebugSurface( void ( *drawPoly )( int color, int numPoints, float *p
 			for ( j = 0 ; j < facet->numBorders + 1 && w; j++ ) {
 				//
 				if ( j < facet->numBorders ) {
-					curplanenum = facet->borderPlanes[j];
-					curinward = facet->borderInward[j];
+					curplanenum = BORDER_PLANE( border[j] );
+					curinward = BORDER_IS_INWARD( border[j] );
 				} else {
 					curplanenum = facet->surfacePlane;
 					curinward = qfalse;

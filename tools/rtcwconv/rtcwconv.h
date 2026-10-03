@@ -49,6 +49,8 @@ struct MdsStats {
 	float maxAngle;             /* most a bone turned, in degrees */
 	double sumErr;
 	long numErr;
+	size_t meshIn, meshOut;     /* vertexes, collapse maps and bone infos */
+	float maxOfsErr, maxTcErr, maxWeightErr, maxNormalAngle;
 };
 
 struct MdsOptions {

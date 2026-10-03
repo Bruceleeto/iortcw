@@ -405,10 +405,12 @@ int main( int argc, char **argv ) {
 	if ( mds.files ) {
 		printf( "mds: %ld root offset keys, %ld cull bounds keys\n", mds.frameKeys, mds.cullKeys );
 		printf( "mds: %d files, %.1f MB -> %.1f MB; bone poses kept %.1f%% (directions %.1f%%); bones off by %.3f units on average, %.2f / %.2f deg at most\n"
-				"     %d of %d triangles in %d strips\n",
+				"     %d of %d triangles in %d strips; vertexes and bones %.0f K -> %.0f K, off by %.4f units, %.5f texture,"
+				" %.5f weight, %.2f deg normal at most\n",
 				mds.files, mds.bytesIn / 1048576.0, mds.bytesOut / 1048576.0,
 				100.0 * mds.keysOut / mds.framesIn, 100.0 * mds.dirKeys / mds.framesIn, mds.sumErr / mds.numErr, mds.maxErr, mds.maxAngle,
-				mds.stripTris, mds.tris, mds.strips );
+				mds.stripTris, mds.tris, mds.strips, mds.meshIn / 1024.0, mds.meshOut / 1024.0, mds.maxOfsErr, mds.maxTcErr,
+				mds.maxWeightErr, mds.maxNormalAngle );
 	}
 	if ( mdc.files ) {
 		printf( "mdc: %d files, %.1f MB; %d animated ones to .mdb, %.1f MB -> %.1f MB, %ld of %ld surfaces as %ld bones, %.1f%% of frames kept,\n"

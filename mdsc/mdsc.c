@@ -11,13 +11,13 @@
 
 #include "mdsc.h"
 
-/* where they are in an mdsHeader_t / mdsBoneInfo_t */
+/* where they are in an mdsHeader_t / mdscBoneInfo_t */
 #define HDR_NUMFRAMES   80
 #define HDR_NUMBONES    84
 #define HDR_OFSFRAMES   88
 #define HDR_OFSBONES    92
-#define BONEINFO_SIZE   80
-#define BONEINFO_PARENT 64
+#define BONEINFO_SIZE   ( (int)sizeof( mdscBoneInfo_t ) )
+#define BONEINFO_PARENT 0
 
 #define DEG2RAD( a )    ( (a) * ( (float)M_PI / 180.0f ) )
 #define RAD2DEG( a )    ( (a) * ( 180.0f / (float)M_PI ) )
@@ -515,4 +515,82 @@ void MDSC_DecodeSharedFrame( const void *mds, const void *base, int frame, void 
 	} else {
 		DecodePose( own, animBase, seg->srcFirst + frame - seg->first, out );
 	}
+}
+
+/* ---- the mesh ---- */
+
+/* an mdsVertex_t's: normal[3], texCoords[2], numWeights, fixedParent,
+   fixedDist; then an mdsWeight_t's: boneIndex, boneWeight, offset[3] */
+#define MDS_VERTEX_SIZE 32
+#define MDS_WEIGHT_SIZE 20
+
+static int PackShort( float f, float scale, short *out ) {
+	long v = lrintf( f * scale );
+
+	if ( v < -32768 || v > 32767 ) {
+		return 0;
+	}
+	*out = (short)v;
+	return 1;
+}
+
+int MDSC_PackVertexes( const void *in, int numVerts, void *out, int *inSize ) {
+	const unsigned char *src = (const unsigned char *)in;
+	unsigned char *dst = (unsigned char *)out;
+	int i, k, j;
+
+	for ( i = 0; i < numVerts; i++ ) {
+		float normal[3], texCoords[2];
+		int numWeights;
+		mdscVertex_t v;
+
+		memcpy( normal, src, 12 );
+		memcpy( texCoords, src + 12, 8 );
+		memcpy( &numWeights, src + 20, 4 );
+		if ( numWeights < 1 || numWeights > 255 ) {
+			return -1;
+		}
+		/* the weights first, each read before it's written over (a vertex's
+		   start comes out no later than its start in, nor its weights) */
+		for ( k = 0; k < numWeights; k++ ) {
+			const unsigned char *sw = src + MDS_VERTEX_SIZE + k * MDS_WEIGHT_SIZE;
+			int boneIndex;
+			float boneWeight, offset[3];
+			long weight;
+			mdscWeight_t w;
+
+			memcpy( &boneIndex, sw, 4 );
+			memcpy( &boneWeight, sw + 4, 4 );
+			memcpy( offset, sw + 8, 12 );
+			weight = lrintf( boneWeight * MDSC_WEIGHT_SCALE );
+			if ( boneIndex < 0 || boneIndex > 255 || weight < 0 || weight > 65535 ) {
+				return -1;
+			}
+			for ( j = 0; j < 3; j++ ) {
+				if ( !PackShort( offset[j], MDSC_OFS_SCALE, &w.offset[j] ) ) {
+					return -1;
+				}
+			}
+			w.boneWeight = (unsigned short)weight;
+			w.boneIndex = (unsigned char)boneIndex;
+			w.pad = 0;
+			memcpy( dst + sizeof( v ) + k * sizeof( w ), &w, sizeof( w ) );
+		}
+		for ( j = 0; j < 2; j++ ) {
+			if ( !PackShort( texCoords[j], MDSC_TC_SCALE, &v.texCoords[j] ) ) {
+				return -1;
+			}
+		}
+		for ( j = 0; j < 3; j++ ) {
+			long n = lrintf( normal[j] * MDSC_NORMAL_SCALE );
+			v.normal[j] = (signed char)( n < -127 ? -127 : n > 127 ? 127 : n );
+		}
+		v.numWeights = (unsigned char)numWeights;
+		memcpy( dst, &v, sizeof( v ) );
+
+		src += MDS_VERTEX_SIZE + numWeights * MDS_WEIGHT_SIZE;
+		dst += sizeof( v ) + numWeights * sizeof( mdscWeight_t );
+	}
+	*inSize = (int)( src - (const unsigned char *)in );
+	return (int)( dst - (unsigned char *)out );
 }

@@ -2007,6 +2007,20 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 		}
 	}
 
+	// an .mds's bones put as an .mdsc's, without their names (mdscBoneInfo_t)
+	if ( !compact ) {
+		for ( i = 0 ; i < mds->numBones ; i++ ) {
+			mdscBoneInfo_t b;
+
+			bi = ( mdsBoneInfo_t * )( (byte *)mds + mds->ofsBones ) + i;
+			b.parent = bi->parent;
+			b.torsoWeight = bi->torsoWeight;
+			b.parentDist = bi->parentDist;
+			b.flags = bi->flags;
+			( (mdscBoneInfo_t *)( (byte *)mds + mds->ofsBones ) )[i] = b;
+		}
+	}
+
 	// swap all the surfaces
 	surf = ( mdsSurface_t * )( (byte *)mds + mds->ofsSurfaces );
 	for ( i = 0 ; i < mds->numSurfaces ; i++ ) {
@@ -2094,6 +2108,21 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 			boneref = ( int * )( ( byte *)surf + surf->ofsBoneReferences );
 			for ( j = 0; j < surf->numBoneReferences; j++, boneref++ ) {
 				*boneref = LittleLong( *boneref );
+			}
+		}
+
+		// an .mds's vertexes and collapse map put as an .mdsc's, in place
+		// (mdsc/mdsc.h)
+		if ( !compact ) {
+			int inSize;
+
+			if ( MDSC_PackVertexes( (byte *)surf + surf->ofsVerts, surf->numVerts, (byte *)surf + surf->ofsVerts, &inSize ) < 0 ) {
+				ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has a vertex out of range on %s\n", mod_name, surf->name );
+				return qfalse;
+			}
+			collapseMap = ( int * )( (byte *)surf + surf->ofsCollapseMap );
+			for ( j = 0; j < surf->numVerts; j++ ) {
+				( (unsigned short *)collapseMap )[j] = collapseMap[j];
 			}
 		}
 

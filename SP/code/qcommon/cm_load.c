@@ -765,7 +765,7 @@ The curve collision rtcwconv made (see colfile.h)
 static void CMod_LoadColPatches( bspLump_t *l ) {
 	const int *in = l->data;
 	const int *end = (const int *)( (const byte *)l->data + l->len );
-	int i, j, k, numPatches;
+	int i, j, k, numPatches, numBorders;
 
 #define COL_INT()   ( in < end ? LittleLong( *in++ ) : ( Com_Error( ERR_DROP, "CMod_LoadColPatches: short lump" ), 0 ) )
 #define COL_FLOAT() ( in < end ? LittleFloat( *(const float *)in++ ) : ( Com_Error( ERR_DROP, "CMod_LoadColPatches: short lump" ), 0.0f ) )
@@ -808,25 +808,46 @@ static void CMod_LoadColPatches( bspLump_t *l ) {
 			}
 			pc->planes[j].signbits = COL_INT();
 		}
+		// the borders all the facets have, to keep just those (cFacet_t)
+		{
+			const int *facetsIn = in;
+
+			numBorders = 0;
+			for ( j = 0 ; j < pc->numFacets ; j++ ) {
+				int n;
+
+				COL_INT();
+				n = COL_INT();
+				if ( n < 0 || n > ARRAY_LEN( ( (facet_t *)0 )->borderPlanes ) || end - in < n * 3 ) {
+					Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
+				}
+				in += n * 3;
+				numBorders += n;
+			}
+			in = facetsIn;
+		}
 		pc->facets = Hunk_Alloc( pc->numFacets * sizeof( *pc->facets ), h_high );
+		pc->borders = Hunk_Alloc( numBorders * sizeof( *pc->borders ), h_high );
+		numBorders = 0;
 		for ( j = 0 ; j < pc->numFacets ; j++ ) {
-			facet_t *f = &pc->facets[j];
+			cFacet_t *f = &pc->facets[j];
 			int surfacePlane = COL_INT();
-			int numBorders = COL_INT();
-			if ( surfacePlane < 0 || surfacePlane >= pc->numPlanes ||
-				 numBorders < 0 || numBorders > ARRAY_LEN( f->borderPlanes ) ) {
+
+			if ( surfacePlane < 0 || surfacePlane >= pc->numPlanes ) {
 				Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
 			}
 			f->surfacePlane = surfacePlane;
-			f->numBorders = numBorders;
-			for ( k = 0 ; k < numBorders ; k++ ) {
+			f->numBorders = COL_INT();
+			f->firstBorder = numBorders;
+			for ( k = 0 ; k < f->numBorders ; k++ ) {
 				int plane = COL_INT();
+				int inward = COL_INT();
+				int noAdjust = COL_INT();
+
 				if ( plane < 0 || plane >= pc->numPlanes ) {
 					Com_Error( ERR_DROP, "CMod_LoadColPatches: bad facet in patch %i", i );
 				}
-				f->borderPlanes[k] = plane;
-				f->borderInward[k] = COL_INT() != 0;
-				f->borderNoAdjust[k] = COL_INT() != 0;
+				pc->borders[numBorders++] = plane | ( inward ? BORDER_INWARD : 0 ) | ( noAdjust ? BORDER_NOADJUST : 0 );
 			}
 		}
 	}
