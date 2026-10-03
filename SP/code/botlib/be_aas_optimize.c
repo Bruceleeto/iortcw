@@ -294,7 +294,10 @@ void AAS_OptimizeStore( optimized_t *optimized ) {
 // Changes Globals:		-
 //===========================================================================
 void AAS_Optimize( void ) {
-	int i, sign;
+	int i;
+#ifndef AAS_COMPACT
+	int sign;
+#endif
 	optimized_t optimized;
 
 	AAS_OptimizeAlloc( &optimized );
@@ -302,6 +305,7 @@ void AAS_Optimize( void ) {
 	{
 		AAS_OptimizeArea( &optimized, i );
 	} //end for
+#ifndef AAS_COMPACT    // (none kept)
 	  //reset the reachability face pointers
 	for ( i = 0; i < ( *aasworld ).reachabilitysize; i++ )
 	{
@@ -330,6 +334,7 @@ void AAS_Optimize( void ) {
 			( *aasworld ).reachability[i].edgenum = -( *aasworld ).reachability[i].edgenum;
 		}
 	} //end for
+#endif
 	  //store the optimized AAS data into (*aasworld)
 	AAS_OptimizeStore( &optimized );
 	//print some nice stuff :)

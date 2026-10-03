@@ -310,9 +310,17 @@ int AAS_EnableRoutingArea( int areanum, int enable ) {
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
+// the travel times through an area, leaving by its reachability l, from
+// each of the links into it (AAS_CalculateAreaTravelTimes)
+static unsigned short *AAS_AreaTravelTimes( int areanum, int l ) {
+	aas_reversedreachability_t *revreach = &( *aasworld ).reversedreachability[areanum];
+
+	return ( *aasworld ).areatraveltimes + revreach->firsttraveltime + l * ( revreach[1].firstlink - revreach->firstlink );
+}
+
 void AAS_CreateReversedReachability( void ) {
-	int i, n;
-	aas_reversedlink_t *revlink;
+	int i, n, size;
+	aas_reversedreachability_t *revreach;
 	aas_reachability_t *reach;
 	aas_areasettings_t *settings;
 	char *ptr;
@@ -326,13 +334,31 @@ void AAS_CreateReversedReachability( void ) {
 		AAS_RoutingFreeMemory( ( *aasworld ).reversedreachability );
 	}
 	//allocate memory for the reversed reachability links
-	ptr = (char *) AAS_RoutingGetMemory( ( *aasworld ).numareas * sizeof( aas_reversedreachability_t ) +
-										 ( *aasworld ).reachabilitysize * sizeof( aas_reversedlink_t ) );
+	size = ( ( *aasworld ).numareas + 1 ) * sizeof( aas_reversedreachability_t );
+	ptr = (char *) AAS_RoutingGetMemory( size + ( *aasworld ).reachabilitysize * sizeof( aas_reversedlink_t ) );
 	//
-	( *aasworld ).reversedreachability = (aas_reversedreachability_t *) ptr;
-	//pointer to the memory for the reversed links
-	ptr += ( *aasworld ).numareas * sizeof( aas_reversedreachability_t );
-	//check all other areas for reachability links to the area
+	revreach = ( *aasworld ).reversedreachability = (aas_reversedreachability_t *) ptr;
+	( *aasworld ).reversedlinks = (aas_reversedlink_t *) ( ptr + size );
+	//each area's number of links into it, then where they start
+	for ( i = 1; i < ( *aasworld ).numareas; i++ )
+	{
+		settings = &( *aasworld ).areasettings[i];
+		for ( n = 0; n < settings->numreachableareas; n++ )
+		{
+			revreach[( *aasworld ).reachability[settings->firstreachablearea + n].areanum].firstlink++;
+		} //end for
+	} //end for
+	for ( n = 0, i = 0; i <= ( *aasworld ).numareas; i++ )
+	{
+		size = n;
+		n += revreach[i].firstlink;
+		revreach[i].firstlink = size;
+		//filled from the end (firsttraveltime, until AAS_CalculateAreaTravelTimes)
+		revreach[i].firsttraveltime = n;
+	} //end for
+	//check all other areas for reachability links to the area: in the
+	//order the list they were once put in had them, the last put in first,
+	//the routing the same
 	for ( i = 1; i < ( *aasworld ).numareas; i++ )
 	{
 		//settings of the area
@@ -340,17 +366,13 @@ void AAS_CreateReversedReachability( void ) {
 		//check the reachability links
 		for ( n = 0; n < settings->numreachableareas; n++ )
 		{
+			aas_reversedlink_t *revlink;
 			//reachability link
 			reach = &( *aasworld ).reachability[settings->firstreachablearea + n];
 			//
-			revlink = (aas_reversedlink_t *) ptr;
-			ptr += sizeof( aas_reversedlink_t );
-			//
+			revlink = &( *aasworld ).reversedlinks[--revreach[reach->areanum].firsttraveltime];
 			revlink->areanum = i;
 			revlink->linknum = settings->firstreachablearea + n;
-			revlink->next = ( *aasworld ).reversedreachability[reach->areanum].first;
-			( *aasworld ).reversedreachability[reach->areanum].first = revlink;
-			( *aasworld ).reversedreachability[reach->areanum].numlinks++;
 		} //end for
 	} //end for
 #ifdef DEBUG
@@ -407,8 +429,7 @@ unsigned short int AAS_AreaTravelTime( int areanum, vec3_t start, vec3_t end ) {
 // Changes Globals:		-
 //===========================================================================
 void AAS_CalculateAreaTravelTimes( void ) {
-	int i, l, n, size;
-	char *ptr;
+	int i, l, n, size, numlinks;
 	vec3_t end;
 	aas_reversedreachability_t *revreach;
 	aas_reversedlink_t *revlink;
@@ -423,46 +444,38 @@ void AAS_CalculateAreaTravelTimes( void ) {
 	if ( ( *aasworld ).areatraveltimes ) {
 		AAS_RoutingFreeMemory( ( *aasworld ).areatraveltimes );
 	}
-	//get the total size of all the area travel times
-	size = ( *aasworld ).numareas * sizeof( unsigned short ** );
+	//where each area's travel times start, and the size of them all
+	size = 0;
 	for ( i = 0; i < ( *aasworld ).numareas; i++ )
 	{
 		revreach = &( *aasworld ).reversedreachability[i];
-		//settings of the area
-		settings = &( *aasworld ).areasettings[i];
-		//
-		size += settings->numreachableareas * sizeof( unsigned short * );
-		//
-		size += settings->numreachableareas *
-			PAD(revreach->numlinks, sizeof(long)) * sizeof(unsigned short);
+		revreach->firsttraveltime = size;
+		size += ( *aasworld ).areasettings[i].numreachableareas * ( revreach[1].firstlink - revreach->firstlink );
 	} //end for
+	( *aasworld ).reversedreachability[i].firsttraveltime = size;
 	  //allocate memory for the area travel times
-	ptr = (char *) AAS_RoutingGetMemory( size );
-	( *aasworld ).areatraveltimes = (unsigned short ***) ptr;
-	ptr += ( *aasworld ).numareas * sizeof( unsigned short ** );
+	( *aasworld ).areatraveltimes = (unsigned short *) AAS_RoutingGetMemory( size * sizeof( unsigned short ) + 1 );
 	//calcluate the travel times for all the areas
 	for ( i = 0; i < ( *aasworld ).numareas; i++ )
 	{
 		//reversed reachabilities of this area
 		revreach = &( *aasworld ).reversedreachability[i];
+		numlinks = revreach[1].firstlink - revreach->firstlink;
 		//settings of the area
 		settings = &( *aasworld ).areasettings[i];
-		//
-		( *aasworld ).areatraveltimes[i] = (unsigned short **) ptr;
-		ptr += settings->numreachableareas * sizeof( unsigned short * );
 		//
 		reach = &( *aasworld ).reachability[settings->firstreachablearea];
 		for ( l = 0; l < settings->numreachableareas; l++, reach++ )
 		{
-			( *aasworld ).areatraveltimes[i][l] = (unsigned short *) ptr;
-			ptr += PAD(revreach->numlinks, sizeof(long)) * sizeof(unsigned short);
+			unsigned short *times = AAS_AreaTravelTimes( i, l );
 			//reachability link
 			//
-			for ( n = 0, revlink = revreach->first; revlink; revlink = revlink->next, n++ )
+			revlink = &( *aasworld ).reversedlinks[revreach->firstlink];
+			for ( n = 0; n < numlinks; n++, revlink++ )
 			{
 				VectorCopy( ( *aasworld ).reachability[revlink->linknum].end, end );
 				//
-				( *aasworld ).areatraveltimes[i][l][n] = AAS_AreaTravelTime( i, end, reach->start );
+				times[n] = AAS_AreaTravelTime( i, end, reach->start );
 			} //end for
 		} //end for
 	} //end for
@@ -480,7 +493,6 @@ int AAS_PortalMaxTravelTime( int portalnum ) {
 	int l, n, t, maxt;
 	aas_portal_t *portal;
 	aas_reversedreachability_t *revreach;
-	aas_reversedlink_t *revlink;
 	aas_areasettings_t *settings;
 
 	portal = &( *aasworld ).portals[portalnum];
@@ -492,9 +504,9 @@ int AAS_PortalMaxTravelTime( int portalnum ) {
 	maxt = 0;
 	for ( l = 0; l < settings->numreachableareas; l++ )
 	{
-		for ( n = 0, revlink = revreach->first; revlink; revlink = revlink->next, n++ )
+		for ( n = 0; n < revreach[1].firstlink - revreach->firstlink; n++ )
 		{
-			t = ( *aasworld ).areatraveltimes[portal->areanum][l][n];
+			t = AAS_AreaTravelTimes( portal->areanum, l )[n];
 			if ( t > maxt ) {
 				maxt = t;
 			} //end if
@@ -1323,6 +1335,13 @@ int AAS_ReadRouteCache( void ) {
 //===========================================================================
 void AAS_CreateVisibility( void );
 void AAS_InitRouting( void ) {
+	//the reversed links and routing updates hold areas, reachabilities and
+	//clusters in shorts
+	if ( ( *aasworld ).numareas > 0x10000 || ( *aasworld ).reachabilitysize > 0x10000
+		 || ( *aasworld ).numclusters > 0x8000 ) {
+		AAS_Error( "%s: too many areas, reachabilities or clusters\n", ( *aasworld ).filename );
+		return;
+	}
 	AAS_InitTravelFlagFromType();
 	//initialize the routing update fields
 	AAS_InitRoutingUpdate();
@@ -1443,7 +1462,7 @@ int AAS_AreaContentsTravelFlag( int areanum ) {
 //===========================================================================
 void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 	int i, nextareanum, cluster, badtravelflags, clusterareanum, linknum;
-	int numreachabilityareas;
+	int numreachabilityareas, numlinks;
 	unsigned short int t, startareatraveltimes[128];
 	aas_routingupdate_t *updateliststart, *updatelistend, *curupdate, *nextupdate;
 	aas_reachability_t *reach;
@@ -1471,13 +1490,12 @@ void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 	curupdate = &( *aasworld ).areaupdate[clusterareanum];
 	curupdate->areanum = areacache->areanum;
 	//VectorCopy(areacache->origin, curupdate->start);
-	curupdate->areatraveltimes = ( *aasworld ).areatraveltimes[areacache->areanum][0];
+	curupdate->areatraveltimes = AAS_AreaTravelTimes( areacache->areanum, 0 );
 	curupdate->tmptraveltime = areacache->starttraveltime;
 	//
 	areacache->traveltimes[clusterareanum] = areacache->starttraveltime;
 	//put the area to start with in the current read list
 	curupdate->next = NULL;
-	curupdate->prev = NULL;
 	updateliststart = curupdate;
 	updatelistend = curupdate;
 	//while there are updates in the current list, flip the lists
@@ -1485,16 +1503,18 @@ void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 	{
 		curupdate = updateliststart;
 		//
-		if ( curupdate->next ) {
-			curupdate->next->prev = NULL;
-		} else { updatelistend = NULL;}
+		if ( !curupdate->next ) {
+			updatelistend = NULL;
+		}
 		updateliststart = curupdate->next;
 		//
 		curupdate->inlist = qfalse;
 		//check all reversed reachability links
 		revreach = &( *aasworld ).reversedreachability[curupdate->areanum];
+		numlinks = revreach[1].firstlink - revreach->firstlink;
+		revlink = &( *aasworld ).reversedlinks[revreach->firstlink];
 		//
-		for ( i = 0, revlink = revreach->first; revlink; revlink = revlink->next, i++ )
+		for ( i = 0; i < numlinks; i++, revlink++ )
 		{
 			linknum = revlink->linknum;
 			reach = &( *aasworld ).reachability[linknum];
@@ -1540,11 +1560,10 @@ void AAS_UpdateAreaRoutingCache( aas_routingcache_t *areacache ) {
 				nextupdate->areanum = nextareanum;
 				nextupdate->tmptraveltime = t;
 				//VectorCopy(reach->start, nextupdate->start);
-				nextupdate->areatraveltimes = ( *aasworld ).areatraveltimes[nextareanum][linknum -
-																						 ( *aasworld ).areasettings[nextareanum].firstreachablearea];
+				nextupdate->areatraveltimes = AAS_AreaTravelTimes( nextareanum, linknum -
+																   ( *aasworld ).areasettings[nextareanum].firstreachablearea );
 				if ( !nextupdate->inlist ) {
 					nextupdate->next = NULL;
-					nextupdate->prev = updatelistend;
 					if ( updatelistend ) {
 						updatelistend->next = nextupdate;
 					} else { updateliststart = nextupdate;}
@@ -1633,7 +1652,6 @@ void AAS_UpdatePortalRoutingCache( aas_routingcache_t *portalcache ) {
 	} //end if
 	  //put the area to start with in the current read list
 	curupdate->next = NULL;
-	curupdate->prev = NULL;
 	updateliststart = curupdate;
 	updatelistend = curupdate;
 	//while there are updates in the current list, flip the lists
@@ -1641,9 +1659,9 @@ void AAS_UpdatePortalRoutingCache( aas_routingcache_t *portalcache ) {
 	{
 		curupdate = updateliststart;
 		//remove the current update from the list
-		if ( curupdate->next ) {
-			curupdate->next->prev = NULL;
-		} else { updatelistend = NULL;}
+		if ( !curupdate->next ) {
+			updatelistend = NULL;
+		}
 		updateliststart = curupdate->next;
 		//current update is removed from the list
 		curupdate->inlist = qfalse;
@@ -1690,7 +1708,6 @@ void AAS_UpdatePortalRoutingCache( aas_routingcache_t *portalcache ) {
 				nextupdate->tmptraveltime = t + ( *aasworld ).portalmaxtraveltimes[portalnum];
 				if ( !nextupdate->inlist ) {
 					nextupdate->next = NULL;
-					nextupdate->prev = updatelistend;
 					if ( updatelistend ) {
 						updatelistend->next = nextupdate;
 					} else { updateliststart = nextupdate;}
@@ -2060,12 +2077,12 @@ int AAS_NextModelReachability( int num, int modelnum ) {
 	for ( i = num; i < ( *aasworld ).reachabilitysize; i++ )
 	{
 		if ( ( *aasworld ).reachability[i].traveltype == TRAVEL_ELEVATOR ) {
-			if ( ( *aasworld ).reachability[i].facenum == modelnum ) {
+			if ( AAS_REACHFACENUM( ( *aasworld ).reachability[i] ) == modelnum ) {
 				return i;
 			}
 		} //end if
 		else if ( ( *aasworld ).reachability[i].traveltype == TRAVEL_FUNCBOB ) {
-			if ( ( ( *aasworld ).reachability[i].facenum & 0x0000FFFF ) == modelnum ) {
+			if ( ( AAS_REACHFACENUM( ( *aasworld ).reachability[i] ) & 0x0000FFFF ) == modelnum ) {
 				return i;
 			}
 		} //end if
@@ -2372,11 +2389,10 @@ int AAS_NearestHideArea( int srcnum, vec3_t origin, int areanum, int enemynum, v
 	curupdate = &( *aasworld ).areaupdate[areanum];
 	curupdate->areanum = areanum;
 	VectorCopy( origin, curupdate->start );
-	curupdate->areatraveltimes = ( *aasworld ).areatraveltimes[areanum][0];
+	curupdate->areatraveltimes = AAS_AreaTravelTimes( areanum, 0 );
 	curupdate->tmptraveltime = 0;
 	//put the area to start with in the current read list
 	curupdate->next = NULL;
-	curupdate->prev = NULL;
 	updateliststart = curupdate;
 	updatelistend = curupdate;
 	//while there are updates in the current list, flip the lists
@@ -2384,9 +2400,9 @@ int AAS_NearestHideArea( int srcnum, vec3_t origin, int areanum, int enemynum, v
 	{
 		curupdate = updateliststart;
 		//
-		if ( curupdate->next ) {
-			curupdate->next->prev = NULL;
-		} else { updatelistend = NULL;}
+		if ( !curupdate->next ) {
+			updatelistend = NULL;
+		}
 		updateliststart = curupdate->next;
 		//
 		curupdate->inlist = qfalse;
@@ -2523,7 +2539,6 @@ int AAS_NearestHideArea( int srcnum, vec3_t origin, int areanum, int enemynum, v
 				if ( !nextupdate->inlist ) {
 					//add the new update to the end of the list
 					nextupdate->next = NULL;
-					nextupdate->prev = updatelistend;
 					if ( updatelistend ) {
 						updatelistend->next = nextupdate;
 					} else { updateliststart = nextupdate;}
@@ -2593,11 +2608,10 @@ int AAS_FindAttackSpotWithinRange( int srcnum, int rangenum, int enemynum, float
 	curupdate = &( *aasworld ).areaupdate[rangearea];
 	curupdate->areanum = rangearea;
 	VectorCopy( rangeorg, curupdate->start );
-	curupdate->areatraveltimes = ( *aasworld ).areatraveltimes[srcarea][0];
+	curupdate->areatraveltimes = AAS_AreaTravelTimes( srcarea, 0 );
 	curupdate->tmptraveltime = 0;
 	//put the area to start with in the current read list
 	curupdate->next = NULL;
-	curupdate->prev = NULL;
 	updateliststart = curupdate;
 	updatelistend = curupdate;
 	//while there are updates in the current list, flip the lists
@@ -2605,9 +2619,9 @@ int AAS_FindAttackSpotWithinRange( int srcnum, int rangenum, int enemynum, float
 	{
 		curupdate = updateliststart;
 		//
-		if ( curupdate->next ) {
-			curupdate->next->prev = NULL;
-		} else { updatelistend = NULL;}
+		if ( !curupdate->next ) {
+			updatelistend = NULL;
+		}
 		updateliststart = curupdate->next;
 		//
 		curupdate->inlist = qfalse;
@@ -2694,7 +2708,6 @@ int AAS_FindAttackSpotWithinRange( int srcnum, int rangenum, int enemynum, float
 			if ( !nextupdate->inlist ) {
 				//add the new update to the end of the list
 				nextupdate->next = NULL;
-				nextupdate->prev = updatelistend;
 				if ( updatelistend ) {
 					updatelistend->next = nextupdate;
 				} else { updateliststart = nextupdate;}

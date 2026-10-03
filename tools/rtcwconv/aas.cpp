@@ -8,7 +8,8 @@
  * area's faces are only its ladder faces (none for an area that isn't a
  * ladder area), and only the faces, edges and vertexes they use are kept.
  * An area keeps only its center (its bounds and number nothing reads), the
- * area settings and nodes go in shorts and bytes, and the planes are only the
+ * area settings and nodes go in shorts and bytes, a reachability loses its
+ * face and edge (only an elevator's or func_bob's, and there are none), and the planes are only the
  * pairs the nodes and ladder faces use (a trace flips a plane to its pair,
  * planenum ^ 1, and one that hits nothing is plane 0, so pair 0 stays first).
  * The rest is copied as it is.
@@ -24,7 +25,7 @@
 
 #define AASID           ( ( 'S' << 24 ) + ( 'A' << 16 ) + ( 'A' << 8 ) + 'E' )
 #define AASVERSION      8
-#define AASVERSION_DC   100
+#define AASVERSION_DC   101
 #define AAS_LUMPS       14
 
 enum {
@@ -35,6 +36,9 @@ enum {
 
 #define FACE_LADDER     2
 #define AREA_LADDER     2
+
+#define TRAVEL_ELEVATOR 11
+#define TRAVEL_FUNCBOB  19
 
 struct AasLump { int32_t ofs, len; };
 struct AasHeader { int32_t ident, version, bspchecksum; AasLump lumps[AAS_LUMPS]; };
@@ -48,6 +52,12 @@ struct AasAreaSettings {
 	float groundsteepness;
 };
 struct AasNode { int32_t planenum, children[2]; };
+struct AasReach {
+	int32_t areanum, facenum, edgenum;
+	float start[3], end[3];
+	int32_t traveltype;
+	uint16_t traveltime, pad;
+};
 
 /* the AAS_COMPACT structs */
 struct DcArea { float center[3]; uint16_t firstface, numfaces; };
@@ -60,8 +70,16 @@ struct DcAreaSettings {
 	uint8_t presencetype, numreachableareas;
 };
 struct DcNode { uint16_t planenum; int16_t children[2]; };
-static_assert( sizeof( DcArea ) == 16 && sizeof( DcAreaSettings ) == 20 && sizeof( DcNode ) == 6,
-			   "the botlib's AAS_COMPACT structs" );
+/* no face or edge: only an elevator's or func_bob's reachability has them
+   (their mover), and there are none (ConvertAas) */
+struct DcReach {
+	int32_t areanum;
+	float start[3], end[3];
+	uint16_t traveltime;
+	uint8_t traveltype, pad;
+};
+static_assert( sizeof( DcArea ) == 16 && sizeof( DcAreaSettings ) == 20 && sizeof( DcNode ) == 6
+			   && sizeof( AasReach ) == 44 && sizeof( DcReach ) == 32, "the botlib's AAS_COMPACT structs" );
 
 /* the header past ident and version is xored, as the game reads it */
 static void Scramble( AasHeader &h ) {
@@ -92,7 +110,7 @@ static bool Check( const std::vector<uint8_t> &out, const std::vector<AasPlane> 
 				   const std::vector<int32_t> &edgeindex, const std::vector<AasFace> &faces,
 				   const std::vector<int32_t> &faceindex, const std::vector<AasArea> &areas,
 				   const std::vector<AasAreaSettings> &settings, const std::vector<AasNode> &nodes,
-				   const char *name ) {
+				   const std::vector<AasReach> &reach, const char *name ) {
 	AasHeader h;
 	memcpy( &h, out.data(), sizeof( h ) );
 	if ( h.ident != AASID || h.version != AASVERSION_DC ) {
@@ -108,12 +126,14 @@ static bool Check( const std::vector<uint8_t> &out, const std::vector<AasPlane> 
 	std::vector<DcArea> dAreas;
 	std::vector<DcAreaSettings> dSettings;
 	std::vector<DcNode> dNodes;
+	std::vector<DcReach> dReach;
 	if ( !Lump( out, h, LUMP_PLANES, dPlanes ) || !Lump( out, h, LUMP_VERTEXES, dVertexes ) ||
 		 !Lump( out, h, LUMP_EDGES, dEdges ) || !Lump( out, h, LUMP_EDGEINDEX, dEdgeindex ) ||
 		 !Lump( out, h, LUMP_FACES, dFaces ) || !Lump( out, h, LUMP_FACEINDEX, dFaceindex ) ||
 		 !Lump( out, h, LUMP_AREAS, dAreas ) || !Lump( out, h, LUMP_AREASETTINGS, dSettings ) ||
-		 !Lump( out, h, LUMP_NODES, dNodes ) || dAreas.size() != areas.size() ||
-		 dSettings.size() != settings.size() || dNodes.size() != nodes.size() ) {
+		 !Lump( out, h, LUMP_NODES, dNodes ) || !Lump( out, h, LUMP_REACHABILITY, dReach ) ||
+		 dAreas.size() != areas.size() || dSettings.size() != settings.size() || dNodes.size() != nodes.size() ||
+		 dReach.size() != reach.size() ) {
 		fprintf( stderr, "%s: .aasc check: bad lumps\n", name );
 		return false;
 	}
@@ -143,6 +163,14 @@ static bool Check( const std::vector<uint8_t> &out, const std::vector<AasPlane> 
 			 || d.numreachableareas != o.numreachableareas || d.firstreachablearea != o.firstreachablearea
 			 || memcmp( &d.groundsteepness, &o.groundsteepness, sizeof( float ) ) ) {
 			return fail( "area settings", i );
+		}
+	}
+	for ( size_t i = 0; i < reach.size(); i++ ) {
+		const AasReach &o = reach[i];
+		const DcReach &d = dReach[i];
+		if ( d.areanum != o.areanum || d.traveltype != o.traveltype || d.traveltime != o.traveltime
+			 || memcmp( d.start, o.start, sizeof( d.start ) ) || memcmp( d.end, o.end, sizeof( d.end ) ) ) {
+			return fail( "reachability", i );
 		}
 	}
 	/* an area's ladder faces, in order: plane, flags and every edge's ends */
@@ -213,12 +241,13 @@ bool ConvertAas( const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasS
 	std::vector<AasArea> areas;
 	std::vector<AasAreaSettings> settings;
 	std::vector<AasNode> nodes;
+	std::vector<AasReach> reach;
 	if ( !Lump( in, h, LUMP_PLANES, planes ) || planes.size() < 2 || planes.size() % 2 ||
 		 !Lump( in, h, LUMP_VERTEXES, vertexes ) || vertexes.size() % 3 || !Lump( in, h, LUMP_EDGES, edges ) ||
 		 !Lump( in, h, LUMP_EDGEINDEX, edgeindex ) || !Lump( in, h, LUMP_FACES, faces ) ||
 		 !Lump( in, h, LUMP_FACEINDEX, faceindex ) || !Lump( in, h, LUMP_AREAS, areas ) ||
 		 !Lump( in, h, LUMP_AREASETTINGS, settings ) || settings.size() != areas.size() ||
-		 !Lump( in, h, LUMP_NODES, nodes ) ) {
+		 !Lump( in, h, LUMP_NODES, nodes ) || !Lump( in, h, LUMP_REACHABILITY, reach ) ) {
 		fprintf( stderr, "%s: bad lumps\n", name );
 		return false;
 	}
@@ -226,6 +255,25 @@ bool ConvertAas( const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasS
 		fprintf( stderr, "%s: %s %zu doesn't fit the .aasc\n", name, what, i );
 		return false;
 	};
+
+	/* the reachability without its face and edge: a travel type (no flags)
+	   in a byte, and no elevator or func_bob, the only ones with a face and
+	   edge read */
+	std::vector<DcReach> newReach( reach.size() );
+	for ( size_t i = 0; i < reach.size(); i++ ) {
+		const AasReach &o = reach[i];
+		if ( o.traveltype < 0 || o.traveltype > 0xff || o.traveltype == TRAVEL_ELEVATOR
+			 || o.traveltype == TRAVEL_FUNCBOB ) {
+			return tooBig( "reachability", i );
+		}
+		DcReach &d = newReach[i];
+		memset( &d, 0, sizeof( d ) );
+		d.areanum = o.areanum;
+		memcpy( d.start, o.start, sizeof( d.start ) );
+		memcpy( d.end, o.end, sizeof( d.end ) );
+		d.traveltime = o.traveltime;
+		d.traveltype = (uint8_t)o.traveltype;
+	}
 
 	/* the plane pairs used, pair 0 first: a plane's new number */
 	std::map<int, int> pairMap;
@@ -356,6 +404,7 @@ bool ConvertAas( const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasS
 	data[LUMP_AREAS] = { newAreas.data(), newAreas.size() * sizeof( DcArea ) };
 	data[LUMP_AREASETTINGS] = { newSettings.data(), newSettings.size() * sizeof( DcAreaSettings ) };
 	data[LUMP_NODES] = { newNodes.data(), newNodes.size() * sizeof( DcNode ) };
+	data[LUMP_REACHABILITY] = { newReach.data(), newReach.size() * sizeof( DcReach ) };
 
 	AasHeader oh = h;
 	oh.version = AASVERSION_DC;
@@ -368,7 +417,7 @@ bool ConvertAas( const std::vector<uint8_t> &in, std::vector<uint8_t> &out, AasS
 	Scramble( oh );
 	memcpy( out.data(), &oh, sizeof( oh ) );
 
-	if ( !Check( out, planes, vertexes, edges, edgeindex, faces, faceindex, areas, settings, nodes, name ) ) {
+	if ( !Check( out, planes, vertexes, edges, edgeindex, faces, faceindex, areas, settings, nodes, reach, name ) ) {
 		return false;
 	}
 

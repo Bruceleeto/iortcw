@@ -142,32 +142,33 @@ typedef struct
 	unsigned short int traveltimes[1];          //travel time for every area (variable sized)
 } aas_routingcache_32_t;
 
-//fields for the routing algorithm
+//fields for the routing algorithm (one an area: shorts, the areas and
+//clusters under 64K, AAS_InitRouting)
 typedef struct aas_routingupdate_s
 {
-	int cluster;
-	int areanum;                                //area number of the update
 	vec3_t start;                               //start point the area was entered
-	unsigned short int tmptraveltime;           //temporary travel time
 	unsigned short int *areatraveltimes;        //travel times within the area
-	qboolean inlist;                            //true if the update is in the list
 	struct aas_routingupdate_s *next;
-	struct aas_routingupdate_s *prev;
+	unsigned short int areanum;                 //area number of the update
+	short cluster;
+	unsigned short int tmptraveltime;           //temporary travel time
+	byte inlist;                                //true if the update is in the list
 } aas_routingupdate_t;
 
-//reversed reachability link
+//reversed reachability link (the reachabilities under 64K, AAS_InitRouting)
 typedef struct aas_reversedlink_s
 {
-	int linknum;                                //the aas_areareachability_t
-	int areanum;                                //reachable from this area
-	struct aas_reversedlink_s *next;            //next link
+	unsigned short int linknum;                 //the aas_areareachability_t
+	unsigned short int areanum;                 //reachable from this area
 } aas_reversedlink_t;
 
-//reversed area reachability
+//reversed area reachability: an area's links are reversedlinks from its
+//firstlink to the next area's, and its travel times (AAS_AreaTravelTimes)
+//from firsttraveltime
 typedef struct aas_reversedreachability_s
 {
-	int numlinks;
-	aas_reversedlink_t *first;
+	int firstlink;
+	int firsttraveltime;
 } aas_reversedreachability_t;
 
 // Ridah, route-tables
@@ -248,10 +249,12 @@ typedef struct aas_s
 	aas_routingupdate_t *portalupdate;
 	//number of routing updates during a frame (reset every frame)
 	int frameroutingupdates;
-	//reversed reachability links
+	//reversed reachability links (numareas + 1, the last the end of the
+	//links), in one block with the links
 	aas_reversedreachability_t *reversedreachability;
+	aas_reversedlink_t *reversedlinks;
 	//travel times within the areas
-	unsigned short ***areatraveltimes;
+	unsigned short *areatraveltimes;
 	//array of size numclusters with cluster cache
 	aas_routingcache_t ***clusterareacache;
 	aas_routingcache_t **portalcache;

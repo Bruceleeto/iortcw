@@ -465,7 +465,7 @@ int BotOnMover( vec3_t origin, int entnum, aas_reachability_t *reach ) {
 	vec3_t boxmins = {-16, -16, -8}, boxmaxs = {16, 16, 8};
 	bsp_trace_t trace;
 
-	modelnum = reach->facenum & 0x0000FFFF;
+	modelnum = AAS_REACHFACENUM( *reach ) & 0x0000FFFF;
 	//get some bsp model info
 	AAS_BSPModelMinsMaxsOrigin( modelnum, angles, mins, maxs, NULL );
 	//
@@ -509,7 +509,7 @@ int MoverDown( aas_reachability_t *reach ) {
 	vec3_t mins, maxs, origin;
 	vec3_t angles = {0, 0, 0};
 
-	modelnum = reach->facenum & 0x0000FFFF;
+	modelnum = AAS_REACHFACENUM( *reach ) & 0x0000FFFF;
 	//get some bsp model info
 	AAS_BSPModelMinsMaxsOrigin( modelnum, angles, mins, maxs, origin );
 	//
@@ -892,7 +892,7 @@ void MoverBottomCenter( aas_reachability_t *reach, vec3_t bottomcenter ) {
 	vec3_t mins, maxs, origin, mids;
 	vec3_t angles = {0, 0, 0};
 
-	modelnum = reach->facenum & 0x0000FFFF;
+	modelnum = AAS_REACHFACENUM( *reach ) & 0x0000FFFF;
 	//get some bsp model info
 	AAS_BSPModelMinsMaxsOrigin( modelnum, angles, mins, maxs, origin );
 	//
@@ -2298,7 +2298,7 @@ void BotFuncBobStartEnd( aas_reachability_t *reach, vec3_t start, vec3_t end, ve
 	vec3_t mins, maxs, mid, angles = {0, 0, 0};
 	int num0, num1;
 
-	modelnum = reach->facenum & 0x0000FFFF;
+	modelnum = AAS_REACHFACENUM( *reach ) & 0x0000FFFF;
 	if ( !AAS_OriginOfEntityWithModelNum( modelnum, origin ) ) {
 		botimport.Print( PRT_MESSAGE, "BotFuncBobStartEnd: no entity with model %d\n", modelnum );
 		VectorSet( start, 0, 0, 0 );
@@ -2310,12 +2310,12 @@ void BotFuncBobStartEnd( aas_reachability_t *reach, vec3_t start, vec3_t end, ve
 	VectorScale( mid, 0.5, mid );
 	VectorCopy( mid, start );
 	VectorCopy( mid, end );
-	spawnflags = reach->facenum >> 16;
-	num0 = reach->edgenum >> 16;
+	spawnflags = AAS_REACHFACENUM( *reach ) >> 16;
+	num0 = AAS_REACHEDGENUM( *reach ) >> 16;
 	if ( num0 > 0x00007FFF ) {
 		num0 |= 0xFFFF0000;
 	}
-	num1 = reach->edgenum & 0x0000FFFF;
+	num1 = AAS_REACHEDGENUM( *reach ) & 0x0000FFFF;
 	if ( num1 > 0x00007FFF ) {
 		num1 |= 0xFFFF0000;
 	}
@@ -3160,7 +3160,7 @@ void BotMoveToGoal( bot_moveresult_t *result, int movestate, bot_goal_t *goal, i
 					//if the bot is Not using the elevator
 					if ( reach.traveltype != TRAVEL_ELEVATOR ||
 						 //NOTE: the face number is the plat model number
-						 ( reach.facenum & 0x0000FFFF ) != modelnum ) {
+						 ( AAS_REACHFACENUM( reach ) & 0x0000FFFF ) != modelnum ) {
 						reachnum = AAS_NextModelReachability( 0, modelnum );
 						if ( reachnum ) {
 							//botimport.Print(PRT_MESSAGE, "client %d: accidentally ended up on func_plat\n", ms->client);
@@ -3186,7 +3186,7 @@ void BotMoveToGoal( bot_moveresult_t *result, int movestate, bot_goal_t *goal, i
 					//if the bot is Not using the func bobbing
 					if ( reach.traveltype != TRAVEL_FUNCBOB ||
 						 //NOTE: the face number is the func_bobbing model number
-						 ( reach.facenum & 0x0000FFFF ) != modelnum ) {
+						 ( AAS_REACHFACENUM( reach ) & 0x0000FFFF ) != modelnum ) {
 						reachnum = AAS_NextModelReachability( 0, modelnum );
 						if ( reachnum ) {
 							//botimport.Print(PRT_MESSAGE, "client %d: accidentally ended up on func_bobbing\n", ms->client);

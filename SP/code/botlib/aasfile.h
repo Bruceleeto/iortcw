@@ -35,8 +35,9 @@ If you have questions concerning this license or the applicable additional terms
 #ifdef AAS_COMPACT
 // rtcwconv's .aasc: the areas, area settings and nodes in the smaller
 // structs below, only the ladder faces in the face index, only the planes
-// something uses; every value the game reads is the same (rtcwconv checks)
-#define AASVERSION                  100
+// something uses, the reachability without its face and edge; every value
+// the game reads is the same (rtcwconv checks)
+#define AASVERSION                  101
 #else
 #define AASVERSION                  8
 #endif
@@ -138,6 +139,20 @@ typedef struct aas_bbox_s
 
 //============ settings ===========
 
+#ifdef AAS_COMPACT
+// no face or edge: only an elevator's or func_bob's reachability reads them
+// (its mover), and rtcwconv refuses a file with one; no travel flags either
+typedef struct aas_reachability_s
+{
+	int areanum;
+	vec3_t start;
+	vec3_t end;
+	unsigned short int traveltime;
+	unsigned char traveltype;
+} aas_reachability_t;
+#define AAS_REACHFACENUM( r )       0
+#define AAS_REACHEDGENUM( r )       0
+#else
 //reachability to another area
 typedef struct aas_reachability_s
 {
@@ -149,6 +164,10 @@ typedef struct aas_reachability_s
 	int traveltype;                 //type of travel required to get to the area
 	unsigned short int traveltime; //travel time of the inter area movement
 } aas_reachability_t;
+// an elevator's or func_bob's mover (its model number and more) are in these
+#define AAS_REACHFACENUM( r )       ( ( r ).facenum )
+#define AAS_REACHEDGENUM( r )       ( ( r ).edgenum )
+#endif
 
 #ifdef AAS_COMPACT
 typedef struct aas_areasettings_s
