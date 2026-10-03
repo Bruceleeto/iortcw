@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DC_MEM_TOP          ( 0x8c000000u + 16 * 1024 * 1024 - 64 * 1024 )
+#define DC_MEM_TOP          ( 0x8c000000u + 20 * 1024 * 1024 - 64 * 1024 )
 
 static unsigned char *arena;        // where DCSIM_HEAP_START is
 static uintptr_t sbrkBase;          // as a Dreamcast address

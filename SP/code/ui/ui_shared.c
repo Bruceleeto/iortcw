@@ -5044,6 +5044,8 @@ qboolean ItemParse_text( itemDef_t *item, int handle ) {
 
 // textfile <string>
 // read an external textfile into item->text
+static char itemTextFile[MAX_QPATH];
+
 qboolean ItemParse_textfile( itemDef_t *item, int handle ) {
 	const char  *newtext;
 	pc_token_t token;
@@ -5052,8 +5054,8 @@ qboolean ItemParse_textfile( itemDef_t *item, int handle ) {
 		return qfalse;
 	}
 
-	newtext = DC->fileText( token.string );
-	item->text = String_Alloc( newtext );
+	// read once the item's known to be kept (MenuParse_itemDef)
+	Q_strncpyz( itemTextFile, token.string, sizeof( itemTextFile ) );
 
 	return qtrue;
 }
@@ -6345,17 +6347,33 @@ qboolean MenuParse_fadeCycle( itemDef_t *item, int handle ) {
 }
 
 
+// the notebook, pregame and briefing hold every map's pages, each shown on
+// its own map (cvarTest "mapname" showCvar): the other maps' are left out
+static qboolean Item_OtherMapsOnly( itemDef_t *item ) {
+	return item->cvarTest && !Q_stricmp( item->cvarTest, "mapname" )
+		&& ( item->cvarFlags & CVAR_SHOW ) && !Item_EnableShowViaCvar( item, CVAR_SHOW );
+}
+
 qboolean MenuParse_itemDef( itemDef_t *item, int handle ) {
+	static itemDef_t parsed;
 	menuDef_t *menu = (menuDef_t*)item;
 	if ( menu->itemCount < MAX_MENUITEMS ) {
+		Item_Init( &parsed );
+		itemTextFile[0] = '\0';
+		if ( !Item_Parse( handle, &parsed ) ) {
+			return qfalse;
+		}
+		if ( Item_OtherMapsOnly( &parsed ) ) {
+			return qtrue;
+		}
+		if ( itemTextFile[0] ) {
+			parsed.text = String_Alloc( DC->fileText( itemTextFile ) );
+		}
 		menu->items[menu->itemCount] = UI_Alloc( sizeof( itemDef_t ) );
 		if ( !menu->items[menu->itemCount] ) {
 			return qfalse;
 		}
-		Item_Init( menu->items[menu->itemCount] );
-		if ( !Item_Parse( handle, menu->items[menu->itemCount] ) ) {
-			return qfalse;
-		}
+		*menu->items[menu->itemCount] = parsed;
 		Item_InitControls( menu->items[menu->itemCount] );
 		menu->items[menu->itemCount++]->parent = menu;
 	}

@@ -111,6 +111,21 @@ loading screen's alone kept while one loads, and loaded again when one is
 brought up
 */
 static enum { MENUS_ALL, MENUS_NONE, MENUS_CONNECT } menusLoaded;
+// the map the menus were read for: they keep that map's pages alone
+// (MenuParse_itemDef)
+static char menusMap[MAX_QPATH];
+
+// (not UI_Cvar_VariableString: its buffer may be holding ui_menuFiles)
+static void UI_MenusMapSet( void ) {
+	trap_Cvar_VariableStringBuffer( "mapname", menusMap, sizeof( menusMap ) );
+}
+
+static qboolean UI_MenusMapChanged( void ) {
+	char map[MAX_QPATH];
+
+	trap_Cvar_VariableStringBuffer( "mapname", map, sizeof( map ) );
+	return Q_stricmp( menusMap, map ) != 0;
+}
 qboolean UI_Loading( void );
 
 Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11  ) {
@@ -5686,6 +5701,7 @@ void _UI_Init( qboolean inGameLoad ) {
 		// their fonts are in the in-game menus'
 		UI_ParseMenuFile( "ui/ingame.menu", qtrue );
 	} else {
+		UI_MenusMapSet();
 		UI_LoadMenus( menuSet, qtrue );
 		UI_LoadMenus( "ui/ingame.txt", qfalse );
 		menusLoaded = MENUS_ALL;
@@ -6030,10 +6046,11 @@ static void UI_UnloadMenus( void ) {
 /* the loading screen's menus alone (and the briefing it shows), so a level
    loads without the rest */
 void UI_ConnectMenus( void ) {
-	if ( menusLoaded == MENUS_CONNECT ) {
+	if ( menusLoaded == MENUS_CONNECT && !UI_MenusMapChanged() ) {
 		return;
 	}
 	UI_UnloadMenus();
+	UI_MenusMapSet();
 	UI_ParseMenu( "ui/connect.menu" );
 	UI_ParseMenu( "ui/briefing.menu" );
 	menusLoaded = MENUS_CONNECT;
@@ -6051,12 +6068,13 @@ void UI_ReloadMenus( void ) {
 	uiClientState_t cstate;
 	const char *menuSet;
 
-	if ( menusLoaded == MENUS_ALL ) {
+	if ( menusLoaded == MENUS_ALL && !UI_MenusMapChanged() ) {
 		return;
 	}
-	if ( menusLoaded == MENUS_CONNECT ) {
+	if ( menusLoaded != MENUS_NONE ) {
 		UI_UnloadMenus();
 	}
+	UI_MenusMapSet();
 	menusLoaded = MENUS_ALL;
 	trap_GetClientState( &cstate );
 	if ( cstate.connState == CA_ACTIVE ) {
