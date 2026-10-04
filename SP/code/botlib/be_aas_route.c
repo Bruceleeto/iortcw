@@ -56,9 +56,9 @@ If you have questions concerning this license or the applicable additional terms
 #define ROUTING_DEBUG
 
 //travel time in hundreths of a second = distance * 100 / speed
-#define DISTANCEFACTOR_CROUCH       1.3     //crouch speed = 100
+#define DISTANCEFACTOR_CROUCH       1.3f     //crouch speed = 100
 #define DISTANCEFACTOR_SWIM         1       //should be 0.66, swim speed = 150
-#define DISTANCEFACTOR_WALK         0.33    //walk speed = 300
+#define DISTANCEFACTOR_WALK         0.33f    //walk speed = 300
 
 // Ridah, scale traveltimes with ground steepness of area
 #define GROUNDSTEEPNESS_TIMESCALE   20  // this is the maximum scale, 1 being the usual for a flat ground

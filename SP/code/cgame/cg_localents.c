@@ -214,10 +214,10 @@ void CG_BloodTrail( localEntity_t *le ) {
 												 STYPE_STRETCH,
 												 newOrigin,
 												 180,
-												 1.0, // start alpha
-												 0.0, // end alpha
-												 12.0,
-												 12.0,
+												 1.0f, // start alpha
+												 0.0f, // end alpha
+												 12.0f,
+												 12.0f,
 												 TJFL_NOCULL,
 												 col, col,
 												 0, 0 );
@@ -448,14 +448,14 @@ void CG_AddFragment( localEntity_t *le ) {
 	if ( le->onFireStart && ( le->onFireStart < cg.time && le->onFireEnd > cg.time ) ) {
 		hasFlame = qtrue;
 		// calc the alpha
-		flameAlpha = 1.0 - ( (float)( cg.time - le->onFireStart ) / (float)( le->onFireEnd - le->onFireStart ) );
-		if ( flameAlpha < 0.0 ) {
-			flameAlpha = 0.0;
+		flameAlpha = 1.0f - ( (float)( cg.time - le->onFireStart ) / (float)( le->onFireEnd - le->onFireStart ) );
+		if ( flameAlpha < 0.0f ) {
+			flameAlpha = 0.0f;
 		}
-		if ( flameAlpha > 1.0 ) {
-			flameAlpha = 1.0;
+		if ( flameAlpha > 1.0f ) {
+			flameAlpha = 1.0f;
 		}
-		CG_S_AddLoopingSound( -1, le->refEntity.origin, vec3_origin, cgs.media.flameCrackSound, (int)( 5.0 * flameAlpha ) );
+		CG_S_AddLoopingSound( -1, le->refEntity.origin, vec3_origin, cgs.media.flameCrackSound, (int)( 5.0f * flameAlpha ) );
 	}
 
 //----(SA)	added
@@ -469,7 +469,7 @@ void CG_AddFragment( localEntity_t *le ) {
 		//		the slower the fps, the /more/ smoke there'll be, probably driving the fps lower.
 		if ( !cg_paused.integer ) {    // don't add while paused
 			if ( !( rand() % 5 ) ) {
-				alpha = 1.0 - ( (float)( cg.time - le->startTime ) / (float)( le->endTime - le->startTime ) );
+				alpha = 1.0f - ( (float)( cg.time - le->startTime ) / (float)( le->endTime - le->startTime ) );
 				alpha *= 0.25f;
 				memset( &flash, 0, sizeof( flash ) );
 				CG_PositionEntityOnTag( &flash, &le->refEntity, "tag_flash", 0, NULL );
@@ -489,7 +489,7 @@ void CG_AddFragment( localEntity_t *le ) {
 			VectorClear( flameDir );
 			flameDir[2] = 1;
 
-			le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0 * flameAlpha );
+			le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0f * flameAlpha );
 			VectorCopy( flameDir, le->refEntity.fireRiseDir );
 			le->refEntity.customShader = cgs.media.onFireShader;
 			trap_R_AddRefEntityToScene( &le->refEntity );
@@ -513,7 +513,7 @@ void CG_AddFragment( localEntity_t *le ) {
 			VectorClear( flameDir );
 			flameDir[2] = 1;
 
-			le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0 * flameAlpha );
+			le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0f * flameAlpha );
 			VectorCopy( flameDir, le->refEntity.fireRiseDir );
 			le->refEntity.customShader = cgs.media.onFireShader;
 			trap_R_AddRefEntityToScene( &le->refEntity );
@@ -532,7 +532,7 @@ void CG_AddFragment( localEntity_t *le ) {
 		newOrigin [2] -= 5;
 		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, CONTENTS_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MISSILECLIP );
 
-		if ( trace.fraction == 1.0 ) { // it's clear, start moving again
+		if ( trace.fraction == 1.0f ) { // it's clear, start moving again
 			VectorClear( le->pos.trDelta );
 			VectorClear( le->angles.trDelta );
 			le->pos.trType = TR_GRAVITY;    // nothing below me, start falling again
@@ -550,11 +550,11 @@ void CG_AddFragment( localEntity_t *le ) {
 		if ( VectorLength( flameDir ) == 0 ) {
 			flameDir[2] = 1;
 			// play a burning sound when not moving
-			CG_S_AddLoopingSound( 0, newOrigin, vec3_origin, cgs.media.flameSound, (int)( 0.3 * 255.0 * flameAlpha ) );
+			CG_S_AddLoopingSound( 0, newOrigin, vec3_origin, cgs.media.flameSound, (int)( 0.3f * 255.0f * flameAlpha ) );
 		} else {
 			VectorNormalize( flameDir );
 			// play a flame blow sound when moving
-			CG_S_AddLoopingSound( 0, newOrigin, vec3_origin, cgs.media.flameBlowSound, (int)( 0.3 * 255.0 * flameAlpha ) );
+			CG_S_AddLoopingSound( 0, newOrigin, vec3_origin, cgs.media.flameBlowSound, (int)( 0.3f * 255.0f * flameAlpha ) );
 		}
 	}
 
@@ -594,7 +594,7 @@ void CG_AddFragment( localEntity_t *le ) {
 		}
 	}
 
-	if ( trace.fraction == 1.0 ) {
+	if ( trace.fraction == 1.0f ) {
 		// still in free fall
 		VectorCopy( newOrigin, le->refEntity.origin );
 
@@ -603,7 +603,7 @@ void CG_AddFragment( localEntity_t *le ) {
 
 			BG_EvaluateTrajectory( &le->angles, cg.time, angles );
 			AnglesToAxis( angles, le->refEntity.axis );
-			if ( le->sizeScale && le->sizeScale != 1.0 ) {
+			if ( le->sizeScale && le->sizeScale != 1.0f ) {
 				for ( i = 0; i < 3; i++ ) VectorScale( le->refEntity.axis[i], le->sizeScale, le->refEntity.axis[i] );
 			}
 		}
@@ -614,7 +614,7 @@ void CG_AddFragment( localEntity_t *le ) {
 
 			backupEnt = le->refEntity;
 
-			le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0 * flameAlpha );
+			le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0f * flameAlpha );
 			VectorCopy( flameDir, le->refEntity.fireRiseDir );
 			le->refEntity.customShader = cgs.media.onFireShader;
 			trap_R_AddRefEntityToScene( &le->refEntity );
@@ -672,16 +672,16 @@ void CG_AddFragment( localEntity_t *le ) {
 			}
 			// make it smaller
 			nle->endTime = le->endTime + ( cg.time - le->startTime );
-			nle->sizeScale *= 0.8;
-			if ( nle->sizeScale < 0.7 ) {
-				nle->sizeScale = 0.7;
+			nle->sizeScale *= 0.8f;
+			if ( nle->sizeScale < 0.7f ) {
+				nle->sizeScale = 0.7f;
 				nle->leBounceSoundType = 0;
 			}
 			// move us a bit
 			VectorNormalize2( nle->pos.trDelta, dir );
-			VectorMA( trace.endpos, 4.0 * le->sizeScale * i, dir, nle->pos.trBase );
+			VectorMA( trace.endpos, 4.0f * le->sizeScale * i, dir, nle->pos.trBase );
 			// randomize vel a bit
-			VectorMA( nle->pos.trDelta, VectorLength( nle->pos.trDelta ) * 0.3, bytedirs[rand() % NUMVERTEXNORMALS], nle->pos.trDelta );
+			VectorMA( nle->pos.trDelta, VectorLength( nle->pos.trDelta ) * 0.3f, bytedirs[rand() % NUMVERTEXNORMALS], nle->pos.trDelta );
 		}
 		// we're done
 		CG_FreeLocalEntity( le );
@@ -705,7 +705,7 @@ void CG_AddFragment( localEntity_t *le ) {
 
 		backupEnt = le->refEntity;
 
-		le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0 * flameAlpha );
+		le->refEntity.shaderRGBA[3] = ( unsigned char )( 255.0f * flameAlpha );
 		VectorCopy( flameDir, le->refEntity.fireRiseDir );
 		le->refEntity.customShader = cgs.media.onFireShader;
 		trap_R_AddRefEntityToScene( &le->refEntity );
@@ -760,7 +760,7 @@ void CG_AddSparkElements( localEntity_t *le ) {
 		if ( trace.startsolid ) {
 			// HACK, some walls screw up, so just pass through if starting in a solid
 			VectorCopy( newOrigin, trace.endpos );
-			trace.fraction = 1.0;
+			trace.fraction = 1.0f;
 		}
 
 		// moved some distance
@@ -783,10 +783,10 @@ void CG_AddSparkElements( localEntity_t *le ) {
 											 le->refEntity.customShader,
 											 le->refEntity.origin,
 											 200,
-											 1.0 - lifeFrac, // start alpha
-											 0.0, //1.0 - lifeFrac,	// end alpha
-											 lifeFrac * 2.0 * ( ( ( le->endTime - le->startTime ) > 400 ) + 1 ) * 1.5,
-											 lifeFrac * 2.0 * ( ( ( le->endTime - le->startTime ) > 400 ) + 1 ) * 1.5 );
+											 1.0f - lifeFrac, // start alpha
+											 0.0f, //1.0 - lifeFrac,	// end alpha
+											 lifeFrac * 2.0f * ( ( ( le->endTime - le->startTime ) > 400 ) + 1 ) * 1.5f,
+											 lifeFrac * 2.0f * ( ( ( le->endTime - le->startTime ) > 400 ) + 1 ) * 1.5f );
 
 		// if it is in a nodrop zone, remove it
 		// this keeps gibs from waiting at the bottom of pits of death
@@ -797,7 +797,7 @@ void CG_AddSparkElements( localEntity_t *le ) {
 //			return;
 //		}
 
-		if ( trace.fraction < 1.0 ) {
+		if ( trace.fraction < 1.0f ) {
 			// just kill it
 			CG_FreeLocalEntity( le );
 			return;
@@ -809,7 +809,7 @@ void CG_AddSparkElements( localEntity_t *le ) {
 */
 		}
 
-		if ( trace.fraction == 1.0 || time >= (float)cg.time ) {
+		if ( trace.fraction == 1.0f || time >= (float)cg.time ) {
 			return;
 		}
 	}
@@ -823,7 +823,7 @@ CG_AddFuseSparkElements
 */
 void CG_AddFuseSparkElements( localEntity_t *le ) {
 
-	float FUSE_SPARK_WIDTH      = 1.0;
+	float FUSE_SPARK_WIDTH      = 1.0f;
 
 	int step = 10;
 	float time;
@@ -841,8 +841,8 @@ void CG_AddFuseSparkElements( localEntity_t *le ) {
 
 		//if (lifeFrac > 0.2) {
 		// add a trail
-		le->headJuncIndex = CG_AddTrailJunc( le->headJuncIndex, cgs.media.sparkParticleShader, time, STYPE_STRETCH, le->refEntity.origin, (int)( lifeFrac * (float)( le->endTime - le->startTime ) / 2.0 ),
-											 1.0 /*(1.0 - lifeFrac)*/, 0.0, FUSE_SPARK_WIDTH * ( 1.0 - lifeFrac ), FUSE_SPARK_WIDTH * ( 1.0 - lifeFrac ), TJFL_SPARKHEADFLARE, whiteColor, whiteColor, 0, 0 );
+		le->headJuncIndex = CG_AddTrailJunc( le->headJuncIndex, cgs.media.sparkParticleShader, time, STYPE_STRETCH, le->refEntity.origin, (int)( lifeFrac * (float)( le->endTime - le->startTime ) / 2.0f ),
+											 1.0f /*(1.0 - lifeFrac)*/, 0.0, FUSE_SPARK_WIDTH * ( 1.0 - lifeFrac ), FUSE_SPARK_WIDTH * ( 1.0 - lifeFrac ), TJFL_SPARKHEADFLARE, whiteColor, whiteColor, 0, 0 );
 		//}
 
 		time += step;
@@ -876,7 +876,7 @@ void CG_AddBloodElements( localEntity_t *le ) {
 		if ( trace.startsolid ) {
 			// HACK, some walls screw up, so just pass through if starting in a solid
 			VectorCopy( newOrigin, trace.endpos );
-			trace.fraction = 1.0;
+			trace.fraction = 1.0f;
 		}
 
 		// moved some distance
@@ -890,12 +890,12 @@ void CG_AddBloodElements( localEntity_t *le ) {
 											 cgs.media.bloodTrailShader,
 											 le->refEntity.origin,
 											 200,
-											 1.0 - lifeFrac, // start alpha
-											 1.0 - lifeFrac, // end alpha
-											 3.0,
-											 5.0 );
+											 1.0f - lifeFrac, // start alpha
+											 1.0f - lifeFrac, // end alpha
+											 3.0f,
+											 5.0f );
 
-		if ( trace.fraction < 1.0 ) {
+		if ( trace.fraction < 1.0f ) {
 			// reflect the velocity on the trace plane
 			CG_ReflectVelocity( le, &trace );
 
@@ -905,7 +905,7 @@ void CG_AddBloodElements( localEntity_t *le ) {
 			le->pos.trTime = (int)time;
 		}
 
-		if ( trace.fraction == 1.0 || time >= (float)cg.time ) {
+		if ( trace.fraction == 1.0f || time >= (float)cg.time ) {
 			return;
 		}
 	}
@@ -923,16 +923,16 @@ void CG_AddSpiritViewflash( localEntity_t *le ) {
 #define SPIRIT_FLASH_DURATION   400
 #define SPIRIT_FLASH_FADEOUT    2000
 
-	if ( cg.viewFade > 1.0 ) {
+	if ( cg.viewFade > 1.0f ) {
 		return;
 	}
 
 	if ( cg.time < le->startTime + SPIRIT_FLASH_FADEIN ) {
 		alpha = (float)( cg.time - le->startTime ) / (float)SPIRIT_FLASH_FADEIN;
 	} else if ( cg.time < le->startTime + SPIRIT_FLASH_FADEIN + SPIRIT_FLASH_DURATION )     {
-		alpha = 1.0;
+		alpha = 1.0f;
 	} else if ( cg.time < le->startTime + SPIRIT_FLASH_FADEIN + SPIRIT_FLASH_DURATION + SPIRIT_FLASH_FADEOUT )     {
-		alpha = 1.0 - (float)( cg.time - ( le->startTime + SPIRIT_FLASH_FADEIN + SPIRIT_FLASH_DURATION ) ) / (float)SPIRIT_FLASH_FADEOUT;
+		alpha = 1.0f - (float)( cg.time - ( le->startTime + SPIRIT_FLASH_FADEIN + SPIRIT_FLASH_DURATION ) ) / (float)SPIRIT_FLASH_FADEOUT;
 	} else {
 		return;
 	}
@@ -979,12 +979,12 @@ void CG_AddClientCritter( localEntity_t *le ) {
 
 	time = le->lastTrailTime + step;
 
-	fadeRatio = (float)( cg.time - le->startTime ) / 2000.0;
-	if ( fadeRatio < 0.0 ) {
-		fadeRatio = 0.0;
+	fadeRatio = (float)( cg.time - le->startTime ) / 2000.0f;
+	if ( fadeRatio < 0.0f ) {
+		fadeRatio = 0.0f;
 	}
-	if ( fadeRatio > 1.0 ) {
-		fadeRatio = 1.0;
+	if ( fadeRatio > 1.0f ) {
+		fadeRatio = 1.0f;
 	}
 
 	while ( time <= cg.time ) {
@@ -1006,7 +1006,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, le->ownerNum, MASK_SHOT );
 
 		// if stuck, kill it
-		if ( trace.startsolid || ( trace.fraction < 1.0 ) ) {
+		if ( trace.startsolid || ( trace.fraction < 1.0f ) ) {
 			// let heinrich spirits pass through geometry
 			if ( !( le->leType == LE_HELGA_SPIRIT && ( le->refEntity.hModel == cgs.media.ssSpiritSkullModel ) ) ) {
 				// kill it
@@ -1034,14 +1034,14 @@ void CG_AddClientCritter( localEntity_t *le ) {
 												 STYPE_STRETCH,
 												 le->refEntity.origin,
 												 (int)le->effectWidth,  // trail life
-												 0.3 * alpha,
-												 0.0,
+												 0.3f * alpha,
+												 0.0f,
 												 le->radius,
 												 0,
 												 0, //TJFL_FIXDISTORT,
 												 colorWhite,
 												 colorWhite,
-												 1.0, 1 );
+												 1.0f, 1 );
 		}
 
 		if ( le->leType == LE_HELGA_SPIRIT && le->refEntity.hModel != cgs.media.ssSpiritSkullModel ) {
@@ -1051,21 +1051,21 @@ void CG_AddClientCritter( localEntity_t *le ) {
 												 STYPE_STRETCH,
 												 le->refEntity.origin,
 												 (int)le->effectWidth,  // trail life
-												 0.3 * alpha,
-												 0.0,
+												 0.3f * alpha,
+												 0.0f,
 												 le->radius,
 												 0,
 												 0, //TJFL_FIXDISTORT,
 												 colorWhite,
 												 colorWhite,
-												 1.0, 1 );
+												 1.0f, 1 );
 		}
 
 		// tracking factor
 		if ( le->leType == LE_ZOMBIE_BAT ) {
-			le->bounceFactor = 3.0 * (float)step / 1000.0;
+			le->bounceFactor = 3.0f * (float)step / 1000.0f;
 		} else {
-			le->bounceFactor = 5.0 * (float)step / 1000.0;
+			le->bounceFactor = 5.0f * (float)step / 1000.0f;
 		}
 		oldSpeed = VectorLength( le->pos.trDelta );
 
@@ -1073,7 +1073,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 		VectorSubtract( enemyPos, le->refEntity.origin, v );
 		enemyDist = VectorNormalize( v );
 
-		if ( alpha > 0.5 && ( le->lastSpiritDmgTime < time - 100 ) && enemyDist < 24 ) {
+		if ( alpha > 0.5f && ( le->lastSpiritDmgTime < time - 100 ) && enemyDist < 24 ) {
 			localEntity_t *fb;
 
 			// if dead, ignore
@@ -1101,7 +1101,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 			return;
 		}
 
-		le->bounceFactor = 5.0 * (float)step / 1000.0;  // avoidance factor
+		le->bounceFactor = 5.0f * (float)step / 1000.0f;  // avoidance factor
 
 		// the intersection is a fraction of the frametime
 		le->pos.trTime = time;
@@ -1112,7 +1112,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 		// now trace ahead of time, if we're going to hit something, then avoid it
 		// only avoid dangers if we don't have direct sight to the enemy
 		trap_CM_BoxTrace( &trace, le->refEntity.origin, enemyPos, NULL, NULL, 0, MASK_SOLID );
-		if ( trace.fraction < 1.0 ) {
+		if ( trace.fraction < 1.0f ) {
 			BG_EvaluateTrajectory( &le->pos, time + 1000, newOrigin );
 
 			// if we would go passed the enemy, don't bother
@@ -1120,13 +1120,13 @@ void CG_AddClientCritter( localEntity_t *le ) {
 
 				trap_CM_BoxTrace( &trace, le->refEntity.origin, newOrigin, NULL, NULL, 0, MASK_SOLID );
 
-				if ( trace.fraction < 1.0 ) {
+				if ( trace.fraction < 1.0f ) {
 					// make sure we are not heading away from the enemy too much
 					VectorNormalize2( le->pos.trDelta, v2 );
-					if ( DotProduct( v, v2 ) > 0.7 ) {
+					if ( DotProduct( v, v2 ) > 0.7f ) {
 						// avoid world geometry
 						backup = *le;
-						le->bounceFactor = ( 1.0 - trace.fraction ) * 10.0 * (float)step / 1000.0;  // tracking and avoidance factor
+						le->bounceFactor = ( 1.0f - trace.fraction ) * 10.0f * (float)step / 1000.0f;  // tracking and avoidance factor
 						// reflect the velocity on the trace plane
 						VectorMA( le->pos.trDelta, le->bounceFactor * oldSpeed, trace.plane.normal, le->pos.trDelta );
 						if ( VectorLength( le->pos.trDelta ) < 1 ) {
@@ -1141,7 +1141,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 						//
 						// double check end velocity
 						VectorNormalize2( le->pos.trDelta, v2 );
-						if ( DotProduct( v, v2 ) <= 0.2 ) {
+						if ( DotProduct( v, v2 ) <= 0.2f ) {
 							// restore
 							*le = backup;
 						}
@@ -1161,7 +1161,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 		// lean when turning
 		if ( le->leType == LE_ZOMBIE_BAT || le->leType == LE_HELGA_SPIRIT ) {
 			VectorSubtract( le->pos.trDelta, oDelta, v2 );
-			ang[ROLL] = -0.5 * DotProduct( le->refEntity.axis[1], v2 );
+			ang[ROLL] = -0.5f * DotProduct( le->refEntity.axis[1], v2 );
 			if ( fabs( ang[ROLL] ) < 20 ) {
 				ang[ROLL] = 0;
 			} else {
@@ -1183,7 +1183,7 @@ void CG_AddClientCritter( localEntity_t *le ) {
 		if ( le->leType == LE_ZOMBIE_SPIRIT ) {
 			// set the size scale
 			for ( i = 0; i < 3; i++ )
-				VectorScale( le->refEntity.axis[i], 0.35, le->refEntity.axis[i] );
+				VectorScale( le->refEntity.axis[i], 0.35f, le->refEntity.axis[i] );
 			VectorMA( le->refEntity.origin, -10, le->refEntity.axis[2], le->refEntity.origin );
 		}
 
@@ -1196,15 +1196,15 @@ void CG_AddClientCritter( localEntity_t *le ) {
 		#define BAT_ANIM_FRAMETIME  30
 		le->refEntity.frame = ( cg.time / BAT_ANIM_FRAMETIME + 1 ) % 19;
 		le->refEntity.oldframe = ( cg.time / BAT_ANIM_FRAMETIME ) % 19;
-		le->refEntity.backlerp = 1.0 - ( (float)( cg.time % BAT_ANIM_FRAMETIME ) / (float)BAT_ANIM_FRAMETIME );
+		le->refEntity.backlerp = 1.0f - ( (float)( cg.time % BAT_ANIM_FRAMETIME ) / (float)BAT_ANIM_FRAMETIME );
 	}
 
 	// add the sound
 	if ( le->loopingSound ) {
 		if ( cg.time > le->refEntity.fadeStartTime ) {
-			CG_S_AddLoopingSound( 0, le->refEntity.origin, vec3_origin, le->loopingSound, 255 - (int)( 255.0 * (float)( cg.time - le->refEntity.fadeStartTime ) / (float)( le->refEntity.fadeEndTime - le->refEntity.fadeStartTime ) ) );
+			CG_S_AddLoopingSound( 0, le->refEntity.origin, vec3_origin, le->loopingSound, 255 - (int)( 255.0f * (float)( cg.time - le->refEntity.fadeStartTime ) / (float)( le->refEntity.fadeEndTime - le->refEntity.fadeStartTime ) ) );
 		} else {
-			CG_S_AddLoopingSound( 0, le->refEntity.origin, vec3_origin, le->loopingSound, 255 - (int)( 255.0 * ( 1.0 - alpha ) ) );
+			CG_S_AddLoopingSound( 0, le->refEntity.origin, vec3_origin, le->loopingSound, 255 - (int)( 255.0f * ( 1.0f - alpha ) ) );
 		}
 	}
 
@@ -1251,7 +1251,7 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 		if ( trace.startsolid ) {
 			// HACK, some walls screw up, so just pass through if starting in a solid
 			VectorCopy( newOrigin, trace.endpos );
-			trace.fraction = 1.0;
+			trace.fraction = 1.0f;
 		}
 
 		// moved some distance
@@ -1267,9 +1267,9 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 			le->headJuncIndex = CG_AddSparkJunc( le->headJuncIndex,
 												 cgs.media.fireTrailShader,
 												 le->refEntity.origin,
-												 (int)( 500.0 * ( 0.5 + 0.5 * ( 1.0 - lifeFrac ) ) ), // trail life
-												 1.0, // alpha
-												 0.5, // end alpha
+												 (int)( 500.0f * ( 0.5f + 0.5f * ( 1.0f - lifeFrac ) ) ), // trail life
+												 1.0f, // alpha
+												 0.5f, // end alpha
 												 3, // start width
 												 le->effectWidth ); // end width
 #else   // spark line
@@ -1277,11 +1277,11 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 			le->headJuncIndex = CG_AddSparkJunc( le->headJuncIndex,
 												 cgs.media.sparkParticleShader,
 												 le->refEntity.origin,
-												 (int)( 600.0 * ( 0.5 + 0.5 * ( 0.5 - lifeFrac ) ) ), // trail life
-												 1.0 - lifeFrac * 2, // alpha
-												 0.5 * ( 1.0 - lifeFrac ), // end alpha
-												 5.0 * ( 1.0 - lifeFrac ), // start width
-												 5.0 * ( 1.0 - lifeFrac ) ); // end width
+												 (int)( 600.0f * ( 0.5f + 0.5f * ( 0.5f - lifeFrac ) ) ), // trail life
+												 1.0f - lifeFrac * 2, // alpha
+												 0.5f * ( 1.0f - lifeFrac ), // end alpha
+												 5.0f * ( 1.0f - lifeFrac ), // start width
+												 5.0f * ( 1.0f - lifeFrac ) ); // end width
 #endif
 		}
 #endif
@@ -1291,10 +1291,10 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 			le->headJuncIndex2 = CG_AddSmokeJunc( le->headJuncIndex2,
 												  cgs.media.smokeTrailShader,
 												  le->refEntity.origin,
-												  (int)( 2000.0 * ( 0.5 + 0.5 * ( 1.0 - lifeFrac ) ) ), // trail life
-												  1.0 * ( trace.fraction == 1.0 ) * ( 0.5 + 0.5 * ( 1.0 - lifeFrac ) ), // alpha
+												  (int)( 2000.0f * ( 0.5f + 0.5f * ( 1.0f - lifeFrac ) ) ), // trail life
+												  1.0f * ( trace.fraction == 1.0f ) * ( 0.5f + 0.5f * ( 1.0f - lifeFrac ) ), // alpha
 												  1, // start width
-												  (int)( 60.0 * ( 0.5 + 0.5 * ( 1.0 - lifeFrac ) ) ) ); // end width
+												  (int)( 60.0f * ( 0.5f + 0.5f * ( 1.0f - lifeFrac ) ) ) ); // end width
 		}
 
 		// if it is in a nodrop zone, remove it
@@ -1305,7 +1305,7 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 //			return;
 //		}
 
-		if ( trace.fraction < 1.0 ) {
+		if ( trace.fraction < 1.0f ) {
 			// reflect the velocity on the trace plane
 			CG_ReflectVelocity( le, &trace );
 			if ( VectorLength( le->pos.trDelta ) < 1 ) {
@@ -1344,7 +1344,7 @@ void CG_AddShrapnel( localEntity_t *le ) {
 			VectorCopy( le->refEntity.origin, le->refEntity.lightingOrigin );
 			le->refEntity.renderfx |= RF_LIGHTING_ORIGIN;
 			oldZ = le->refEntity.origin[2];
-			le->refEntity.origin[2] -= 16 * ( 1.0 - (float)t / SINK_TIME );
+			le->refEntity.origin[2] -= 16 * ( 1.0f - (float)t / SINK_TIME );
 			trap_R_AddRefEntityToScene( &le->refEntity );
 			le->refEntity.origin[2] = oldZ;
 		} else {
@@ -1360,7 +1360,7 @@ void CG_AddShrapnel( localEntity_t *le ) {
 
 	// trace a line from previous position to new position
 	CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, CONTENTS_SOLID );
-	if ( trace.fraction == 1.0 ) {
+	if ( trace.fraction == 1.0f ) {
 		// still in free fall
 		VectorCopy( newOrigin, le->refEntity.origin );
 
@@ -1446,7 +1446,7 @@ static void CG_AddMoveScaleFade( localEntity_t *le ) {
 //	c = ( le->endTime - cg.time ) * le->lifeRate;
 	if ( le->fadeInTime > le->startTime && cg.time < le->fadeInTime ) {
 		// fade / grow time
-		c = 1.0 - (float) ( le->fadeInTime - cg.time ) / ( le->fadeInTime - le->startTime );
+		c = 1.0f - (float) ( le->fadeInTime - cg.time ) / ( le->fadeInTime - le->startTime );
 	} else {
 		// fade / grow time
 		c = ( le->endTime - cg.time ) * le->lifeRate;
@@ -1460,7 +1460,7 @@ static void CG_AddMoveScaleFade( localEntity_t *le ) {
 
 	if ( !( le->leFlags & LEF_PUFF_DONT_SCALE ) ) {
 		c = ( le->endTime - cg.time ) * le->lifeRate;
-		re->radius = le->radius * ( 1.0 - c ) + 8;
+		re->radius = le->radius * ( 1.0f - c ) + 8;
 	}
 
 	BG_EvaluateTrajectory( &le->pos, cg.time, re->origin );
@@ -1500,7 +1500,7 @@ static void CG_AddScaleFade( localEntity_t *le ) {
 
 	re->shaderRGBA[3] = 0xff * c * le->color[3];
 	if ( !( le->leFlags & LEF_PUFF_DONT_SCALE ) ) {
-		re->radius = le->radius * ( 1.0 - c ) + 8;
+		re->radius = le->radius * ( 1.0f - c ) + 8;
 	}
 
 	// if the view would be "inside" the sprite, kill the sprite
@@ -1539,9 +1539,9 @@ static void CG_AddFallScaleFade( localEntity_t *le ) {
 
 	re->shaderRGBA[3] = 0xff * c * le->color[3];
 
-	re->origin[2] = le->pos.trBase[2] - ( 1.0 - c ) * le->pos.trDelta[2];
+	re->origin[2] = le->pos.trBase[2] - ( 1.0f - c ) * le->pos.trDelta[2];
 
-	re->radius = le->radius * ( 1.0 - c ) + 16;
+	re->radius = le->radius * ( 1.0f - c ) + 16;
 
 	// if the view would be "inside" the sprite, kill the sprite
 	// so it doesn't add too much overdraw
@@ -1578,10 +1578,10 @@ static void CG_AddExplosion( localEntity_t *ex ) {
 		float light;
 
 		light = (float)( cg.time - ex->startTime ) / ( ex->endTime - ex->startTime );
-		if ( light < 0.5 ) {
-			light = 1.0;
+		if ( light < 0.5f ) {
+			light = 1.0f;
 		} else {
-			light = 1.0 - ( light - 0.5 ) * 2;
+			light = 1.0f - ( light - 0.5f ) * 2;
 		}
 		light = ex->light * light;
 		trap_R_AddLightToScene( ent->origin, light, ex->lightColor[0], ex->lightColor[1], ex->lightColor[2], 0 );
@@ -1601,19 +1601,19 @@ static void CG_AddSpriteExplosion( localEntity_t *le ) {
 
 	c = ( le->endTime - cg.time ) / ( float ) ( le->endTime - le->startTime );
 	if ( c > 1 ) {
-		c = 1.0;    // can happen during connection problems
+		c = 1.0f;    // can happen during connection problems
 	}
 
 	re.shaderRGBA[0] = 0xff;
 	re.shaderRGBA[1] = 0xff;
 	re.shaderRGBA[2] = 0xff;
-	re.shaderRGBA[3] = 0xff * c * 0.33;
+	re.shaderRGBA[3] = 0xff * c * 0.33f;
 
 	re.reType = RT_SPRITE;
-	re.radius = 42 * ( 1.0 - c ) + 30;
+	re.radius = 42 * ( 1.0f - c ) + 30;
 
 	// Ridah, move away from surface
-	VectorMA( le->pos.trBase, ( 1.0 - c ), le->pos.trDelta, re.origin );
+	VectorMA( le->pos.trBase, ( 1.0f - c ), le->pos.trDelta, re.origin );
 	// done.
 
 	// RF, don't add if shader is invalid
@@ -1637,10 +1637,10 @@ static void CG_AddSpriteExplosion( localEntity_t *le ) {
 		trap_R_AddLightToScene(re.origin, light, le->lightColor[0], le->lightColor[1], le->lightColor[2], 0 );
 		*/
 		light = (float)( cg.time - le->startTime ) / ( le->endTime - le->startTime );
-		if ( light < 0.5 ) {
-			light = 1.0;
+		if ( light < 0.5f ) {
+			light = 1.0f;
 		} else {
-			light = 1.0 - ( light - 0.5 ) * 2;
+			light = 1.0f - ( light - 0.5f ) * 2;
 		}
 		trap_R_AddLightToScene( re.origin, le->light, light * le->lightColor[0], light * le->lightColor[1], light * le->lightColor[2], 0 );
 		// done.
@@ -1659,7 +1659,7 @@ CG_AddLocalEntities
 void CG_AddLocalEntities( void ) {
 	localEntity_t   *le, *next;
 
-	cg.viewFade = 0.0;
+	cg.viewFade = 0.0f;
 
 	// walk the list backwards, so any new local entities generated
 	// (trails, marks, etc) will be present this frame

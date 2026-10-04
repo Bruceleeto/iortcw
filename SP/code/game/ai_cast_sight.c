@@ -136,7 +136,7 @@ qboolean AICast_VisibleFromPos( vec3_t srcpos, int srcnum,
 	//
 	//calculate middle of bounding box
 	VectorAdd( destmins, destmaxs, middle );
-	VectorScale( middle, 0.5, middle );
+	VectorScale( middle, 0.5f, middle );
 	VectorAdd( destpos, middle, middle );
 	// calculate eye position
 	VectorCopy( srcpos, eye );
@@ -203,14 +203,14 @@ qboolean AICast_VisibleFromPos( vec3_t srcpos, int srcnum,
 		}
 		//check bottom and top of bounding box as well
 		if ( i == 0 ) {
-			middle[2] -= ( destmaxs[2] - destmins[2] ) * 0.5;
+			middle[2] -= ( destmaxs[2] - destmins[2] ) * 0.5f;
 		} else if ( i == 1 ) {
 			middle[2] += destmaxs[2] - destmins[2];
 		} else if ( i == 2 )                                                          { // right side
-			middle[2] -= ( destmaxs[2] - destmins[2] ) / 2.0;
-			VectorMA( eye, destmaxs[0] - 0.5, right, eye );
+			middle[2] -= ( destmaxs[2] - destmins[2] ) / 2.0f;
+			VectorMA( eye, destmaxs[0] - 0.5f, right, eye );
 		} else if ( i == 3 ) {    // left side
-			VectorMA( eye, -2.0 * ( destmaxs[0] - 0.5 ), right, eye );
+			VectorMA( eye, -2.0f * ( destmaxs[0] - 0.5f ), right, eye );
 		}
 	} //end for
 

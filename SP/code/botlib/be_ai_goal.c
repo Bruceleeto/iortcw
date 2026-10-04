@@ -62,7 +62,7 @@ If you have questions concerning this license or the applicable additional terms
 //avoid dropped goal time
 #define AVOIDDROPPED_TIME       5
 //
-#define TRAVELTIME_SCALE        0.01
+#define TRAVELTIME_SCALE        0.01f
 
 //location in the map "target_location"
 typedef struct maplocation_s

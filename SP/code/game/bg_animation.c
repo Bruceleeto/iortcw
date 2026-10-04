@@ -2262,7 +2262,7 @@ float BG_AnimGetFootstepGap( playerState_t *ps, float xyspeed ) {
 	int index;
 	animation_t     *anim;
 	float gap;
-#define MAX_ANIM_SCALE  1.1
+#define MAX_ANIM_SCALE  1.1f
 
 	modelInfo = BG_ModelInfoForClient( ps->clientNum );
 	index = ps->legsAnim & ~ANIM_TOGGLEBIT;

@@ -443,7 +443,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 	aas_trace_t trace, steptrace;
 
 	if ( frametime <= 0 ) {
-		frametime = 0.1;
+		frametime = 0.1f;
 	}
 	//
 	sv_friction = aassettings.sv_friction;
@@ -465,7 +465,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 	memset( &trace, 0, sizeof( aas_trace_t ) );
 	//start at the current origin
 	VectorCopy( origin, org );
-	org[2] += 0.25;
+	org[2] += 0.25f;
 	//velocity to test for the first frame
 	VectorScale( velocity, frametime, frame_test_vel );
 	//
@@ -477,7 +477,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 		//get gravity depending on swimming or not
 		gravity = swimming ? sv_watergravity : sv_gravity;
 		//apply gravity at the START of the frame
-		frame_test_vel[2] = frame_test_vel[2] - ( gravity * 0.1 * frametime );
+		frame_test_vel[2] = frame_test_vel[2] - ( gravity * 0.1f * frametime );
 		//if on the ground or swimming
 		if ( onground || swimming ) {
 			friction = swimming ? sv_waterfriction : sv_friction;
@@ -501,7 +501,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 				  //if not swimming and upmove is positive then jump
 				if ( !swimming && cmdmove[2] > 1 ) {
 					//jump velocity minus the gravity for one frame + 5 for safety
-					frame_test_vel[2] = sv_jumpvel - ( gravity * 0.1 * frametime ) + 5;
+					frame_test_vel[2] = sv_jumpvel - ( gravity * 0.1f * frametime ) + 5;
 					jump_frame = n;
 					//jumping so air accelerate
 					accelerate = sv_airaccelerate;
@@ -591,14 +591,14 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 			  //move the entity to the trace end point
 			VectorCopy( trace.endpos, org );
 			//if there was a collision
-			if ( trace.fraction < 1.0 ) {
+			if ( trace.fraction < 1.0f ) {
 				//get the plane the bounding box collided with
 				plane = AAS_PlaneFromNum( trace.planenum );
 				//
 				if ( stopevent & SE_HITGROUNDAREA ) {
 					if ( DotProduct( plane->normal, up ) > sv_maxsteepness ) {
 						VectorCopy( org, start );
-						start[2] += 0.5;
+						start[2] += 0.5f;
 						if ( AAS_PointAreaNum( start ) == stopareanum ) {
 							VectorCopy( start, move->endpos );
 							VectorScale( frame_test_vel, 1 / frametime, move->velocity );
@@ -617,7 +617,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 				//if it is a vertical plane and the bot didn't jump recently
 				if ( plane->normal[2] == 0 && ( jump_frame < 0 || n - jump_frame > 2 ) ) {
 					//check for a step
-					VectorMA( org, -0.25, plane->normal, start );
+					VectorMA( org, -0.25f, plane->normal, start );
 					VectorCopy( start, stepend );
 					start[2] += sv_maxstep;
 					steptrace = AAS_TraceClientBBox( start, stepend, presencetype, entnum );
@@ -630,7 +630,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 							frame_test_vel[2] = 0;
 //#ifdef AAS_MOVE_DEBUG
 							if ( visualize ) {
-								if ( steptrace.endpos[2] - org[2] > 0.125 ) {
+								if ( steptrace.endpos[2] - org[2] > 0.125f ) {
 									VectorCopy( org, start );
 									start[2] = steptrace.endpos[2];
 									AAS_DebugLine( org, start, LINECOLOR_BLUE );
@@ -670,7 +670,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 						} //end else
 						if ( delta ) {
 							delta = delta * 10;
-							delta = delta * delta * 0.0001;
+							delta = delta * delta * 0.0001f;
 							if ( swimming ) {
 								delta = 0;
 							}
@@ -700,7 +700,7 @@ int AAS_PredictClientMovement( struct aas_clientmove_s *move,
 				return qfalse;
 			}
 			//while there is a plane hit
-		} while ( trace.fraction < 1.0 );
+		} while ( trace.fraction < 1.0f );
 		//if going down
 		if ( frame_test_vel[2] <= 10 ) {
 			//check for a liquid at the feet of the bot

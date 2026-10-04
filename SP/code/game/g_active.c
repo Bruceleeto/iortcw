@@ -909,10 +909,10 @@ void ClientThink_real( gentity_t *ent ) {
 */
 
 			// NOTE: ----------------- SP uses this method
-			muzzlebounce[PITCH] -= 0.25*client->sniperRifleMuzzlePitch*cos( 2.5*( level.time - client->sniperRifleFiredTime ) / RIFLE_SHAKE_TIME );
-			muzzlebounce[YAW] += 0.2*client->sniperRifleMuzzleYaw*cos( 1.0 - ( level.time - client->sniperRifleFiredTime )*3 / RIFLE_SHAKE_TIME );
-			muzzlebounce[PITCH] -= 0.25*client->sniperRifleMuzzlePitch*random() * ( 1.0f - ( level.time - client->sniperRifleFiredTime ) / RIFLE_SHAKE_TIME );
-			muzzlebounce[YAW] += 0.2 * crandom() * ( 1.0f - ( level.time - client->sniperRifleFiredTime ) / RIFLE_SHAKE_TIME );
+			muzzlebounce[PITCH] -= 0.25f*client->sniperRifleMuzzlePitch*cos( 2.5f*( level.time - client->sniperRifleFiredTime ) / RIFLE_SHAKE_TIME );
+			muzzlebounce[YAW] += 0.2f*client->sniperRifleMuzzleYaw*cos( 1.0f - ( level.time - client->sniperRifleFiredTime )*3 / RIFLE_SHAKE_TIME );
+			muzzlebounce[PITCH] -= 0.25f*client->sniperRifleMuzzlePitch*random() * ( 1.0f - ( level.time - client->sniperRifleFiredTime ) / RIFLE_SHAKE_TIME );
+			muzzlebounce[YAW] += 0.2f * crandom() * ( 1.0f - ( level.time - client->sniperRifleFiredTime ) / RIFLE_SHAKE_TIME );
 			SetClientViewAngle( ent,muzzlebounce );
 		}
 	}
@@ -1002,13 +1002,13 @@ void ClientThink_real( gentity_t *ent ) {
 	client->ps.speed = g_speed.value;
 
 	if ( client->ps.powerups[PW_HASTE] ) {
-		client->ps.speed *= 1.3;
+		client->ps.speed *= 1.3f;
 	}
 
 	// set up for pmove
 	oldEventSequence = client->ps.eventSequence;
 
-	client->currentAimSpreadScale = (float)client->ps.aimSpreadScale / 255.0;
+	client->currentAimSpreadScale = (float)client->ps.aimSpreadScale / 255.0f;
 
 	memset( &pm, 0, sizeof( pm ) );
 
@@ -1116,7 +1116,7 @@ void ClientThink_real( gentity_t *ent ) {
 					if ( trap_GetTag( ent->s.number, "tag_head", &or ) ) {
 						VectorCopy( or.origin, start );
 						VectorCopy( start, end );
-						end[2] += 1.0;
+						end[2] += 1.0f;
 
 						trap_Trace( &tr, start, NULL, NULL, end, ent->s.number, ( CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_CORPSE | CONTENTS_TRIGGER ) );
 
@@ -1172,7 +1172,7 @@ void ClientThink_real( gentity_t *ent ) {
 				trap_Trace( &tr, src, vec3_origin, vec3_origin, or.origin, ent->s.number, MASK_SOLID );
 
 				// if we hit something, move away from it
-				if ( !tr.startsolid && !tr.allsolid && tr.fraction < 1.0 ) {
+				if ( !tr.startsolid && !tr.allsolid && tr.fraction < 1.0f ) {
 					// move towards feet
 					VectorSubtract( src, or.origin, vel );
 					vel[2] = 0;

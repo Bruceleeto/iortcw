@@ -41,9 +41,9 @@ If you have questions concerning this license or the applicable additional terms
 
 #define JUMP_HEIGHT             56
 
-#define SWINGSPEED              0.3
+#define SWINGSPEED              0.3f
 
-#define SPIN_SPEED              0.9
+#define SPIN_SPEED              0.9f
 #define COAST_TIME              1000
 
 

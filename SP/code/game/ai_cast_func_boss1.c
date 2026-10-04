@@ -670,7 +670,7 @@ char *AIFunc_Heinrich_SwordSideSlashStart( cast_state_t *cs ) {
 }
 
 #define HEINRICH_STOMP_DELAY        900
-#define HEINRICH_STOMP_RANGE        1024.0
+#define HEINRICH_STOMP_RANGE        1024.0f
 #define HEINRICH_STOMP_VELOCITY_Z   420
 #define HEINRICH_STOMP_DAMAGE       35
 

@@ -368,7 +368,7 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 		vec3_t rr, ru;
 		vec3_t rotate_ang;
 
-		VectorSet( color, 1.0, 1.0, 1.0 );
+		VectorSet( color, 1.0f, 1.0f, 1.0f );
 		time = cg.time - p->time;
 		time2 = p->endtime - p->time;
 		ratio = time / time2;
@@ -471,11 +471,11 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 		}
 
 		if ( p->color == MUSTARD ) {
-			VectorSet( color, 0.42, 0.33, 0.19 );
+			VectorSet( color, 0.42f, 0.33f, 0.19f );
 		} else if ( p->color == BLOODRED ) {
-			VectorSet( color, 0.22, 0, 0 );
+			VectorSet( color, 0.22f, 0, 0 );
 		} else if ( p->color == ZOMBIE ) {
-			VectorSet( color, 0.4, 0.28, 0.23 );
+			VectorSet( color, 0.4f, 0.28f, 0.23f );
 		} else if ( p->color == GREY75 ) {
 			float len;
 			float greyit;
@@ -486,14 +486,14 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 			}
 
 			val = 4096 / len;
-			greyit = 0.25 * val;
-			if ( greyit > 0.5 ) {
-				greyit = 0.5;
+			greyit = 0.25f * val;
+			if ( greyit > 0.5f ) {
+				greyit = 0.5f;
 			}
 
 			VectorSet( color, greyit, greyit, greyit );
 		} else {
-			VectorSet( color, 1.0, 1.0, 1.0 );
+			VectorSet( color, 1.0f, 1.0f, 1.0f );
 		}
 
 		time = cg.time - p->time;
@@ -533,7 +533,7 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 
 			vectoangles( rforward, temp );
 			p->accumroll += p->roll;
-			temp[ROLL] += p->accumroll * 0.1;
+			temp[ROLL] += p->accumroll * 0.1f;
 //			temp[ROLL] += p->roll * 0.1;
 			AngleVectors( temp, NULL, rright2, rup2 );
 		}
@@ -717,7 +717,7 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 		if ( p->color == BLOODRED ) {
 			VectorSet( color, 1, 1, 1 );
 		} else {
-			VectorSet( color, 0.5, 0.5, 0.5 );
+			VectorSet( color, 0.5f, 0.5f, 0.5f );
 		}
 
 		time = cg.time - p->time;
@@ -829,15 +829,15 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 		time = cg.time - p->time;
 		time2 = p->endtime - p->time;
 		ratio = time / time2;
-		if ( ratio >= 1.0 ) {
-			ratio = 0.9999;
+		if ( ratio >= 1.0f ) {
+			ratio = 0.9999f;
 		}
 
 		width = p->width + ( ratio * ( p->endwidth - p->width ) );
 		height = p->height + ( ratio * ( p->endheight - p->height ) );
 
 		// if we are "inside" this sprite, don't draw
-		if ( Distance( cg.snap->ps.origin, org ) < width / 1.5 ) {
+		if ( Distance( cg.snap->ps.origin, org ) < width / 1.5f ) {
 			return;
 		}
 
@@ -2083,7 +2083,7 @@ void CG_OilSlickRemove( centity_t *cent ) {
 }
 
 qboolean ValidBloodPool( vec3_t start ) {
-#define EXTRUDE_DIST    0.5
+#define EXTRUDE_DIST    0.5f
 
 	vec3_t angles;
 	vec3_t right, up;

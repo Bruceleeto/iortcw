@@ -50,11 +50,11 @@ extern botlib_import_t botimport;
 
 //#define AAS_SAMPLE_DEBUG
 
-#define BBOX_NORMAL_EPSILON     0.001
+#define BBOX_NORMAL_EPSILON     0.001f
 
 #define ON_EPSILON                  0 //0.0005
 
-#define TRACEPLANE_EPSILON          0.125
+#define TRACEPLANE_EPSILON          0.125f
 
 typedef struct aas_tracestack_s
 {
@@ -385,7 +385,7 @@ aas_trace_t AAS_TraceClientBBox( vec3_t start, vec3_t end, int presencetype,
 			tstack_p++;
 			//nothing was hit
 			trace.startsolid = qfalse;
-			trace.fraction = 1.0;
+			trace.fraction = 1.0f;
 			//endpos is the end of the line
 			VectorCopy( end, trace.endpos );
 			//nothing hit
@@ -415,7 +415,7 @@ aas_trace_t AAS_TraceClientBBox( vec3_t start, vec3_t end, int presencetype,
 					 tstack_p->start[2] == start[2] )
 				{
 					trace.startsolid = qtrue;
-					trace.fraction = 0.0;
+					trace.fraction = 0.0f;
 					VectorClear(v1);
 				} //end if
 				else
@@ -424,7 +424,7 @@ aas_trace_t AAS_TraceClientBBox( vec3_t start, vec3_t end, int presencetype,
 					VectorSubtract( end, start, v1 );
 					VectorSubtract( tstack_p->start, start, v2 );
 					trace.fraction = VectorLength( v2 ) / VectorNormalize( v1 );
-					VectorMA( tstack_p->start, -0.125, v1, tstack_p->start );
+					VectorMA( tstack_p->start, -0.125f, v1, tstack_p->start );
 				} //end else
 				VectorCopy( tstack_p->start, trace.endpos );
 				trace.ent = 0;
@@ -466,7 +466,7 @@ aas_trace_t AAS_TraceClientBBox( vec3_t start, vec3_t end, int presencetype,
 				 tstack_p->start[2] == start[2] )
 			{
 				trace.startsolid = qtrue;
-				trace.fraction = 0.0;
+				trace.fraction = 0.0f;
 				VectorClear(v1);
 			} //end if
 			else
@@ -475,7 +475,7 @@ aas_trace_t AAS_TraceClientBBox( vec3_t start, vec3_t end, int presencetype,
 				VectorSubtract( end, start, v1 );
 				VectorSubtract( tstack_p->start, start, v2 );
 				trace.fraction = VectorLength( v2 ) / VectorNormalize( v1 );
-				VectorMA( tstack_p->start, -0.125, v1, tstack_p->start );
+				VectorMA( tstack_p->start, -0.125f, v1, tstack_p->start );
 			} //end else
 			VectorCopy( tstack_p->start, trace.endpos );
 			trace.ent = 0;
@@ -568,9 +568,9 @@ aas_trace_t AAS_TraceClientBBox( vec3_t start, vec3_t end, int presencetype,
 			tmpplanenum = tstack_p->planenum;
 			//
 			if ( frac < 0 ) {
-				frac = 0.001; //0
+				frac = 0.001f; //0
 			} else if ( frac > 1 )                         {
-				frac = 0.999; //1
+				frac = 0.999f; //1
 			}
 			//frac = front / (front-back);
 			//

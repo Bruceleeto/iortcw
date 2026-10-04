@@ -40,7 +40,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #define DEFAULT_GRAVITY     800
 #define GIB_HEALTH          -40
-#define ARMOR_PROTECTION    0.66
+#define ARMOR_PROTECTION    0.66f
 
 #define MAX_ITEMS           72      // bg_itemlist has 70 (checked in bg_misc.c)
 
@@ -63,7 +63,7 @@ float Com_GetFlamethrowerRange( void );
 #define FLAMETHROWER_RANGE Com_GetFlamethrowerRange()
 //#define	FLAMETHROWER_RANGE	850
 // jpw
-#define ZOMBIE_FLAME_SCALE  0.3
+#define ZOMBIE_FLAME_SCALE  0.3f
 #define ZOMBIE_FLAME_RADIUS ( FLAMETHROWER_RANGE * ZOMBIE_FLAME_SCALE )
 
 // RF, AI effects

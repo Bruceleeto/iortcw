@@ -107,11 +107,11 @@ If you have questions concerning this license or the applicable additional terms
 #define ASSET_SLIDER_BAR            "ui/assets/slider2.tga"
 #define ASSET_SLIDER_THUMB          "ui/assets/sliderbutt_1.tga"
 
-#define SCROLLBAR_SIZE      16.0
-#define SLIDER_WIDTH        96.0
-#define SLIDER_HEIGHT       16.0
-#define SLIDER_THUMB_WIDTH  12.0
-#define SLIDER_THUMB_HEIGHT 20.0
+#define SCROLLBAR_SIZE      16.0f
+#define SLIDER_WIDTH        96.0f
+#define SLIDER_HEIGHT       16.0f
+#define SLIDER_THUMB_WIDTH  12.0f
+#define SLIDER_THUMB_HEIGHT 20.0f
 #define NUM_CROSSHAIRS      10
 
 typedef struct {

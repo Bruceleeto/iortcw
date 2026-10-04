@@ -338,7 +338,7 @@ static void PM_Accelerate( vec3_t wishdir, float wishspeed, float accel ) {
 
 	// Ridah, variable friction for AI's
 	if ( pm->ps->groundEntityNum != ENTITYNUM_NONE ) {
-		accelspeed *= ( 1.0 / pm->ps->friction );
+		accelspeed *= ( 1.0f / pm->ps->friction );
 	}
 	if ( accelspeed > addspeed ) {
 		accelspeed = addspeed;
@@ -385,13 +385,13 @@ static float PM_CmdScale( usercmd_t *cmd ) {
 
 	if ( pm->ps->aiChar && !( pm->ps->eFlags & EF_DUMMY_PMOVE ) ) {
 		// restrict AI character movements (don't strafe or run backwards as fast as they can run forwards)
-		if ( cmd->forwardmove < -64.0 ) {
-			cmd->forwardmove = -64.0;
+		if ( cmd->forwardmove < -64.0f ) {
+			cmd->forwardmove = -64.0f;
 		}
-		if ( cmd->rightmove > 64.0 ) {
-			cmd->rightmove = 64.0;
-		} else if ( cmd->rightmove < -64.0 ) {
-			cmd->rightmove = -64.0;
+		if ( cmd->rightmove > 64.0f ) {
+			cmd->rightmove = 64.0f;
+		} else if ( cmd->rightmove < -64.0f ) {
+			cmd->rightmove = -64.0f;
 		}
 	}
 
@@ -408,7 +408,7 @@ static float PM_CmdScale( usercmd_t *cmd ) {
 
 	total = sqrt( cmd->forwardmove * cmd->forwardmove
 				  + cmd->rightmove * cmd->rightmove + cmd->upmove * cmd->upmove );
-	scale = (float)pm->ps->speed * max / ( 127.0 * total );
+	scale = (float)pm->ps->speed * max / ( 127.0f * total );
 
 	if ( pm->cmd.buttons & BUTTON_SPRINT && pm->ps->sprintTime > 50 ) {
 		scale *= pm->ps->sprintSpeedScale;
@@ -436,7 +436,7 @@ static float PM_CmdScale( usercmd_t *cmd ) {
 #endif
 	{
 		if ( ( pm->ps->weapon == WP_VENOM ) || ( pm->ps->weapon == WP_PANZERFAUST ) ) {
-			scale *= 0.5;
+			scale *= 0.5f;
 		}
 	}
 // jpw
@@ -762,7 +762,7 @@ static void PM_FlyMove( void ) {
 		scale = PM_CmdScale( &pm->cmd );
 	} else {
 		// AI is allowed to fly freely
-		scale = 1.0;
+		scale = 1.0f;
 	}
 	//
 	// user intentions
@@ -1012,11 +1012,11 @@ static void PM_WalkMove( void ) {
 	if ( pm->waterlevel ) {
 		float waterScale;
 
-		waterScale = pm->waterlevel / 3.0;
+		waterScale = pm->waterlevel / 3.0f;
 		if ( pm->watertype & CONTENTS_SLIME ) { //----(SA)	slag
-			waterScale = 1.0 - ( 1.0 - pm_slagSwimScale ) * waterScale;
+			waterScale = 1.0f - ( 1.0f - pm_slagSwimScale ) * waterScale;
 		} else {
-			waterScale = 1.0 - ( 1.0 - pm_waterSwimScale ) * waterScale;
+			waterScale = 1.0f - ( 1.0f - pm_waterSwimScale ) * waterScale;
 		}
 
 		if ( wishspeed > pm->ps->speed * waterScale ) {
@@ -1137,7 +1137,7 @@ static void PM_NoclipMove( void ) {
 	{
 		drop = 0;
 
-		friction = pm_friction * 1.5; // extra friction
+		friction = pm_friction * 1.5f; // extra friction
 		control = speed < pm_stopspeed ? pm_stopspeed : speed;
 		drop += control * friction * pml.frametime;
 
@@ -1272,7 +1272,7 @@ static void PM_CrashLand( void ) {
 	t = ( -b - sqrt( den ) ) / ( 2 * a );
 
 	delta = vel + t * acc;
-	delta = delta * delta * 0.0001;
+	delta = delta * delta * 0.0001f;
 
 	// never take falling damage if completely underwater
 	if ( pm->waterlevel == 3 ) {
@@ -1281,10 +1281,10 @@ static void PM_CrashLand( void ) {
 
 	// reduce falling damage if there is standing water
 	if ( pm->waterlevel == 2 ) {
-		delta *= 0.25;
+		delta *= 0.25f;
 	}
 	if ( pm->waterlevel == 1 ) {
-		delta *= 0.5;
+		delta *= 0.5f;
 	}
 
 	if ( delta < 1 ) {
@@ -1324,7 +1324,7 @@ static void PM_CrashLand( void ) {
 			if ( pm->ps->stats[STAT_HEALTH] > 0 ) {
 				PM_AddFallEvent( EV_FALL_DMG_15, pml.groundTrace.surfaceFlags );
 			}
-		} else if ( delta > 38.75 ) {
+		} else if ( delta > 38.75f ) {
 			// this is a pain grunt, so don't play it if dead
 			if ( pm->ps->stats[STAT_HEALTH] > 0 ) {
 				PM_AddFallEvent( EV_FALL_DMG_10, pml.groundTrace.surfaceFlags );
@@ -1370,7 +1370,7 @@ static int PM_CorrectAllSolid( trace_t *trace ) {
 				if ( !trace->allsolid ) {
 					point[0] = pm->ps->origin[0];
 					point[1] = pm->ps->origin[1];
-					point[2] = pm->ps->origin[2] - 0.25;
+					point[2] = pm->ps->origin[2] - 0.25f;
 
 					pm->trace( trace, pm->ps->origin, pm->mins, pm->maxs, point, pm->ps->clientNum, pm->tracemask );
 					pml.groundTrace = *trace;
@@ -1399,7 +1399,7 @@ static void PM_GroundTraceMissed( void ) {
 	trace_t trace;
 	vec3_t point;
 
-#define AI_STEPTEST_FALLDIST_PER_SEC    ( STEPSIZE + pm->ps->gravity * 0.35 )   // always allow them to fall down the minimum stepsize
+#define AI_STEPTEST_FALLDIST_PER_SEC    ( STEPSIZE + pm->ps->gravity * 0.35f )   // always allow them to fall down the minimum stepsize
 
 	if ( pm->ps->groundEntityNum != ENTITYNUM_NONE ) {
 		// we just transitioned into freefall
@@ -1416,7 +1416,7 @@ static void PM_GroundTraceMissed( void ) {
 		//
 		// RF, try and keep AI's on the ground if walking down steps
 		if ( pm->ps->aiChar ) {
-			if ( trace.fraction < 1.0 ) {
+			if ( trace.fraction < 1.0f ) {
 				float falldist, xyspeed;
 				vec3_t vel;
 				falldist = Distance( pm->ps->origin, trace.endpos );
@@ -1431,7 +1431,7 @@ static void PM_GroundTraceMissed( void ) {
 			}
 		}
 		//
-		if ( trace.fraction == 1.0 && !( pm->ps->pm_flags & PMF_LADDER ) ) {
+		if ( trace.fraction == 1.0f && !( pm->ps->pm_flags & PMF_LADDER ) ) {
 			if ( pm->cmd.forwardmove >= 0 ) {
 				BG_AnimScriptEvent( pm->ps, ANIM_ET_JUMP, qfalse, qtrue );
 				pm->ps->pm_flags &= ~PMF_BACKWARDS_JUMP;
@@ -1459,7 +1459,7 @@ static void PM_GroundTrace( void ) {
 
 	point[0] = pm->ps->origin[0];
 	point[1] = pm->ps->origin[1];
-	point[2] = pm->ps->origin[2] - 0.25;
+	point[2] = pm->ps->origin[2] - 0.25f;
 
 	pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, point, pm->ps->clientNum, pm->tracemask );
 	pml.groundTrace = trace;
@@ -1472,7 +1472,7 @@ static void PM_GroundTrace( void ) {
 	}
 
 	// if the trace didn't hit anything, we are in free fall
-	if ( trace.fraction == 1.0 ) {
+	if ( trace.fraction == 1.0f ) {
 		PM_GroundTraceMissed();
 		pml.groundPlane = qfalse;
 		pml.walking = qfalse;
@@ -1741,7 +1741,7 @@ static void PM_Footsteps( void ) {
 	footstep = qfalse;
 
 	if ( pm->ps->pm_flags & PMF_DUCKED ) {
-		bobmove = 0.5;  // ducked characters bob much faster
+		bobmove = 0.5f;  // ducked characters bob much faster
 		if ( pm->ps->pm_flags & PMF_BACKWARDS_RUN ) {
 			animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_WALKCRBK, qtrue );
 		} else {
@@ -1750,7 +1750,7 @@ static void PM_Footsteps( void ) {
 		// ducked characters never play footsteps
 	} else if ( pm->ps->pm_flags & PMF_BACKWARDS_RUN ) {
 		if ( !( pm->cmd.buttons & BUTTON_WALKING ) ) {
-			bobmove = 0.4;  // faster speeds bob faster
+			bobmove = 0.4f;  // faster speeds bob faster
 			footstep = qtrue;
 			// check for strafing
 			if ( pm->cmd.rightmove && !pm->cmd.forwardmove ) {
@@ -1767,7 +1767,7 @@ static void PM_Footsteps( void ) {
 				animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_WALKBK, qtrue );
 			}
 		} else {
-			bobmove = 0.3;
+			bobmove = 0.3f;
 			// check for strafing
 			if ( pm->cmd.rightmove && !pm->cmd.forwardmove ) {
 				if ( pm->cmd.rightmove > 0 ) {
@@ -1787,7 +1787,7 @@ static void PM_Footsteps( void ) {
 	} else {
 
 		if ( !( pm->cmd.buttons & BUTTON_WALKING ) ) {
-			bobmove = 0.4;  // faster speeds bob faster
+			bobmove = 0.4f;  // faster speeds bob faster
 			footstep = qtrue;
 			// check for strafing
 			if ( pm->cmd.rightmove && !pm->cmd.forwardmove ) {
@@ -1804,7 +1804,7 @@ static void PM_Footsteps( void ) {
 				animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_WALK, qtrue );
 			}
 		} else {
-			bobmove = 0.3;  // walking bobs slow
+			bobmove = 0.3f;  // walking bobs slow
 			if ( pm->ps->aiChar != AICHAR_NONE ) {
 				footstep = qtrue;
 				iswalking = qtrue;
@@ -1878,17 +1878,17 @@ static void PM_Footsteps( void ) {
 
 		if ( pm->ps->aiChar == AICHAR_SUPERSOLDIER || pm->ps->aiChar == AICHAR_PROTOSOLDIER ) {
 			//iswalking = qfalse;
-			bobmove = 0.4 * 0.75f;  // slow down footsteps for big guys
+			bobmove = 0.4f * 0.75f;  // slow down footsteps for big guys
 		}
 
 		if ( pm->ps->aiChar == AICHAR_HEINRICH ) {
 			iswalking = qfalse;
-			bobmove = 0.4 * 1.3f;
+			bobmove = 0.4f * 1.3f;
 		}
 
 		if ( pm->ps->aiChar == AICHAR_HELGA ) {
 			iswalking = qfalse;
-			bobmove = 0.4 * 1.5f;
+			bobmove = 0.4f * 1.5f;
 		}
 
 		pm->ps->bobCycle = (int)( old + bobmove * pml.msec ) & 255;
@@ -2570,7 +2570,7 @@ void PM_AdjustAimSpreadScale( void ) {
 		return;
 	}
 
-	cmdTime = (float)( pm->cmd.serverTime - pm->oldcmd.serverTime ) / 1000.0;
+	cmdTime = (float)( pm->cmd.serverTime - pm->oldcmd.serverTime ) / 1000.0f;
 
 	wpnScale = 0.0f;
 	switch ( pm->ps->weapon ) {
@@ -2579,7 +2579,7 @@ void PM_AdjustAimSpreadScale( void ) {
 		wpnScale = 0.5f;
 		break;
 	case WP_AKIMBO: //----(SA)	added
-		wpnScale = 0.5;
+		wpnScale = 0.5f;
 		break;
 	case WP_COLT:
 		wpnScale = 0.4f;        // doesn't fire as fast, but easier to handle than luger
@@ -2624,7 +2624,7 @@ void PM_AdjustAimSpreadScale( void ) {
 
 // JPW NERVE crouched players recover faster (mostly useful for snipers)
 		if ( ( pm->ps->eFlags & EF_CROUCHING ) && ( pm->ps->groundEntityNum != ENTITYNUM_NONE ) ) {  //----(SA)	modified so you can't do this in the air.  cool?
-			wpnScale *= 0.5;
+			wpnScale *= 0.5f;
 		}
 // jpw
 
@@ -3479,14 +3479,14 @@ static void PM_Weapon( void ) {
 	}
 
 	if ( pm->ps->powerups[PW_HASTE] ) {
-		addTime /= 1.3;
+		addTime /= 1.3f;
 	}
 
 	// add the recoil amount to the aimSpreadScale
 //	pm->ps->aimSpreadScale += 3.0*aimSpreadScaleAdd;
 //	if (pm->ps->aimSpreadScale > 255)
 //		pm->ps->aimSpreadScale = 255;
-	pm->ps->aimSpreadScaleFloat += 3.0 * aimSpreadScaleAdd;
+	pm->ps->aimSpreadScaleFloat += 3.0f * aimSpreadScaleAdd;
 	if ( pm->ps->aimSpreadScaleFloat > 255 ) {
 		pm->ps->aimSpreadScaleFloat = 255;
 	}
@@ -3653,7 +3653,7 @@ void PM_UpdateLean( playerState_t *ps, usercmd_t *cmd, pmove_t *tpm ) {
 		viewangles[ROLL] = 0;
 		AngleVectors( viewangles, NULL, right, NULL );
 		VectorNormalize( right );
-		right[2] = ( leanofs < 0 ) ? 0.25 : -0.25;
+		right[2] = ( leanofs < 0 ) ? 0.25f : -0.25f;
 		VectorMA( start, leanofs, right, end );
 		VectorSet( tmins, -12, -12, -6 );
 		VectorSet( tmaxs, 12, 12, 10 );
@@ -3739,7 +3739,7 @@ void PM_CheckLadderMove( void ) {
 	vec3_t flatforward;
 	trace_t trace;
 	float tracedist;
-	#define TRACE_LADDER_DIST   48.0
+	#define TRACE_LADDER_DIST   48.0f
 	qboolean wasOnLadder;
 
 	if ( pm->ps->pm_time ) {
@@ -3750,7 +3750,7 @@ void PM_CheckLadderMove( void ) {
 	//	return;
 
 	if ( pml.walking ) {
-		tracedist = 1.0;
+		tracedist = 1.0f;
 	} else {
 		tracedist = TRACE_LADDER_DIST;
 	}
@@ -3809,7 +3809,7 @@ void PM_CheckLadderMove( void ) {
 		VectorCopy( trace.plane.normal, laddervec );
 	}
 
-	if ( pml.ladder && !pml.walking && ( trace.fraction * tracedist > 1.0 ) ) {
+	if ( pml.ladder && !pml.walking && ( trace.fraction * tracedist > 1.0f ) ) {
 		vec3_t mins;
 		// if we are only just on the ladder, don't do this yet, or it may throw us back off the ladder
 		pml.ladder = qfalse;
@@ -3819,7 +3819,7 @@ void PM_CheckLadderMove( void ) {
 		pm->trace( &trace, pm->ps->origin, mins, pm->maxs, spot, pm->ps->clientNum, pm->tracemask );
 		if ( ( trace.fraction < 1 ) && ( trace.surfaceFlags & SURF_LADDER ) ) {
 			// if AI, then be more stringent on their viewangles
-			if ( pm->ps->aiChar && ( DotProduct( trace.plane.normal, pml.forward ) > -0.9 ) ) {
+			if ( pm->ps->aiChar && ( DotProduct( trace.plane.normal, pml.forward ) > -0.9f ) ) {
 				pml.ladder = qfalse;
 			} else {
 				ladderforward = qtrue;
@@ -3865,16 +3865,16 @@ void PM_LadderMove( void ) {
 
 	if ( ladderforward ) {
 		// move towards the ladder
-		VectorScale( laddervec, -200.0, wishvel );
+		VectorScale( laddervec, -200.0f, wishvel );
 		pm->ps->velocity[0] = wishvel[0];
 		pm->ps->velocity[1] = wishvel[1];
 	}
 
-	upscale = ( pml.forward[2] + 0.5 ) * 2.5;
-	if ( upscale > 1.0 ) {
-		upscale = 1.0;
-	} else if ( upscale < -1.0 ) {
-		upscale = -1.0;
+	upscale = ( pml.forward[2] + 0.5f ) * 2.5f;
+	if ( upscale > 1.0f ) {
+		upscale = 1.0f;
+	} else if ( upscale < -1.0f ) {
+		upscale = -1.0f;
 	}
 
 	// forward/right should be horizontal only
@@ -3891,9 +3891,9 @@ void PM_LadderMove( void ) {
 
 	if ( pm->cmd.forwardmove ) {
 		if ( pm->ps->aiChar ) {
-			wishvel[2] = 0.5 * upscale * scale * (float)pm->cmd.forwardmove;
+			wishvel[2] = 0.5f * upscale * scale * (float)pm->cmd.forwardmove;
 		} else { // player speed
-			wishvel[2] = 0.9 * upscale * scale * (float)pm->cmd.forwardmove;
+			wishvel[2] = 0.9f * upscale * scale * (float)pm->cmd.forwardmove;
 		}
 	}
 //Com_Printf("wishvel[2] = %i, fwdmove = %i\n", (int)wishvel[2], (int)pm->cmd.forwardmove );
@@ -3909,7 +3909,7 @@ void PM_LadderMove( void ) {
 			VectorInverse( ladder_right );
 		}
 
-		VectorMA( wishvel, 0.5 * scale * (float)pm->cmd.rightmove, pml.right, wishvel );
+		VectorMA( wishvel, 0.5f * scale * (float)pm->cmd.rightmove, pml.right, wishvel );
 	}
 
 	// do strafe friction
@@ -4130,7 +4130,7 @@ void PmoveSingle( pmove_t *pmove ) {
 	// save old velocity for crashlanding
 	VectorCopy( pm->ps->velocity, pml.previous_velocity );
 
-	pml.frametime = pml.msec * 0.001;
+	pml.frametime = pml.msec * 0.001f;
 
 	// update the viewangles
 	// Ridah

@@ -1879,8 +1879,8 @@ CG_TeslaSpinAngle
 */
 //#define TESLA_SPINSPEED .2
 //#define TESLA_COASTTIME	2000
-#define TESLA_SPINSPEED .05
-#define TESLA_IDLESPEED .15
+#define TESLA_SPINSPEED .05f
+#define TESLA_IDLESPEED .15f
 #define TESLA_COASTTIME 1000
 
 static float CG_TeslaSpinAngle( centity_t *cent ) {
@@ -2981,13 +2981,13 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		fovOffset[2] = 0;
 	} else if ( cg.fov > 90 ) {
 		// drop gun lower at higher fov
-		fovOffset[2] = -0.2 * ( cg.fov - 90 ) * cg.refdef.fov_x / cg.fov;
+		fovOffset[2] = -0.2f * ( cg.fov - 90 ) * cg.refdef.fov_x / cg.fov;
 	} else if ( cg.fov < 90 ) {
 		// move gun forward at lower fov
-		fovOffset[0] = -0.2 * ( cg.fov - 90 ) * cg.refdef.fov_x / cg.fov;
+		fovOffset[0] = -0.2f * ( cg.fov - 90 ) * cg.refdef.fov_x / cg.fov;
 	} else if ( cg_fov.integer > 90 ) {
 		// old auto adjust
-		fovOffset[2] = -0.2 * ( cg_fov.integer - 90 );
+		fovOffset[2] = -0.2f * ( cg_fov.integer - 90 );
  	}
 
 	memset( &hand, 0, sizeof( hand ) );

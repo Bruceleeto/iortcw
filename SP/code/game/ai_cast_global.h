@@ -37,7 +37,7 @@ If you have questions concerning this license or the applicable additional terms
 // TTimo no typedef, "warning: useless keyword or type name in empty declaration"
 struct cast_state_s;
 
-#define AICAST_AIM_SPREAD   2048.0  // a really bad shooter will offset a maximum of this per shot, from the end point of the 8192 trace length
+#define AICAST_AIM_SPREAD   2048.0f  // a really bad shooter will offset a maximum of this per shot, from the end point of the 8192 trace length
 
 #define DANGER_MISSILE      ( 1 << 0 )
 #define DANGER_CLIENTAIM    ( 1 << 1 )

@@ -309,9 +309,9 @@ AICast_SpeedScaleForDistance()
 ============
 */
 float AICast_SpeedScaleForDistance( cast_state_t *cs, float startdist, float idealDist ) {
-#define PREDICT_TIME_WALK   0.2
-#define PREDICT_TIME_CROUCH 0.2
-#define PREDICT_TIME_RUN    0.3
+#define PREDICT_TIME_WALK   0.2f
+#define PREDICT_TIME_CROUCH 0.2f
+#define PREDICT_TIME_RUN    0.3f
 	float speed, dist;
 
 	dist = startdist - idealDist;
@@ -2806,7 +2806,7 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 	if ( ( cs->aiCharacter == AICHAR_ZOMBIE ) &&
 		 ( IS_FLAMING_ZOMBIE( ent->s ) ) &&
 		 ( fabs( cs->ideal_viewangles[YAW] - cs->viewangles[YAW] ) < 5 ) ) {
-		if ( fabs( sin( ( level.time + cs->entityNum * 314 ) / 1000 ) * cos( ( level.time + cs->entityNum * 267 ) / 979 ) ) < 0.5 ) {
+		if ( fabs( sin( ( level.time + cs->entityNum * 314 ) / 1000 ) * cos( ( level.time + cs->entityNum * 267 ) / 979 ) ) < 0.5f ) {
 			ent->s.time = level.time + 800;
 		}
 	}
@@ -2848,12 +2848,12 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 			bi.speed = 400;
 			bi.actionflags = 0;
 			AICast_InputToUserCommand( cs, &bi, &ucmd, bs->cur_ps.delta_angles );
-			AICast_PredictMovement( cs, 5, 2.0, &move, &ucmd, cs->enemyNum );
+			AICast_PredictMovement( cs, 5, 2.0f, &move, &ucmd, cs->enemyNum );
 
 			if ( move.stopevent == PREDICTSTOP_HITENT ) { // success!
 				trap_EA_Move( cs->entityNum, dir, 400 );
 				// RF, if we are really close, we might be stuck on a corner, so randomly move sideways
-				if ( ( VectorLength( followent->client->ps.velocity ) < 50 ) && ( dist < 10 + ( sqrt( cs->bs->cur_ps.maxs[0] * cs->bs->cur_ps.maxs[0] * 8.0 ) / 2.0 + sqrt( followent->client->ps.maxs[0] * followent->client->ps.maxs[0] * 8.0 ) / 2.0 ) ) ) {
+				if ( ( VectorLength( followent->client->ps.velocity ) < 50 ) && ( dist < 10 + ( sqrt( cs->bs->cur_ps.maxs[0] * cs->bs->cur_ps.maxs[0] * 8.0f ) / 2.0f + sqrt( followent->client->ps.maxs[0] * followent->client->ps.maxs[0] * 8.0f ) / 2.0f ) ) ) {
 					// if the box trace is unsuccessful
 					trap_Trace( &tr, cs->bs->origin, cs->bs->cur_ps.mins, cs->bs->cur_ps.maxs, followent->r.currentOrigin, cs->entityNum, g_entities[cs->entityNum].clipmask );
 					if ( tr.entityNum != followent->s.number ) {
@@ -2865,7 +2865,7 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 					}
 				}
 				vectoangles( dir, cs->ideal_viewangles );
-				cs->ideal_viewangles[2] *= 0.5;
+				cs->ideal_viewangles[2] *= 0.5f;
 				moved = qtrue;
 			} else {    // clear movement
 				//trap_EA_Move(cs->entityNum, dir, 0);
@@ -2875,7 +2875,7 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 	//
 	// if they are visible, but not attackable, look for a spot where we can attack them, and head
 	// for there. This should prevent AI's getting stuck in a bunch.
-	if ( !moved && cs->weaponNum >= WP_LUGER && cs->weaponNum <= WP_AKIMBO && cs->attributes[TACTICAL] >= 0.1 ) {
+	if ( !moved && cs->weaponNum >= WP_LUGER && cs->weaponNum <= WP_AKIMBO && cs->attributes[TACTICAL] >= 0.1f ) {
 		//
 		// check for another movement we should be making
 		if ( cs->obstructingTime > level.time ) {
@@ -2971,7 +2971,7 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 	if ( ( cs->attributes[RUNNING_SPEED] > 170 ) && ( cs->weaponNum != WP_GAUNTLET ) && ( level.time < ( cs->startBattleChaseTime + BATTLE_CHASE_ACCEL_TIME ) ) ) {
 		float ideal;
 
-		ideal = 0.5 + 0.5 * ( 1.0 - ( (float)( ( cs->startBattleChaseTime + BATTLE_CHASE_ACCEL_TIME ) - level.time ) / BATTLE_CHASE_ACCEL_TIME ) );
+		ideal = 0.5f + 0.5f * ( 1.0f - ( (float)( ( cs->startBattleChaseTime + BATTLE_CHASE_ACCEL_TIME ) - level.time ) / BATTLE_CHASE_ACCEL_TIME ) );
 		if ( ideal < cs->speedScale ) {
 			cs->speedScale = ideal;
 		}
@@ -2979,13 +2979,13 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 	//
 	// if we are going to reach them soon, predict the attack
 	{
-		float simTime = 1.5;
+		float simTime = 1.5f;
 		aicast_predictmove_t move;
 		float moveDist;
 		vec3_t vec;
 		//
 		if ( cs->weaponNum == WP_GAUNTLET ) {
-			simTime = 0.5;
+			simTime = 0.5f;
 		}
 		//
 		AICast_PredictMovement( cs, 1, simTime, &move, &cs->lastucmd, cs->enemyNum );
@@ -3001,13 +3001,13 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 		}
 		//
 		// do we went to play a diving animation into a cover position?
-		else if (   ( ( cs->attributes[TACTICAL] > 0.85 ) && ( cs->aiFlags & AIFL_ROLL_ANIM ) && !client->ps.torsoTimer && !client->ps.legsTimer && ( cs->lastRollMove < level.time - 800 ) && ( move.numtouch == 0 ) && ( moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.98 ) && move.groundEntityNum == ENTITYNUM_WORLD ) &&
+		else if (   ( ( cs->attributes[TACTICAL] > 0.85f ) && ( cs->aiFlags & AIFL_ROLL_ANIM ) && !client->ps.torsoTimer && !client->ps.legsTimer && ( cs->lastRollMove < level.time - 800 ) && ( move.numtouch == 0 ) && ( moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.98f ) && move.groundEntityNum == ENTITYNUM_WORLD ) &&
 					( AICast_CheckAttackAtPos( cs->entityNum, cs->enemyNum, move.endpos, cs->attackcrouch_time > level.time, qfalse ) ) ) {
 			cs->takeCoverTime = 0;
 			return AIFunc_BattleRollStart( cs, vec );
 		}
 		//
-		else if ( cs->aiFlags & AIFL_FLIP_ANIM && cs->lastRollMove < level.time - 800 && !client->ps.torsoTimer && cs->castScriptStatus.castScriptEventIndex < 0 && move.numtouch == 0 && moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.9 && move.groundEntityNum == ENTITYNUM_WORLD && cs->attackcrouch_time < level.time ) {
+		else if ( cs->aiFlags & AIFL_FLIP_ANIM && cs->lastRollMove < level.time - 800 && !client->ps.torsoTimer && cs->castScriptStatus.castScriptEventIndex < 0 && move.numtouch == 0 && moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.9f && move.groundEntityNum == ENTITYNUM_WORLD && cs->attackcrouch_time < level.time ) {
 			int destarea, simarea, starttravel, simtravel;
 			// if we'll be closer after the move, proceed
 			destarea = BotPointAreaNum( destorg );
@@ -3020,7 +3020,7 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 		}
 		// slow down? so we don't go too far from behind the obstruction which is protecting us
 		else if ( !( cs->aiFlags & AIFL_WALKFORWARD ) && ( VectorDistance( cs->bs->origin, g_entities[cs->enemyNum].s.pos.trBase ) < AICast_WeaponRange( cs, cs->weaponNum ) ) &&
-				  ( cs->obstructingTime < level.time ) && ( cs->attributes[TACTICAL] > 0.1 ) &&
+				  ( cs->obstructingTime < level.time ) && ( cs->attributes[TACTICAL] > 0.1f ) &&
 				  ( AICast_VisibleFromPos( cs->vislist[cs->enemyNum].visible_pos, cs->enemyNum, move.endpos, cs->entityNum, qfalse ) ) ) {
 			// start a crouch attack?
 			//if (cs->attributes[ATTACK_CROUCH] > 0.1) {
@@ -3028,7 +3028,7 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 			//else
 			cs->attackcrouch_time = 0;
 			if ( cs->bs->cur_ps.viewheight > cs->bs->cur_ps.crouchViewHeight && cs->attributes[RUNNING_SPEED] * cs->speedScale > 120 ) {
-				cs->speedScale = 120.0 * cs->attributes[RUNNING_SPEED];
+				cs->speedScale = 120.0f * cs->attributes[RUNNING_SPEED];
 			}
 			// also face them, ready for the attack
 			if ( cs->attributes[RUNNING_SPEED] > 140 ) {
@@ -3071,7 +3071,7 @@ char *AIFunc_BattleChaseStart( cast_state_t *cs ) {
 	}
 	//
 	// start a crouch attack?
-	if ( cs->attributes[ATTACK_CROUCH] > 0.1 ) {
+	if ( cs->attributes[ATTACK_CROUCH] > 0.1f ) {
 		cs->aiFlags |= AIFL_ATTACK_CROUCH;
 	} else {
 		cs->aiFlags &= ~AIFL_ATTACK_CROUCH;
@@ -3131,8 +3131,8 @@ char *AIFunc_AvoidDanger( cast_state_t *cs ) {
 					end[2] -= 90;
 					trap_Trace( &tr, cs->takeCoverPos, ent->r.mins, ent->r.maxs, end, cs->entityNum, MASK_SOLID );
 					VectorCopy( tr.endpos, cs->takeCoverPos );
-					if ( !tr.startsolid && ( tr.fraction < 1.0 ) &&
-						 VectorDistance( cs->bs->origin, cs->takeCoverPos ) < cs->attributes[RUNNING_SPEED] * 0.0004 * ( danger->nextthink - level.time - 2000 ) ) {
+					if ( !tr.startsolid && ( tr.fraction < 1.0f ) &&
+						 VectorDistance( cs->bs->origin, cs->takeCoverPos ) < cs->attributes[RUNNING_SPEED] * 0.0004f * ( danger->nextthink - level.time - 2000 ) ) {
 
 						// check for a clear path to the grenade
 						trap_Trace( &tr, cs->bs->origin, ent->r.mins, ent->r.maxs, cs->takeCoverPos, cs->entityNum, MASK_SOLID );
@@ -3179,7 +3179,7 @@ char *AIFunc_AvoidDanger( cast_state_t *cs ) {
 	//
 	VectorCopy( cs->takeCoverPos, destorg );
 	VectorSubtract( destorg, cs->bs->origin, vec );
-	vec[2] *= 0.2;
+	vec[2] *= 0.2f;
 	dist = VectorLength( vec );
 	//
 	shouldAttack = qfalse;
@@ -3203,7 +3203,7 @@ char *AIFunc_AvoidDanger( cast_state_t *cs ) {
 	}
 	//
 	// if we are now safe from the danger, stop running away
-	if ( cs->dangerEntity >= MAX_CLIENTS && Distance( cs->dangerEntityPos, cs->bs->origin ) > cs->dangerDist * 1.5 ) {
+	if ( cs->dangerEntity >= MAX_CLIENTS && Distance( cs->dangerEntityPos, cs->bs->origin ) > cs->dangerDist * 1.5f ) {
 		// don't move, wait for danger to pass
 	} else
 	// are we close enough to the goal?
@@ -3336,7 +3336,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 	} else {
 		VectorCopy( cs->takeCoverPos, destorg );
 		VectorSubtract( destorg, cs->bs->origin, vec );
-		vec[2] *= 0.2;
+		vec[2] *= 0.2f;
 		dist = VectorLength( vec );
 	}
 	//
@@ -3410,7 +3410,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 			} else {    // recalc distance
 				VectorCopy( cs->takeCoverPos, destorg );
 				VectorSubtract( destorg, cs->bs->origin, vec );
-				vec[2] *= 0.2;
+				vec[2] *= 0.2f;
 				dist = VectorLength( vec );
 			}
 		} else if ( dist < 8 )     {
@@ -3422,7 +3422,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 				} else {    // recalc distance
 					VectorCopy( cs->takeCoverPos, destorg );
 					VectorSubtract( destorg, cs->bs->origin, vec );
-					vec[2] *= 0.2;
+					vec[2] *= 0.2f;
 					dist = VectorLength( vec );
 				}
 			}
@@ -3441,7 +3441,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 	//
 	// are we close enough to the goal?
 	if ( VectorLength( cs->takeCoverPos ) > 1 && dist > 8 ) {
-		const float simTime = 1.5;
+		const float simTime = 1.5f;
 		float enemyDist;
 		//
 		// we haven't reached it yet, make sure we at least wait there for a few seconds after arriving
@@ -3480,7 +3480,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 		}
 		//
 		// do we want to play a rolling animation into a cover position?
-		else if (   ( cs->aiFlags & AIFL_DIVE_ANIM && !client->ps.torsoTimer && cs->castScriptStatus.castScriptEventIndex < 0 && cs->lastRollMove < level.time - 800 && move.numtouch == 0 && ( moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.98 ) && move.groundEntityNum == ENTITYNUM_WORLD ) &&
+		else if (   ( cs->aiFlags & AIFL_DIVE_ANIM && !client->ps.torsoTimer && cs->castScriptStatus.castScriptEventIndex < 0 && cs->lastRollMove < level.time - 800 && move.numtouch == 0 && ( moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.98f ) && move.groundEntityNum == ENTITYNUM_WORLD ) &&
 					( shouldAttack && !AICast_VisibleFromPos( g_entities[cs->enemyNum].s.pos.trBase, cs->enemyNum, move.endpos, cs->entityNum, qfalse ) ) ) {
 			VectorClear( cs->takeCoverPos );    // stay there when done rolling
 			return AIFunc_BattleDiveStart( cs, vec );
@@ -3499,7 +3499,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 			cs->aiFlags |= AIFL_MISCFLAG1;  // dont do this again
 		}
 		//
-		if ( cs->aiFlags & AIFL_FLIP_ANIM && cs->lastRollMove < level.time - 800 && !client->ps.torsoTimer && cs->castScriptStatus.castScriptEventIndex < 0 && move.numtouch == 0 && moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.9 && move.groundEntityNum == ENTITYNUM_WORLD && cs->attackcrouch_time < level.time ) {
+		if ( cs->aiFlags & AIFL_FLIP_ANIM && cs->lastRollMove < level.time - 800 && !client->ps.torsoTimer && cs->castScriptStatus.castScriptEventIndex < 0 && move.numtouch == 0 && moveDist > simTime * cs->attributes[RUNNING_SPEED] * 0.9f && move.groundEntityNum == ENTITYNUM_WORLD && cs->attackcrouch_time < level.time ) {
 			int destarea, simarea, starttravel, simtravel;
 			// if we'll be closer after the move, proceed
 			destarea = BotPointAreaNum( destorg );
@@ -3559,7 +3559,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 		}
 
 		// else, crouch while we hide
-		if ( cs->attributes[ATTACK_CROUCH] > 0.1 || cs->crouchHideFlag ) {
+		if ( cs->attributes[ATTACK_CROUCH] > 0.1f || cs->crouchHideFlag ) {
 			cs->attackcrouch_time = level.time + 1000;
 		}
 	}
@@ -3575,7 +3575,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 			VectorCopy( bs->velocity, vec );
 			vec[2] = 0;
 			if ( VectorNormalize2( vec, dir ) > 20 ) {    // we are moving
-				if ( DotProduct( dir, vec ) > 0.4 ) {
+				if ( DotProduct( dir, vec ) > 0.4f ) {
 					// abort
 					return AIFunc_BattleStart( cs );
 				}
@@ -3589,7 +3589,7 @@ char *AIFunc_BattleTakeCover( cast_state_t *cs ) {
 		}
 		//
 		// if we are tactical and can crouch, do so
-		if ( !move.numtouch && ( cs->thinkFuncChangeTime < level.time - 2000 ) && ( dist > 128 ) && cs->attributes[TACTICAL] > 0.4 && cs->attributes[ATTACK_CROUCH] > 0.1 &&
+		if ( !move.numtouch && ( cs->thinkFuncChangeTime < level.time - 2000 ) && ( dist > 128 ) && cs->attributes[TACTICAL] > 0.4f && cs->attributes[ATTACK_CROUCH] > 0.1f &&
 			 ( cs->attackcrouch_time >= level.time ) ) {
 			cs->attackcrouch_time = level.time + 1000;
 		}
@@ -3641,7 +3641,7 @@ char *AIFunc_BattleTakeCoverStart( cast_state_t *cs ) {
 		cs->aiFlags &= ~AIFL_ATTACK_CROUCH;
 	} else {
 		// if we arent crouching, start crouching soon after we start retreating
-		if ( cs->attributes[ATTACK_CROUCH] > 0.1 ) {
+		if ( cs->attributes[ATTACK_CROUCH] > 0.1f ) {
 			cs->aiFlags |= AIFL_ATTACK_CROUCH;
 		} else {
 			cs->aiFlags &= ~AIFL_ATTACK_CROUCH;
@@ -3877,12 +3877,12 @@ char *AIFunc_GrenadeFlush( cast_state_t *cs ) {
 				bi.speed = 400;
 				bi.actionflags = 0;
 				AICast_InputToUserCommand( cs, &bi, &ucmd, bs->cur_ps.delta_angles );
-				AICast_PredictMovement( cs, 5, 2.0, &move, &ucmd, cs->enemyNum );
+				AICast_PredictMovement( cs, 5, 2.0f, &move, &ucmd, cs->enemyNum );
 
 				if ( move.stopevent == PREDICTSTOP_HITENT ) { // success!
 					trap_EA_Move( cs->entityNum, dir, 400 );
 					vectoangles( dir, cs->ideal_viewangles );
-					cs->ideal_viewangles[2] *= 0.5;
+					cs->ideal_viewangles[2] *= 0.5f;
 					moved = qtrue;
 				} else {    // clear movement
 					//trap_EA_Move(cs->entityNum, dir, 0);
@@ -4043,7 +4043,7 @@ char *AIFunc_BattleMG42( cast_state_t *cs ) {
 			!AICast_CheckAttack( cs, cs->enemyNum, qfalse ) ||
 			( fabs( AngleDifference( angles[YAW], mg42->s.angles[YAW] ) ) > G_ReadMisc( mg42 )->harc ) ||
 			( angles[PITCH] < 0 && angles[PITCH] + 5 < -G_ReadMisc( mg42 )->varc ) ||
-			( angles[PITCH] > 0 && angles[PITCH] - 5 > 5.0 ) ) {
+			( angles[PITCH] > 0 && angles[PITCH] - 5 > 5.0f ) ) {
 		qboolean shouldAttack;
 
 		// look for a better enemy
@@ -4069,7 +4069,7 @@ char *AIFunc_BattleMG42( cast_state_t *cs ) {
 				angles[PITCH] = AngleNormalize180( angles[PITCH] );
 				if ( !(  ( fabs( AngleDifference( angles[YAW], mg42->s.angles[YAW] ) ) > G_ReadMisc( mg42 )->harc ) ||
 						 ( angles[YAW] < 0 && angles[YAW] + 2 < -G_ReadMisc( mg42 )->varc ) ||
-						 ( angles[YAW] > 0 && angles[YAW] - 2 > 5.0 ) ) ) {
+						 ( angles[YAW] > 0 && angles[YAW] - 2 > 5.0f ) ) ) {
 					//
 					// found someone inside harc, so dont unmount
 					unmount = qfalse;
@@ -4379,7 +4379,7 @@ char *AIFunc_GrenadeKick( cast_state_t *cs ) {
 */
 	//
 	// is it about to explode in our face?
-	if ( level.time > danger->nextthink - (int)( 2.0 * VectorDistance( cs->bs->origin, danger->r.currentOrigin ) ) ) {
+	if ( level.time > danger->nextthink - (int)( 2.0f * VectorDistance( cs->bs->origin, danger->r.currentOrigin ) ) ) {
 		// abort!!
 		if ( !AICast_GetTakeCoverPos( cs, cs->dangerEntity, cs->dangerEntityPos, cs->takeCoverPos ) ) {
 			// shit??
@@ -4425,11 +4425,11 @@ char *AIFunc_GrenadeKick( cast_state_t *cs ) {
 			// send the grenade on its way
 			cs->grenadeFlushFiring = qtrue;
 			AngleVectors( cs->viewangles, dir, NULL, NULL );
-			dir[2] = 0.4;
+			dir[2] = 0.4f;
 			VectorNormalize( dir );
 			speed = 400;
 			if ( cs->enemyNum >= 0 ) {
-				speed = 1.5 * VectorDistance( danger->r.currentOrigin, g_entities[cs->enemyNum].r.currentOrigin );
+				speed = 1.5f * VectorDistance( danger->r.currentOrigin, g_entities[cs->enemyNum].r.currentOrigin );
 				if ( speed > 650 ) {
 					speed = 650;
 				}
@@ -4697,9 +4697,9 @@ char *AIFunc_Battle( cast_state_t *cs ) {
 		// if we weren't moving, it is likely they have dodged back behind something, ready to duck out and take another
 		// shot. so, we could fool them by hiding from the position we last saw them from, in the hope that when they
 		// return to fire at us, we won't be in their sight.
-		if (    cs->attributes[TACTICAL] > 0.3
-				&&  cs->attributes[AGGRESSION] < 1.0
-				&&  cs->attributes[AGGRESSION] < ( random() + 0.5 * cs->attributes[TACTICAL] )
+		if (    cs->attributes[TACTICAL] > 0.3f
+				&&  cs->attributes[AGGRESSION] < 1.0f
+				&&  cs->attributes[AGGRESSION] < ( random() + 0.5f * cs->attributes[TACTICAL] )
 				&&  ( cs->takeCoverTime < level.time )
 				&&  AICast_GetTakeCoverPos( cs, cs->enemyNum, cs->vislist[cs->enemyNum].real_visible_pos, cs->takeCoverPos ) ) {
 			// start taking cover
@@ -4831,11 +4831,11 @@ char *AIFunc_Battle( cast_state_t *cs ) {
 	}
 	//
 	// Dodge enemy aim?
-	if (    ( cs->attributes[AGGRESSION] < 1.0 ) &&
+	if (    ( cs->attributes[AGGRESSION] < 1.0f ) &&
 			( ent->client->ps.weapon ) &&
 			( ent->client->ps.groundEntityNum == ENTITYNUM_WORLD ) &&
 			( !cs->lastRollMove || cs->lastRollMove < level.time - 4000 ) &&
-			( cs->attributes[TACTICAL] > 0.5 ) && ( cs->aiFlags & AIFL_ROLL_ANIM ) &&
+			( cs->attributes[TACTICAL] > 0.5f ) && ( cs->aiFlags & AIFL_ROLL_ANIM ) &&
 			( VectorLength( cs->bs->cur_ps.velocity ) < 1 ) ) {
 		vec3_t aim, enemyVec, right;
 		// are they aiming at us?
@@ -4843,12 +4843,12 @@ char *AIFunc_Battle( cast_state_t *cs ) {
 		VectorSubtract( cs->bs->origin, enemy->r.currentOrigin, enemyVec );
 		VectorNormalize( enemyVec );
 		// if they are looking at us, we should avoid them
-		if ( DotProduct( aim, enemyVec ) > 0.97 ) {
+		if ( DotProduct( aim, enemyVec ) > 0.97f ) {
 			aicast_predictmove_t move;
 			vec3_t dir;
 			bot_input_t bi, bi_back;
 			usercmd_t ucmd;
-			float simTime = 0.8;
+			float simTime = 0.8f;
 
 			cs->lastRollMove = level.time;
 
@@ -4866,7 +4866,7 @@ char *AIFunc_Battle( cast_state_t *cs ) {
 			trap_EA_ResetInput( cs->entityNum, &bi_back );
 
 			if ( move.groundEntityNum == ENTITYNUM_WORLD &&
-				 VectorDistance( move.endpos, cs->bs->origin ) > simTime * cs->attributes[RUNNING_SPEED] * 0.8 ) {
+				 VectorDistance( move.endpos, cs->bs->origin ) > simTime * cs->attributes[RUNNING_SPEED] * 0.8f ) {
 				// good enough
 				if ( AICast_CheckAttackAtPos( cs->entityNum, cs->enemyNum, move.endpos, cs->bs->cur_ps.viewheight == cs->bs->cur_ps.crouchViewHeight, qfalse ) ) {
 					cs->takeCoverTime = 0;
@@ -4910,13 +4910,13 @@ char *AIFunc_BattleStart( cast_state_t *cs ) {
 	// make sure we don't avoid any areas when we start again
 	trap_BotInitAvoidReach( cs->bs->ms );
 	// wait some time before taking cover again
-	cs->takeCoverTime = level.time + 300 + rand() % ( 2000 + (int)( 2000.0 * cs->attributes[AGGRESSION] ) );
+	cs->takeCoverTime = level.time + 300 + rand() % ( 2000 + (int)( 2000.0f * cs->attributes[AGGRESSION] ) );
 	// wait some time before going to a combat spot
 	cs->combatSpotDelayTime = level.time + 1500 + rand() % 2500;
 	//
 	// start a crouch attack?
-	if ( ( random() * 3.0 + 1.0 < cs->attributes[ATTACK_CROUCH] )
-		 && AICast_RequestCrouchAttack( cs, cs->bs->origin, 0.0 ) ) {
+	if ( ( random() * 3.0f + 1.0f < cs->attributes[ATTACK_CROUCH] )
+		 && AICast_RequestCrouchAttack( cs, cs->bs->origin, 0.0f ) ) {
 		cs->aiFlags |= AIFL_ATTACK_CROUCH;
 	} else {
 		cs->attackcrouch_time = 0;

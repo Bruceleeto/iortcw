@@ -66,7 +66,7 @@ If you have questions concerning this license or the applicable additional terms
 #define ATTACKER_HEAD_TIME  10000
 #define REWARD_TIME         3000
 
-#define PULSE_SCALE         1.5         // amount to scale up the icons when activating
+#define PULSE_SCALE         1.5f         // amount to scale up the icons when activating
 
 #define MAX_STEP_CHANGE     32
 

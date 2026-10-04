@@ -4011,7 +4011,7 @@ void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) 
 		VectorCopy( tr->trBase, result );
 		break;
 	case TR_LINEAR:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
 		break;
 	case TR_SINE:
@@ -4024,29 +4024,29 @@ void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) 
 		if ( atTime > tr->trTime + tr->trDuration ) {
 			atTime = tr->trTime + tr->trDuration;
 		}
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		if ( deltaTime < 0 ) {
 			deltaTime = 0;
 		}
 		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
 		break;
 	case TR_GRAVITY:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
-		result[2] -= 0.5 * DEFAULT_GRAVITY * deltaTime * deltaTime;     // FIXME: local gravity...
+		result[2] -= 0.5f * DEFAULT_GRAVITY * deltaTime * deltaTime;     // FIXME: local gravity...
 		break;
 		// Ridah
 	case TR_GRAVITY_LOW:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
-		result[2] -= 0.5 * ( DEFAULT_GRAVITY * 0.3 ) * deltaTime * deltaTime;     // FIXME: local gravity...
+		result[2] -= 0.5f * ( DEFAULT_GRAVITY * 0.3f ) * deltaTime * deltaTime;     // FIXME: local gravity...
 		break;
 		// done.
 //----(SA)
 	case TR_GRAVITY_FLOAT:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
-		result[2] -= 0.5 * ( DEFAULT_GRAVITY * 0.2 ) * deltaTime;
+		result[2] -= 0.5f * ( DEFAULT_GRAVITY * 0.2f ) * deltaTime;
 		break;
 //----(SA)	end
 		// RF, acceleration
@@ -4054,27 +4054,27 @@ void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) 
 		if ( atTime > tr->trTime + tr->trDuration ) {
 			atTime = tr->trTime + tr->trDuration;
 		}
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		// phase is the acceleration constant
-		phase = VectorLength( tr->trDelta ) / ( tr->trDuration * 0.001 );
+		phase = VectorLength( tr->trDelta ) / ( tr->trDuration * 0.001f );
 		// trDelta at least gives us the acceleration direction
 		VectorNormalize2( tr->trDelta, result );
 		// get distance travelled at current time
-		VectorMA( tr->trBase, phase * 0.5 * deltaTime * deltaTime, result, result );
+		VectorMA( tr->trBase, phase * 0.5f * deltaTime * deltaTime, result, result );
 		break;
 	case TR_DECCELERATE:    // trDelta is the starting speed
 		if ( atTime > tr->trTime + tr->trDuration ) {
 			atTime = tr->trTime + tr->trDuration;
 		}
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		// phase is the breaking constant
-		phase = VectorLength( tr->trDelta ) / ( tr->trDuration * 0.001 );
+		phase = VectorLength( tr->trDelta ) / ( tr->trDuration * 0.001f );
 		// trDelta at least gives us the acceleration direction
 		VectorNormalize2( tr->trDelta, result );
 		// get distance travelled at current time (without breaking)
 		VectorMA( tr->trBase, deltaTime, tr->trDelta, v );
 		// subtract breaking force
-		VectorMA( v, -phase * 0.5 * deltaTime * deltaTime, result, result );
+		VectorMA( v, -phase * 0.5f * deltaTime * deltaTime, result, result );
 		break;
 	default:
 		Com_Error( ERR_DROP, "BG_EvaluateTrajectory: unknown trType: %i", tr->trType );
@@ -4104,7 +4104,7 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 	case TR_SINE:
 		deltaTime = ( atTime - tr->trTime ) / (float) tr->trDuration;
 		phase = cos( deltaTime * M_PI * 2 );    // derivative of sin = cos
-		phase *= 0.5;
+		phase *= 0.5f;
 		VectorScale( tr->trDelta, phase, result );
 		break;
 //----(SA)	removed
@@ -4116,22 +4116,22 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 		VectorCopy( tr->trDelta, result );
 		break;
 	case TR_GRAVITY:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorCopy( tr->trDelta, result );
 		result[2] -= DEFAULT_GRAVITY * deltaTime;       // FIXME: local gravity...
 		break;
 		// Ridah
 	case TR_GRAVITY_LOW:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorCopy( tr->trDelta, result );
-		result[2] -= ( DEFAULT_GRAVITY * 0.3 ) * deltaTime;       // FIXME: local gravity...
+		result[2] -= ( DEFAULT_GRAVITY * 0.3f ) * deltaTime;       // FIXME: local gravity...
 		break;
 		// done.
 //----(SA)
 	case TR_GRAVITY_FLOAT:
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorCopy( tr->trDelta, result );
-		result[2] -= ( DEFAULT_GRAVITY * 0.2 ) * deltaTime;
+		result[2] -= ( DEFAULT_GRAVITY * 0.2f ) * deltaTime;
 		break;
 //----(SA)	end
 		// RF, acceleration
@@ -4140,7 +4140,7 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 			VectorClear( result );
 			return;
 		}
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorScale( tr->trDelta, deltaTime * deltaTime, result );
 		break;
 	case TR_DECCELERATE:    // trDelta is breaking force
@@ -4148,7 +4148,7 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 			VectorClear( result );
 			return;
 		}
-		deltaTime = ( atTime - tr->trTime ) * 0.001;    // milliseconds to seconds
+		deltaTime = ( atTime - tr->trTime ) * 0.001f;    // milliseconds to seconds
 		VectorScale( tr->trDelta, deltaTime, result );
 		break;
 	default:

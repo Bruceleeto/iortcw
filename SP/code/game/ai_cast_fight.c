@@ -710,10 +710,10 @@ qboolean AICast_CheckAttack_real( cast_state_t *cs, int enemy, qboolean allowHit
 
 		// fuzzy end point
 		if ( i > 0 ) {
-			VectorMA( end, enemyEnt->r.maxs[0] * 0.9 * (float)( ( i % 2 ) * 2 - 1 ), right, end );
-			halfHeight = ( enemyEnt->r.maxs[2] - enemyEnt->r.mins[2] ) / 2.0;
+			VectorMA( end, enemyEnt->r.maxs[0] * 0.9f * (float)( ( i % 2 ) * 2 - 1 ), right, end );
+			halfHeight = ( enemyEnt->r.maxs[2] - enemyEnt->r.mins[2] ) / 2.0f;
 			end[2] = ( enemyEnt->r.currentOrigin[2] + enemyEnt->r.mins[2] ) + halfHeight;
-			VectorMA( end, halfHeight * 0.9 * ( ( (float)( ( i - 1 ) - ( ( i - 1 ) % 2 ) ) / 2 - 1.0 ) ), up, end );
+			VectorMA( end, halfHeight * 0.9f * ( ( (float)( ( i - 1 ) - ( ( i - 1 ) % 2 ) ) / 2 - 1.0f ) ), up, end );
 		}
 
 		if ( /*allowHitWorld &&*/ !trap_InPVS( start, end ) ) {
@@ -723,7 +723,7 @@ qboolean AICast_CheckAttack_real( cast_state_t *cs, int enemy, qboolean allowHit
 		}
 
 		trap_Trace( &trace, start, mins, maxs, end, passEnt, traceMask );
-		if ( trace.fraction == 1.0 ) {
+		if ( trace.fraction == 1.0f ) {
 			if ( !trace.startsolid ) {
 				return qtrue;   // not sure why, but this fixes blackguards in chateau shooting through glass ceiling
 			}
@@ -1222,7 +1222,7 @@ float AICast_Aggression( cast_state_t *cs ) {
 	}
 
 	// start fully willing to attack
-	scale = 1.0;
+	scale = 1.0f;
 
 	//if the enemy is located way higher
 	//if (cs->enemyHeight > 200)
@@ -1230,33 +1230,33 @@ float AICast_Aggression( cast_state_t *cs ) {
 
 	//if very low on health
 	if ( bs->cur_ps.stats[STAT_HEALTH] < 50 ) {
-		scale -= ( 1.0 - cs->attributes[AGGRESSION] ) * ( 1.0 - ( (float)bs->cur_ps.stats[STAT_HEALTH] / 50.0 ) );
+		scale -= ( 1.0f - cs->attributes[AGGRESSION] ) * ( 1.0f - ( (float)bs->cur_ps.stats[STAT_HEALTH] / 50.0f ) );
 	}
 
 	// if they've recently hit us, factor that in, so we get scared off by being
 	// damaged, but later return once we've regained our confidence
-	painTime = 15000 - (int)( 10000.0 * cs->attributes[AGGRESSION] * cs->attributes[AGGRESSION] );
+	painTime = 15000 - (int)( 10000.0f * cs->attributes[AGGRESSION] * cs->attributes[AGGRESSION] );
 	if ( cs->lastPain + painTime > level.time ) {
-		scale -= 3 * ( 1.0 - cs->attributes[AGGRESSION] )   * ( (float)( cs->lastPain + painTime - level.time ) / (float)painTime );
+		scale -= 3 * ( 1.0f - cs->attributes[AGGRESSION] )   * ( (float)( cs->lastPain + painTime - level.time ) / (float)painTime );
 	}
 
 	// if we just rolled, stay out of view if we jumped behind cover
-	painTime = 10000 - (int)( 10000.0 * cs->attributes[AGGRESSION] * cs->attributes[AGGRESSION] );
+	painTime = 10000 - (int)( 10000.0f * cs->attributes[AGGRESSION] * cs->attributes[AGGRESSION] );
 	if ( cs->battleRollTime + painTime > level.time ) {
-		scale -= 2 * ( 1.0 - cs->attributes[AGGRESSION] )   * ( (float)( cs->battleRollTime + painTime - level.time ) / (float)painTime );
+		scale -= 2 * ( 1.0f - cs->attributes[AGGRESSION] )   * ( (float)( cs->battleRollTime + painTime - level.time ) / (float)painTime );
 	}
 
 	// gain in confidence the further we are away
 	if ( cs->enemyNum >= 0 ) {
 		dist = Distance( cs->bs->origin, g_entities[cs->enemyNum].s.pos.trBase );
 		//if (dist > 512) {
-		scale += ( dist - 800.0 ) / ( 8000.0 );
+		scale += ( dist - 800.0f ) / ( 8000.0f );
 		//}
 	}
 
 	// if our weapon is reloading, we should hide
 	if ( cs->bs->cur_ps.weaponTime > 0 ) {
-		scale -= ( (float)cs->bs->cur_ps.weaponTime / 1000.0 );
+		scale -= ( (float)cs->bs->cur_ps.weaponTime / 1000.0f );
 	}
 
 	scale *= cs->attributes[AGGRESSION];
@@ -1264,7 +1264,7 @@ float AICast_Aggression( cast_state_t *cs ) {
 	// this should increase the chances of an ambush attack
 	if ( cs->entityNum >= 0 && ( ( level.time + 2000 * g_entities[cs->entityNum].aiTeam ) % ( 4000 + 500 * g_entities[cs->entityNum].aiTeam ) ) > 4000 ) {
 		if ( cs->vislist[cs->entityNum].visible_timestamp > level.time - 10000 ) {
-			scale += 0.3 * (float)( level.time - cs->vislist[cs->entityNum].visible_timestamp ) / 10000.0;
+			scale += 0.3f * (float)( level.time - cs->vislist[cs->entityNum].visible_timestamp ) / 10000.0f;
 		}
 	}
 
@@ -1446,8 +1446,8 @@ void AICast_WeaponSway( cast_state_t *cs, vec3_t ofs ) {
 			break;      // only allow flaming zombie beyond here
 		}
 	case WP_FLAMETHROWER:
-		ofs[PITCH] = ( 3.0 + 4.0 * sin( ( (float)level.time / 320.0 ) ) ) * sin( ( (float)level.time / 500.0 ) );
-		ofs[YAW] = ( 6.0 + 8.0 * sin( ( (float)level.time / 250.0 ) ) ) * sin( ( (float)level.time / 400.0 ) );
+		ofs[PITCH] = ( 3.0f + 4.0f * sin( ( (float)level.time / 320.0f ) ) ) * sin( ( (float)level.time / 500.0f ) );
+		ofs[YAW] = ( 6.0f + 8.0f * sin( ( (float)level.time / 250.0f ) ) ) * sin( ( (float)level.time / 400.0f ) );
 		ofs[ROLL] = 0;
 		break;
 	case WP_VENOM:
@@ -1490,7 +1490,7 @@ qboolean AICast_AimAtEnemy( cast_state_t *cs ) {
 	aim_skill = cs->attributes[AIM_SKILL];
 	aim_accuracy = AICast_GetAccuracy( cs->entityNum );
 	if ( aim_accuracy <= 0 ) {
-		aim_accuracy = 0.0001;
+		aim_accuracy = 0.0001f;
 	}
 
 	// StimSoldier is very good at firing Rocket Launcher
@@ -1515,7 +1515,7 @@ qboolean AICast_AimAtEnemy( cast_state_t *cs ) {
 		// then predict where they are going to be
 		if ( cs->weaponNum == WP_GRENADE_LAUNCHER || cs->weaponNum == WP_GRENADE_PINEAPPLE ) {
 			aicast_predictmove_t move;
-			AICast_PredictMovement( AICast_GetCastState( cs->enemyNum ), 1, 1.0, &move, &g_entities[cs->enemyNum].client->pers.cmd, -1 );
+			AICast_PredictMovement( AICast_GetCastState( cs->enemyNum ), 1, 1.0f, &move, &g_entities[cs->enemyNum].client->pers.cmd, -1 );
 			VectorCopy( move.endpos, bestorigin );
 		} else {    // they are visible, use actual position
 			VectorCopy( g_entities[cs->enemyNum].client->ps.origin, bestorigin );
@@ -1544,17 +1544,17 @@ qboolean AICast_AimAtEnemy( cast_state_t *cs ) {
 		VectorMA( bestorigin, aim_skill * aim_skill * ( dist / 900 ), g_entities[cs->enemyNum].client->ps.velocity, bestorigin );
 		// if they are close, aim down at their feet
 		if ( dist < 512 ) {
-			bestorigin[2] -= ( VectorLength( g_entities[cs->enemyNum].client->ps.velocity ) / 500.0 ) * ( 1.0 - dist / 2048 ) * ( bestorigin[2] - ( g_entities[cs->enemyNum].client->ps.origin[2] + g_entities[cs->enemyNum].client->ps.mins[2] ) );
+			bestorigin[2] -= ( VectorLength( g_entities[cs->enemyNum].client->ps.velocity ) / 500.0f ) * ( 1.0f - dist / 2048 ) * ( bestorigin[2] - ( g_entities[cs->enemyNum].client->ps.origin[2] + g_entities[cs->enemyNum].client->ps.mins[2] ) );
 		}
 	}
 	// if the enemy is moving, they are harder to hit
 	if ( dist > 256 ) {
-		VectorMA( bestorigin, ( 0.3 + 0.7 * ( 1 - aim_accuracy ) ) * 0.4 * sin( (float)level.time / ( 500.0 + ( 100.0 * ( ( cs->entityNum + 3 ) % 4 ) ) ) ), g_entities[cs->enemyNum].client->ps.velocity, bestorigin );
+		VectorMA( bestorigin, ( 0.3f + 0.7f * ( 1 - aim_accuracy ) ) * 0.4f * sin( (float)level.time / ( 500.0f + ( 100.0f * ( ( cs->entityNum + 3 ) % 4 ) ) ) ), g_entities[cs->enemyNum].client->ps.velocity, bestorigin );
 	}
 	// if we are good at aiming, we should aim ahead of where they are now
 	// since by the time we have rotated to that direction, some time will have passed
-	if ( aim_skill > 0.2 ) {
-		VectorMA( bestorigin, aim_skill * 0.2, g_entities[cs->enemyNum].client->ps.velocity, bestorigin );
+	if ( aim_skill > 0.2f ) {
+		VectorMA( bestorigin, aim_skill * 0.2f, g_entities[cs->enemyNum].client->ps.velocity, bestorigin );
 	}
 	//get aim direction
 	VectorSubtract( bestorigin, bs->eye, dir );
@@ -1954,7 +1954,7 @@ AICast_GetAccuracy
 float AICast_GetAccuracy( int entnum ) {
 	#define AICAST_VARIABLE_ACC_ENABLED     1
 	#define AICAST_ACC_VISTIME  ( 500 + ( 3500 * ( 1.0 - aicast_skillscale ) ) )
-	#define AICAST_ACC_SCALE    0.4
+	#define AICAST_ACC_SCALE    0.4f
 	cast_state_t *cs;
 	float acc;
 

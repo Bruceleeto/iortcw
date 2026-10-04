@@ -632,7 +632,7 @@ typedef struct {
 #define MAX_MAPNAMELENGTH       16
 #define MAX_STATUSLENGTH        64
 #define MAX_LISTBOXWIDTH        59
-#define UI_FONT_THRESHOLD       0.1
+#define UI_FONT_THRESHOLD       0.1f
 #define MAX_DISPLAY_SAVEGAMES   256
 #define TEAM_MEMBERS 5
 #define GAMES_ALL           0

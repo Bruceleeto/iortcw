@@ -1742,8 +1742,8 @@ float AngleDifference( float ang1, float ang2 );
 void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 
 // NOTE: use this value, and THEN the cl_input.c scales to tweak the feel
-#define MG42_YAWSPEED       300.0   // degrees per second
-#define MG42_IDLEYAWSPEED   80.0    // degrees per second (while returning to base)
+#define MG42_YAWSPEED       300.0f   // degrees per second
+#define MG42_IDLEYAWSPEED   80.0f    // degrees per second (while returning to base)
 
 	int i;
 	float diff, yawspeed;

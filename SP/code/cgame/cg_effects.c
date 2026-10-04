@@ -1043,37 +1043,37 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 	float thisSeg, distLeft, thisWidth;
 	vec3_t pos, vec, end;
 	int curJunc;
-	vec3_t c, bc = {0.8,0.9,1};
-	const float rndSize = 12.0;
-	const float maxSTscale = 30.0;
+	vec3_t c, bc = {0.8f,0.9f,1};
+	const float rndSize = 12.0f;
+	const float maxSTscale = 30.0f;
 	float stScale;
 	float alpha, viewDist;
 	const int trailLife = 1;
 	int forks = 0;
 	#define STYPE_LIGHTNING     STYPE_REPEAT    // ST mapping for trail
-	#define FORK_CHANCE     0.5
+	#define FORK_CHANCE     0.5f
 	#define VIEW_SCALE_DIST 128
 
 	VectorCopy( pend, end );    // need this so recursive calls don't override stacked endpoints
 
 	// HACK, updated sprite, so downscale all widths
-	maxWidth *= 0.6;
+	maxWidth *= 0.6f;
 
 	length = Distance( start, end );
 	//if (length > 128) {
-	segMin = length / 10.0;
+	segMin = length / 10.0f;
 	if ( segMin < 8 ) {
 		segMin = 8;
 	}
-	segMax = segMin * 1.2;
+	segMax = segMin * 1.2f;
 	//segMax = length / 30.0;
 	//} else {
 	//	segMin = length / 3.0;
 	//	segMax = length / 1.5;
 	//}
 
-	if ( startAlpha > 1.0 ) {
-		startAlpha = 1.0;
+	if ( startAlpha > 1.0f ) {
+		startAlpha = 1.0f;
 	}
 	alpha = startAlpha; // change only if fading
 
@@ -1082,12 +1082,12 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 		distLeft = length;
 		VectorCopy( start, pos );
 		// drop a start junction
-		stScale = maxSTscale * ( 0.5 + lt_random( randseed,i + 1 ) * 0.5 );
+		stScale = maxSTscale * ( 0.5f + lt_random( randseed,i + 1 ) * 0.5f );
 		if ( fade ) {
-			if ( startAlpha == 1.0 ) {
+			if ( startAlpha == 1.0f ) {
 				alpha = startAlpha * ( distLeft / length );
 			} else {
-				alpha = 1.0 - 1.0 * fabs( ( 1.0 - ( distLeft / length ) ) - startAlpha );
+				alpha = 1.0f - 1.0f * fabs( ( 1.0f - ( distLeft / length ) ) - startAlpha );
 				if ( alpha < 0 ) {
 					alpha = 0;
 				}
@@ -1096,14 +1096,14 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 				}
 			}
 		}
-		thisWidth = maxWidth * ( 0.5 + 0.5 * alpha );
+		thisWidth = maxWidth * ( 0.5f + 0.5f * alpha );
 		if ( ( viewDist = VectorDistance( pos, cg.refdef.vieworg ) ) < VIEW_SCALE_DIST ) {
-			thisWidth *= 0.5 + ( 0.5 * ( viewDist / VIEW_SCALE_DIST ) );
-			if ( thisWidth < 4.0 && thisWidth < maxWidth ) {
-				thisWidth = 4.0;
+			thisWidth *= 0.5f + ( 0.5f * ( viewDist / VIEW_SCALE_DIST ) );
+			if ( thisWidth < 4.0f && thisWidth < maxWidth ) {
+				thisWidth = 4.0f;
 			}
 		} else {    // scale it wider with distance so it remains visible
-			thisWidth *= 0.5 + ( 0.5 * ( viewDist / VIEW_SCALE_DIST ) );
+			thisWidth *= 0.5f + ( 0.5f * ( viewDist / VIEW_SCALE_DIST ) );
 			if ( thisWidth > maxWidth * 2 ) {
 				// thisWidth > maxWidth*2;
 				thisWidth = maxWidth * 2;
@@ -1111,34 +1111,34 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 		}
 		//
 		VectorScale( bc, alpha, c );
-		c[2] *= 1.0 + ( 1.0 - alpha );
-		if ( c[2] > 1.0 ) {
-			c[2] = 1.0;
+		c[2] *= 1.0f + ( 1.0f - alpha );
+		if ( c[2] > 1.0f ) {
+			c[2] = 1.0f;
 		}
 		//
-		curJunc = CG_AddTrailJunc( 0, shader, cg.time, STYPE_LIGHTNING, pos, trailLife, 1, 1, thisWidth, thisWidth, TJFL_NOCULL, c, c, stScale, 20.0 );
+		curJunc = CG_AddTrailJunc( 0, shader, cg.time, STYPE_LIGHTNING, pos, trailLife, 1, 1, thisWidth, thisWidth, TJFL_NOCULL, c, c, stScale, 20.0f );
 		while ( distLeft > 0 )
 		{   // create this bolt
 			thisSeg = segMin + ( segMax - segMin ) * lt_random( randseed,2 );
-			thisWidth = maxWidth * ( 0.5 + 0.5 * alpha );
+			thisWidth = maxWidth * ( 0.5f + 0.5f * alpha );
 			if ( thisSeg >= distLeft - rndSize ) { // go directly to the end point
 				VectorCopy( end, pos );
-				thisWidth *= 0.6;
-			} else if ( (float)distLeft / length < 0.3 ) {
+				thisWidth *= 0.6f;
+			} else if ( (float)distLeft / length < 0.3f ) {
 				VectorSubtract( end, pos, vec );
 				VectorNormalize( vec );
 				VectorMA( pos, thisSeg, vec, pos );
 				// randomize the position a bit
-				thisSeg *= 0.05;
+				thisSeg *= 0.05f;
 				if ( thisSeg > rndSize ) {
 					thisSeg = rndSize;
 				}
 				for ( j = 0; j < 3; j++ ) {
 					viewDist = lt_crandom( randseed * randseed,j * j + i * i + 3 );
-					if ( fabs( viewDist ) < 0.5 ) {
+					if ( fabs( viewDist ) < 0.5f ) {
 						if ( viewDist > 0 ) {
-							viewDist = 0.5;
-						} else { viewDist = -0.5;}
+							viewDist = 0.5f;
+						} else { viewDist = -0.5f;}
 					}
 					pos[j] += viewDist * thisSeg;
 				}
@@ -1147,16 +1147,16 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 				VectorNormalize( vec );
 				VectorMA( pos, thisSeg, vec, pos );
 				// randomize the position a bit
-				thisSeg *= 0.25;
+				thisSeg *= 0.25f;
 				if ( thisSeg > rndSize ) {
 					thisSeg = rndSize;
 				}
 				for ( j = 0; j < 3; j++ ) {
 					viewDist = lt_crandom( randseed,j * j + i * i + 3 );
-					if ( fabs( viewDist ) < 0.5 ) {
+					if ( fabs( viewDist ) < 0.5f ) {
 						if ( viewDist > 0 ) {
-							viewDist = 0.5;
-						} else { viewDist = -0.5;}
+							viewDist = 0.5f;
+						} else { viewDist = -0.5f;}
 					}
 					pos[j] += viewDist * thisSeg;
 				}
@@ -1164,10 +1164,10 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 
 			distLeft = Distance( pos, end );
 			if ( fade ) {
-				if ( startAlpha == 1.0 ) {
+				if ( startAlpha == 1.0f ) {
 					alpha = startAlpha * ( distLeft / length );
 				} else {
-					alpha = 1.0 - 1.0 * fabs( ( 1.0 - ( distLeft / length ) ) - startAlpha );
+					alpha = 1.0f - 1.0f * fabs( ( 1.0f - ( distLeft / length ) ) - startAlpha );
 					if ( alpha < 0 ) {
 						alpha = 0;
 					}
@@ -1178,12 +1178,12 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 			}
 			//thisWidth *= alpha;
 			if ( ( viewDist = VectorDistance( pos, cg.refdef.vieworg ) ) < VIEW_SCALE_DIST ) {
-				thisWidth *= 0.5 + ( 0.5 * ( viewDist / VIEW_SCALE_DIST ) );
-				if ( thisWidth < 4.0 && thisWidth < maxWidth ) {
-					thisWidth = 4.0;
+				thisWidth *= 0.5f + ( 0.5f * ( viewDist / VIEW_SCALE_DIST ) );
+				if ( thisWidth < 4.0f && thisWidth < maxWidth ) {
+					thisWidth = 4.0f;
 				}
 			} else {    // scale it wider with distance so it remains visible
-				thisWidth *= 0.5 + ( 0.5 * ( viewDist / VIEW_SCALE_DIST ) );
+				thisWidth *= 0.5f + ( 0.5f * ( viewDist / VIEW_SCALE_DIST ) );
 				if ( thisWidth > maxWidth * 2 ) {
 					// thisWidth > maxWidth*2;
 					thisWidth = maxWidth * 2;
@@ -1192,25 +1192,25 @@ void CG_DynamicLightningBolt( qhandle_t shader, vec3_t start, vec3_t pend, int n
 			}
 			//
 			VectorScale( bc, alpha, c );
-			c[2] *= 1.0 + ( 1.0 - alpha );
-			if ( c[2] > 1.0 ) {
-				c[2] = 1.0;
+			c[2] *= 1.0f + ( 1.0f - alpha );
+			if ( c[2] > 1.0f ) {
+				c[2] = 1.0f;
 			}
 			//
 			//stScale = maxSTscale * (0.4 + lt_random(randseed,1)*0.6);
-			curJunc = CG_AddTrailJunc( curJunc, shader, cg.time, STYPE_LIGHTNING, pos, trailLife, 1, 1, thisWidth, thisWidth, TJFL_NOCULL, c, c, stScale, 20.0 );
+			curJunc = CG_AddTrailJunc( curJunc, shader, cg.time, STYPE_LIGHTNING, pos, trailLife, 1, 1, thisWidth, thisWidth, TJFL_NOCULL, c, c, stScale, 20.0f );
 
 			// fork from here?
 			if ( thisWidth < 4 && distLeft > 10 && recursion < 3 && forks < 3 && lt_random( randseed,383 + i + forks ) < FORK_CHANCE ) {
 				vec3_t fend;
 				forks++;
 				VectorSet( fend,
-						   distLeft * 0.3 * lt_crandom( randseed,56 + i + forks ),
-						   distLeft * 0.3 * lt_crandom( randseed,160 + i + forks ),
-						   distLeft * 0.3 * lt_crandom( randseed,190 + i + forks ) );
+						   distLeft * 0.3f * lt_crandom( randseed,56 + i + forks ),
+						   distLeft * 0.3f * lt_crandom( randseed,160 + i + forks ),
+						   distLeft * 0.3f * lt_crandom( randseed,190 + i + forks ) );
 				VectorAdd( fend, end, fend );
 				VectorSubtract( fend, pos, fend );
-				VectorMA( pos, 0.2 + 0.7 * lt_random( randseed,6 + i + forks ), fend, fend );
+				VectorMA( pos, 0.2f + 0.7f * lt_random( randseed,6 + i + forks ), fend, fend );
 
 				//if (recursion > 0 && recursion < 2) {
 				//	CG_DynamicLightningBolt( cgs.media.lightningBoltShader, pos, fend, 1, maxWidth, qtrue, alpha, recursion, randseed );
