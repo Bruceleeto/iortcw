@@ -66,14 +66,17 @@ typedef enum {
 	STAT_BONECALLS,     // R_CalcBones
 	STAT_BONEMISSES,    // of them, an entity not in the bone cache
 	STAT_TR,            // translucent list entries (vertexes + headers)
+	STAT_VBUFMAX,       // most TA vertex buffer KB a frame used (a peak, not an average)
 	STAT_NUM
 } profStat_t;
 
 #ifdef DC_PROF
 extern int profStats[STAT_NUM];
 #define PROF_COUNT( stat, n )   ( profStats[stat] += ( n ) )
+#define PROF_MAX( stat, n )     ( profStats[stat] = profStats[stat] > ( n ) ? profStats[stat] : ( n ) )
 #else
 #define PROF_COUNT( stat, n )
+#define PROF_MAX( stat, n )
 #endif
 
 #ifdef DC_PROF

@@ -52,7 +52,7 @@
 /* the lists are kept in blocks, from one pool for all of them, made as
    frames need them, up to the vertex buffer pvrgl_Init gives the PVR: no
    frame can send it more than that, whichever lists it is in */
-#define VERTEX_BUFFER		( 768 * 1024 )
+#define VERTEX_BUFFER		( 1024 * 1024 )
 #define LIST_BLOCK			( 16 * 1024 )
 #define LIST_BLOCKS			( VERTEX_BUFFER / LIST_BLOCK )
 
@@ -99,6 +99,7 @@ typedef struct {
 	float		u, v;
 	uint32_t	argb;
 	int			code;			/* 1 behind the near plane, 2 4 8 16 off the viewport's edges */
+	uint32_t	oargb;			/* its alpha the vertex fog */
 } __attribute__( ( aligned( 32 ) ) ) clipVert_t;
 
 typedef struct {
@@ -183,6 +184,10 @@ static struct {
 	int			clears;			/* depth clears so far this frame */
 	int			drawnSinceClear;
 	GLenum		error;
+	const uint8_t	*fogArray;	/* pvrglFogArray's */
+	uint32_t	fogColor;		/* this frame's vertex fog colour, RGBA bytes */
+	int			fogSet;
+	uint32_t	fogWritten;		/* the colour in the PVR's register, + 1 */
 } gl;
 
 /* each vertex's position as the PVR takes it, made for all of a draw's
@@ -215,10 +220,11 @@ static struct {
 static struct {
 	float		m[16];
 	float		xLo, xHi, yLo, yHi, depthScale;
-	const uint8_t	*pos, *st, *col;
-	int			posStride, stStride, colStride;
+	const uint8_t	*pos, *st, *col, *fog;
+	int			posStride, stStride, colStride, fogStride;
 	float		st0[2];
 	uint32_t	col0;
+	int			fogOn;			/* the draw's header has vertex fog */
 } xf;
 
 /* ===================================================================== */
@@ -1180,6 +1186,11 @@ static int BeginPrimitives( void ) {
 		default:			cxt.txr.env = PVR_TXRENV_MODULATEALPHA; break;
 		}
 		cxt.txr.alpha = t->alpha ? PVR_TXRALPHA_ENABLE : PVR_TXRALPHA_DISABLE;
+		if ( gl.fogArray ) {
+			/* the fog amount in the offset colour's alpha */
+			cxt.gen.fog_type = PVR_FOG_VERTEX;
+			cxt.gen.specular = PVR_SPECULAR_ENABLE;
+		}
 	} else {
 		pvr_poly_cxt_col( &cxt, list );
 	}
@@ -1215,6 +1226,7 @@ static int BeginPrimitives( void ) {
 		l->hasLast = 1;
 	}
 	gl.drawnSinceClear = 1;
+	xf.fogOn = t && gl.fogArray;
 	return list;
 }
 
@@ -1280,7 +1292,7 @@ static void EmitClipVert( listBuffer_t *l, const clipVert_t *c, uint32_t flags )
 	v->u = c->u;
 	v->v = c->v;
 	v->argb = c->argb;
-	v->oargb = 0;
+	v->oargb = c->oargb;
 	if ( flags != PVR_CMD_VERTEX ) {
 		l->whole = l->used;
 	}
@@ -1317,6 +1329,10 @@ static void LerpVert( clipVert_t *out, const clipVert_t *a, const clipVert_t *b,
 	for ( i = 0; i < 32; i += 8 ) {
 		int ca = ( a->argb >> i ) & 0xff, cb = ( b->argb >> i ) & 0xff;
 		out->argb |= (uint32_t)( ca + ( cb - ca ) * t + 0.5f ) << i;
+	}
+	{
+		int fa = a->oargb >> 24, fb = b->oargb >> 24;
+		out->oargb = (uint32_t)( fa + ( fb - fa ) * t + 0.5f ) << 24;
 	}
 	out->d = 0.0f;
 	out->code = 0;
@@ -1546,6 +1562,15 @@ static void SetAttribs( int lo, int hi ) {
 		xf.col = (const uint8_t *)vcol;
 		xf.colStride = 4;
 	}
+
+	if ( xf.fogOn ) {
+		xf.fog = gl.fogArray;
+		xf.fogStride = 1;
+	} else {
+		static const uint8_t none;
+		xf.fog = &none;
+		xf.fogStride = 0;
+	}
 }
 
 static inline void EmitVertex( listBuffer_t *l, int i, uint32_t flags ) {
@@ -1564,7 +1589,7 @@ static inline void EmitVertex( listBuffer_t *l, int i, uint32_t flags ) {
 	v->u = st[0];
 	v->v = st[1];
 	v->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
-	v->oargb = 0;
+	v->oargb = (uint32_t)xf.fog[i * xf.fogStride] << 24;
 	if ( flags != PVR_CMD_VERTEX ) {
 		l->whole = l->used;
 	}
@@ -1583,6 +1608,7 @@ static void FullVert( clipVert_t *c, int i ) {
 	c->u = st[0];
 	c->v = st[1];
 	c->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
+	c->oargb = (uint32_t)xf.fog[i * xf.fogStride] << 24;
 }
 
 /* a triangle on its own: clipped, culled or as it is */
@@ -1801,6 +1827,24 @@ void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const 
 	DrawPrimitives( mode, count, f, indices, minIndex, maxIndex, 0 );
 }
 
+/* per vertex fog amounts (0 none, 255 all fog colour) for the draws till
+   set to NULL, blended by the PVR in pvrgl_FogColor's colour; textured
+   draws only */
+void pvrglFogArray( const unsigned char *amounts ) {
+	gl.fogArray = amounts;
+}
+
+/* the vertex fog colour (RGBA bytes), one a frame: 0 if this frame
+   already has another */
+int pvrgl_FogColor( unsigned int rgba ) {
+	if ( gl.fogSet ) {
+		return gl.fogColor == rgba;
+	}
+	gl.fogColor = rgba;
+	gl.fogSet = 1;
+	return 1;
+}
+
 /* the renderer's promise that vertexes first to first + count - 1 don't
    move till the unlock: their positions made once for all its draws */
 void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count ) {
@@ -1944,6 +1988,37 @@ static void ResetLists( void ) {
 	gl.clearedColor = 0;
 }
 
+/*
+Sega's rule for presorted translucent lists (Holly TA&CORE p2 III, CLX bug 7):
+an opaque polygon must cover the whole screen, or the render can hang. Drawn
+first in the opaque list in the clear colour, at the background's depth
+without writing depth, so it is invisible.
+*/
+static void SubmitCoverQuad( void ) {
+	static const float corners[4][2] = { { 0, 0 }, { 640, 0 }, { 0, 480 }, { 640, 480 } };
+	pvr_poly_cxt_t cxt;
+	pvr_poly_hdr_t hdr;
+	pvr_vertex_t v;
+	int i;
+
+	pvr_poly_cxt_col( &cxt, PVR_LIST_OP_POLY );
+	cxt.depth.comparison = PVR_DEPTHCMP_ALWAYS;
+	cxt.depth.write = PVR_DEPTHWRITE_DISABLE;
+	cxt.gen.culling = PVR_CULLING_NONE;
+	pvr_poly_compile( &hdr, &cxt );
+	pvr_prim( &hdr, sizeof( hdr ) );
+	v.z = 0.0001f;
+	v.u = v.v = 0;
+	v.argb = PackColor( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2], 1.0f );
+	v.oargb = 0;
+	for ( i = 0; i < 4; i++ ) {
+		v.flags = i == 3 ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;
+		v.x = corners[i][0];
+		v.y = corners[i][1];
+		pvr_prim( &v, sizeof( v ) );
+	}
+}
+
 void pvrgl_EndFrame( void ) {
 	static const int order[3] = { PVR_LIST_OP_POLY, PVR_LIST_PT_POLY, PVR_LIST_TR_POLY };
 	int i;
@@ -1955,8 +2030,15 @@ void pvrgl_EndFrame( void ) {
 	PROF_BEGIN( PROF_GPU );
 	pvr_wait_ready();
 	PROF_END( PROF_GPU );
+	PROF_MAX( STAT_VBUFMAX, (int)( PVR_GET( PVR_TA_VERTBUF_POS ) - PVR_GET( PVR_TA_VERTBUF_START ) ) / 1024 );
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
+	if ( gl.fogSet && gl.fogWritten != gl.fogColor + 1 ) {
+		uint32_t c = gl.fogColor;
+		PVR_SET( PVR_FOG_VERTEX_COLOR, ( ( c & 0xff ) << 16 ) | ( c & 0xff00 ) | ( ( c >> 16 ) & 0xff ) );
+		gl.fogWritten = gl.fogColor + 1;
+	}
+	gl.fogSet = 0;
 	PROF_COUNT( STAT_TR, gl.lists[PVR_LIST_TR_POLY].used / 32 );
 	PROF_BEGIN( PROF_SUBMIT );
 	pvr_scene_begin();
@@ -1968,7 +2050,7 @@ void pvrgl_EndFrame( void ) {
 	for ( i = 0; i < 3; i++ ) {
 		listBuffer_t *l = &gl.lists[order[i]];
 		int b;
-		if ( !l->used ) {
+		if ( !l->used && order[i] != PVR_LIST_OP_POLY ) {
 			continue;
 		}
 		if ( getenv( "PVRGL_SKIP" ) && strchr( getenv( "PVRGL_SKIP" ), '0' + order[i] ) ) {
@@ -1978,6 +2060,9 @@ void pvrgl_EndFrame( void ) {
 			fprintf( stderr, "pvr_gl: list %d overflowed: the lists have %d KB between them\n", order[i], VERTEX_BUFFER / 1024 );
 		}
 		pvr_list_begin( order[i] );
+		if ( order[i] == PVR_LIST_OP_POLY ) {
+			SubmitCoverQuad();
+		}
 		for ( b = 0; b * LIST_BLOCK < l->used; b++ ) {
 			pvr_prim( l->blocks[b], l->used - b * LIST_BLOCK < LIST_BLOCK ? l->used - b * LIST_BLOCK : LIST_BLOCK );
 		}

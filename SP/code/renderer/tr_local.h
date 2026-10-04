@@ -1285,6 +1285,8 @@ extern cvar_t   *r_allowExtensions;             // global enable/disable of Open
 #ifdef USE_PVR
 extern cvar_t   *r_pvrCull;
 extern int      pvrgl_hwCull;
+void pvrglFogArray( const unsigned char *amounts );
+int  pvrgl_FogColor( unsigned int rgba );
 #endif
 extern cvar_t   *r_ext_compressed_textures;     // these control use of specific extensions
 extern cvar_t   *r_ext_multitexture;

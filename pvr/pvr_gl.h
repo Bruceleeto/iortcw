@@ -35,6 +35,9 @@ extern int pvrgl_hwCull;
 void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count );
 void APIENTRY pvrglUnlockArraysEXT( void );
 
+void pvrglFogArray( const unsigned char *amounts );
+int  pvrgl_FogColor( unsigned int rgba );
+
 /* one entry per GL function the renderer can call, as pvrgl<Name> */
 #define PVRGL_PROCS \
 	GLE(void, BindTexture, GLenum target, GLuint texture) \

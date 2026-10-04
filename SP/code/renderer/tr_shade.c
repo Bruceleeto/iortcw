@@ -487,6 +487,10 @@ ProjectDlightTexture
 Perform dynamic lighting with another rendering pass
 ===================
 */
+#ifdef USE_PVR
+static const byte *dlightFog;	// RB_VertexFog's amounts, while its surface is drawn
+#endif
+
 static void ProjectDlightTexture_scalar( void ) {
 	int		i, l;
 	vec3_t	origin;
@@ -604,6 +608,11 @@ static void ProjectDlightTexture_scalar( void ) {
 				}
 			}
 			clipBits[i] = clip;
+#ifdef USE_PVR
+			if ( dlightFog ) {
+				modulate *= ( 255 - dlightFog[i] ) * ( 1.0f / 255 );
+			}
+#endif
 			colors[0] = (int)( floatColor[0] * modulate + 0.5f );
 			colors[1] = (int)( floatColor[1] * modulate + 0.5f );
 			colors[2] = (int)( floatColor[2] * modulate + 0.5f );
@@ -1286,9 +1295,46 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 /*
 ** RB_StageIteratorGeneric
 */
+#ifdef USE_PVR
+/*
+===================
+RB_VertexFog
+
+A surface in a fog volume with one opaque stage: its fog blended in by
+the PVR as it's drawn (vertex fog) instead of by RB_FogPass drawing it
+all again, translucent. Its dynamic lights are faded by the fog instead
+(dlightFog)
+===================
+*/
+static qboolean RB_VertexFog( void ) {
+	static byte amounts[SHADER_MAX_VERTEXES];
+	float *st = tess.svars.texcoords[0][0];	// not yet the stage's
+	int i, blend;
+
+	if ( !tess.fogNum || !tess.shader->fogPass || tess.numPasses != 1 ) {
+		return qfalse;
+	}
+	blend = tess.xstages[0]->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS );
+	if ( blend && blend != ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO ) ) {
+		return qfalse;
+	}
+	if ( !pvrgl_FogColor( tr.world->fogs[tess.fogNum].colorInt ) ) {
+		return qfalse;
+	}
+	RB_CalcFogTexCoords( st );
+	for ( i = 0; i < tess.numVertexes; i++, st += 2 ) {
+		amounts[i] = 255 * R_FogFactor( st[0], st[1] );
+	}
+	pvrglFogArray( amounts );
+	dlightFog = amounts;
+	return qtrue;
+}
+#endif
+
 void RB_StageIteratorGeneric( void ) {
 	shaderCommands_t *input;
 	shader_t		*shader;
+	qboolean vertexFog = qfalse;
 
 	input = &tess;
 	shader = input->shader;
@@ -1378,7 +1424,15 @@ void RB_StageIteratorGeneric( void ) {
 	//
 	// call shader function
 	//
+#ifdef USE_PVR
+	vertexFog = RB_VertexFog();
+#endif
 	RB_IterateStagesGeneric( input );
+#ifdef USE_PVR
+	if ( vertexFog ) {
+		pvrglFogArray( NULL );
+	}
+#endif
 
 	//
 	// now do any dynamic lighting needed
@@ -1391,9 +1445,12 @@ void RB_StageIteratorGeneric( void ) {
 	//
 	// now do fog
 	//
-	if ( tess.fogNum && tess.shader->fogPass ) {
+	if ( tess.fogNum && tess.shader->fogPass && !vertexFog ) {
 		RB_FogPass();
 	}
+#ifdef USE_PVR
+	dlightFog = NULL;
+#endif
 
 	//
 	// unlock arrays
@@ -1426,6 +1483,7 @@ void RB_StageIteratorGeneric( void ) {
 void RB_StageIteratorVertexLitTexture( void ) {
 	shaderCommands_t *input;
 	shader_t        *shader;
+	qboolean vertexFog = qfalse;
 
 	input = &tess;
 
@@ -1485,7 +1543,15 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	R_BindAnimatedImage( &tess.xstages[0]->bundle[0] );
 	GL_State( tess.xstages[0]->stateBits );
+#ifdef USE_PVR
+	vertexFog = RB_VertexFog();
+#endif
 	R_DrawElements( input->numIndexes, input->indexes );
+#ifdef USE_PVR
+	if ( vertexFog ) {
+		pvrglFogArray( NULL );
+	}
+#endif
 
 	//
 	// now do any dynamic lighting needed
@@ -1497,9 +1563,12 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	// now do fog
 	//
-	if ( tess.fogNum && tess.shader->fogPass ) {
+	if ( tess.fogNum && tess.shader->fogPass && !vertexFog ) {
 		RB_FogPass();
 	}
+#ifdef USE_PVR
+	dlightFog = NULL;
+#endif
 
 	//
 	// unlock arrays
