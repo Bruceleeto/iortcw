@@ -34,7 +34,7 @@ static const char *const sectionNames[PROF_NUM] = {
 };
 
 static const char *const statNames[STAT_NUM] = {
-	"draws", "verts", "tris", "culled", "clipped", "emitted", "framehits", "framemisses", "bonecalls", "bonemisses", "tr", "vbufmax"
+	"draws", "verts", "tris", "culled", "clipped", "emitted", "framehits", "framemisses", "bonecalls", "bonemisses", "tr"
 };
 
 int profStats[STAT_NUM];
@@ -150,7 +150,7 @@ void Com_ProfFrame( void ) {
 
 		Q_strncpyz( line, "RSTAT", sizeof( line ) );
 		for ( i = 0; i < STAT_NUM; i++ ) {
-			Q_strcat( line, sizeof( line ), va( " %s %d", statNames[i], i == STAT_VBUFMAX ? profStats[i] : profStats[i] / frames ) );
+			Q_strcat( line, sizeof( line ), va( " %s %d", statNames[i], profStats[i] / frames ) );
 		}
 		Com_Printf( "%s\n", line );
 

@@ -2030,7 +2030,6 @@ void pvrgl_EndFrame( void ) {
 	PROF_BEGIN( PROF_GPU );
 	pvr_wait_ready();
 	PROF_END( PROF_GPU );
-	PROF_MAX( STAT_VBUFMAX, (int)( PVR_GET( PVR_TA_VERTBUF_POS ) - PVR_GET( PVR_TA_VERTBUF_START ) ) / 1024 );
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
 	if ( gl.fogSet && gl.fogWritten != gl.fogColor + 1 ) {
