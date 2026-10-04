@@ -8,7 +8,12 @@
 #   make assets        Dreamcast versions of the game data (tools/rtcwconv):
 #                      sp_dc.pk3, written to ASSETS_DIR
 #                      (default assets/main, next to the original pk3s);
-#                      images need PVRTEX (KOS utils/pvrtex)
+#                      images need PVRTEX (KOS utils/pvrtex); sizes for
+#                      some in tools/rtcwconv/texsizes.txt
+#   make texcompare    build/texcompare: each original image next to its
+#                      Dreamcast one (ONLY=ui/ for just those)
+#   make texpanel      http://localhost:8765: pick image sizes and formats,
+#                      previewed as you go, saved to texsizes.txt
 #
 #   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
 #                         (source /opt/toolchains/dc/kos/environ.sh first)
@@ -44,8 +49,7 @@
 #   TEXTURES=0         world/model textures become one pixel of their average
 #                      colour (menus, fonts and lightmaps stay); opengl1/pvr
 #   MAP=<name>         start straight into this map when no + commands are
-#                      given; pvr builds default to escape1, MAP= goes to
-#                      the menu as normal
+#                      given (default: the menu)
 #   DEBUG=1            debug build (-O0 -g)
 #   BASEDIR=<dir>      default fs_basepath (default: <repo>/assets)
 #   V=1                show full command lines
@@ -152,7 +156,7 @@ endif
 
 MODULE_LD ?= $(CC) $(ARCH_FLAGS) -r -nostdlib
 
-.PHONY: all sp game clean pvrtest assets disc shaderbin
+.PHONY: all sp game clean pvrtest assets texcompare texpanel disc shaderbin
 
 all: sp
 
@@ -210,6 +214,16 @@ SP_PAKS  = $(filter-out $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
 
 assets: $(ASSETS_DIR)/sp_dc.pk3
 
+# make texcompare: build/texcompare, each original image next to its .dt as
+# the Dreamcast gets it, from the last `make assets`; ONLY=ui/ for just those
+texcompare:
+	$(Q)rm -rf $(BUILD_DIR)/texcompare
+	$(Q)python3 tools/texcompare.py $(PVRTEX) $(ASSETS_OUT)/sp/src $(ASSETS_OUT)/sp/dc $(BUILD_DIR)/texcompare $(ONLY)
+
+# make texpanel: texsizes.txt in the browser, see tools/texpanel.py
+texpanel:
+	$(Q)python3 tools/texpanel.py $(PVRTEX) $(ASSETS_OUT)/sp/src tools/rtcwconv/texsizes.txt
+
 # x87 math, as the engine's x86 build does it: SSE rounds differently, and
 # the curve collision then merges fewer planes (escape1: 4655, not 4238)
 ifneq ($(filter x86_64 i%86,$(shell uname -m)),)
@@ -240,14 +254,14 @@ $(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_COBJ) $(RTCWCONV_HDR)
 
 # 1 = sp, 2 = its pk3s in load order
 define assets_pk3
-$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(2) tools/rtcwconv/mapedits.txt
+$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(PVRTEX) $(2) tools/rtcwconv/mapedits.txt tools/rtcwconv/texsizes.txt
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' '*.rcd' \
 	  '*.shader' '*.skin' '*.menu' '*.txt' '*.cfg' '*.script' '*.ai' '*.camera' '*.sounds' '*.md3' '*.dat' '*.h' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
-	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt -z tools/rtcwconv/texsizes.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef
@@ -325,10 +339,6 @@ else
   $(error GAME must be sp)
 endif
 
-# pvr builds boot straight into a map for testing
-ifeq ($(RENDERER),pvr)
-  MAP ?= escape1
-endif
 
 B   = $(BUILD_DIR)/$(GAME)-$(ARCH)$(if $(filter 1,$(DCSIM)),-dcsim)$(if $(filter 1,$(ASAN)),-asan)
 ifeq ($(PLATFORM),dc)

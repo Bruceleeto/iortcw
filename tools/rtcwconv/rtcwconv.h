@@ -9,6 +9,7 @@
 #define RTCWCONV_H
 
 #include <filesystem>
+#include <map>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -97,6 +98,9 @@ struct TexOptions {
 	int maxSize2D;              /* the same for 2D art (menus, fonts, HUD) */
 	int jobs;                   /* pvrtex runs at once, 0: a core each */
 	bool verbose;
+	/* -z: sizes picked for some images, by name (lower case, no extension) */
+	std::map<std::string, std::pair<int, int>> sizes;
+	std::map<std::string, std::string> formats;    /* -z ... format, "" for VQ (see ReadSizes) */
 };
 
 struct TexStats {

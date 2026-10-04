@@ -1,0 +1,61 @@
+# Image sizes for the Dreamcast, made by rtcwconv -z (see ReadSizes in main.cpp),
+# in place of the usual caps (128 a side; 2D art 256). VQ compressed unless
+# given a format.
+# Look at them with `make texcompare` (build/texcompare).
+#	<image, no extension> <width> <height> [raw|yuv|pal8]    powers of two, 8 to 1024;
+#	raw: 16 bit, pvrtex picks the format (about 8x the VRAM of VQ)
+#	yuv: YUV422, for opaque photos: smoother darks than RGB565
+#	pal8: 8 bit with an ARGB8888 palette, for soft alpha (4444 bands it);
+#	      only 4 can be loaded at once
+
+# start menu
+ui/assets/menu_load                 256 256     # 640x480: 128x128 by the cap
+models/mapobjects/bjui/bj_head1     512 256     # 512x256: full size
+models/mapobjects/bjui/bj_body1     256 256     # 512x512
+ui/assets/backimage2                256 256 yuv     # full-screen menu background, mostly under the two below
+ui/assets/backimage4                256 512 pal8
+ui/assets/video_over1               256 512 pal8
+ui/assets/bands                     256 512 pal8
+ui/assets/bandsa                    128 512 raw
+ui/assets/band2                     128 512 pal8
+models/mapobjects/flag/flag_ui_nazi     128 256
+models/mapobjects/flag/flag_ui_american 128 256
+
+# texpanel
+models/players/bj/bj_head1          256 128
+models/players/blackguard/bg_head1  256 128
+models/players/blackguard/bg_head2  256 128
+models/players/infantryss/i_head19  256 128
+models/players/infantryss/i_head2   256 128
+models/players/infantryss/i_head20  256 128
+models/players/infantryss/i_head21  256 128
+models/players/infantryss/i_head23  256 128
+models/players/infantryss/i_head2_blink 256 128
+models/players/infantryss/i_head4   256 128
+models/players/infantryss/i_head5   256 128
+models/players/infantryss/i_head6   256 128
+models/players/infantryss/i_head7   256 128
+models/players/infantryss/i_head8   256 128
+models/players/infantryss/i_head9   256 128
+models/players/infantryss/i_headburn 256 128
+models/players/infantryss/i_headsn1 256 128
+models/players/infantryss/i_headsn2 256 128
+models/players/infantryss/i_sfmhead1 256 128
+models/players/infantryss/i_sfmhead2 256 128
+models/players/infantryss/i_sfmhead3 256 128
+models/players/inge/ing_head1       256 128
+models/players/inge/ing_head2       256 128
+models/players/director/dir_body1   256 256
+models/players/director/dir_head1   512 256
+models/players/director/dir_legs1   256 128
+textures/director/american_c02      256 128
+textures/director/unionjack_c01     128 256
+textures/director/churchill_c05     256 256
+textures/town_wall/church_c02dm     256 256
+models/players/higgs/higg_head1     256 128
+models/players/higgs/higg_legs1     128 256
+models/players/higgs/higg_body1     256 256
+models/players/jack/jack_head1      256 128
+models/players/murphy/murp_head1    512 256
+textures/director/48stars_c01       128 256
+textures/training/osa_sign_m01      256 256

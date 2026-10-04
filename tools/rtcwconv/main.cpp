@@ -111,6 +111,55 @@ static bool ReadEdits( const char *file, std::map<std::string, MapEdits> &edits 
 	return true;
 }
 
+/*
+Image sizes, a line each, # for a comment, in place of the -t / 2D caps:
+	<image, no extension> <width> <height> [format]    powers of two, 8 to 1024;
+	format: VQ compressed if left out or vq, vq565, vq1555, vq4444; not:
+	raw, 565, 1555, 4444, yuv (YUV422), pal8 (8 bit, ARGB8888 palette, 4 of
+	them at most loaded); vq and raw leave the pixel format to tex.cpp
+*/
+static bool ReadSizes( const char *file, std::map<std::string, std::pair<int, int>> &sizes,
+					   std::map<std::string, std::string> &formats ) {
+	FILE *f = fopen( file, "r" );
+	char line[512];
+	int n = 0;
+
+	if ( !f ) {
+		fprintf( stderr, "%s: %s\n", file, strerror( errno ) );
+		return false;
+	}
+	while ( fgets( line, sizeof( line ), f ) ) {
+		char name[256], flag[16] = "";
+		int w, h;
+		n++;
+		char *hash = strchr( line, '#' );
+		if ( hash ) {
+			*hash = 0;
+		}
+		int got = sscanf( line, "%255s %d %d %15s", name, &w, &h, flag );
+		if ( got <= 0 ) {
+			continue;
+		}
+		static const char *formatNames[] = { "vq", "vq565", "vq1555", "vq4444", "raw", "565", "1555", "4444", "yuv", "pal8" };
+		bool known = got < 4;
+		for ( const char *fn : formatNames ) {
+			known |= !strcmp( flag, fn );
+		}
+		if ( got < 3 || !known || w < 8 || h < 8 || w > 1024 || h > 1024 || ( w & ( w - 1 ) ) || ( h & ( h - 1 ) ) ) {
+			fprintf( stderr, "%s:%d: not <image> <width> <height> [format] (see ReadSizes; powers of two, 8 to 1024)\n", file, n );
+			fclose( f );
+			return false;
+		}
+		for ( char *c = name; *c; c++ ) {
+			*c = tolower( *c );
+		}
+		sizes[name] = { w, h };
+		formats[name] = strcmp( flag, "vq" ) ? flag : "";
+	}
+	fclose( f );
+	return true;
+}
+
 /* rel: one of an mdsGroups' members */
 static bool InMdsGroup( const std::string &rel ) {
 	for ( int g = 0; g < numMdsGroups; g++ ) {
@@ -135,6 +184,7 @@ static void Usage( void ) {
 		"  -c <f>   curve subdivisions, as r_subdivisions (default 12)\n"
 		"  -n <d>   more files that name shaders (the game's source), for dc.shaders\n"
 		"  -e <f>   map edits (see ReadEdits)\n"
+		"  -z <f>   image sizes (see ReadSizes)\n"
 		"  -v       a line per file\n" );
 	exit( 1 );
 }
@@ -169,6 +219,10 @@ int main( int argc, char **argv ) {
 			nameDirs.push_back( argv[++i] );
 		} else if ( i + 1 < argc && !strcmp( argv[i], "-e" ) ) {
 			if ( !ReadEdits( argv[++i], edits ) ) {
+				return 1;
+			}
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-z" ) ) {
+			if ( !ReadSizes( argv[++i], texOpt.sizes, texOpt.formats ) ) {
 				return 1;
 			}
 		} else {
@@ -240,7 +294,12 @@ int main( int argc, char **argv ) {
 			std::vector<uint8_t> in, out;
 			fs::path mdbPath = outDir / rel;
 			mdbPath.replace_extension( ".mdb" );
-			if ( !ReadFile( e.path(), in ) || !ConvertMdc( in, out, mdc, rel.c_str() ) ) {
+			if ( !ReadFile( e.path(), in ) ) {
+				failed++;
+			} else if ( strncasecmp( rel.c_str(), "models/weapons2/", 16 ) &&
+						!ConvertMdc( in, out, mdc, rel.c_str() ) ) {
+				/* not the first person ones (the kick leg): bones are off by up
+				   to MDB_MAX_ERROR, which shows that close to the eye */
 				failed++;
 			} else if ( !out.empty() ) {
 				/* its triangles in strip order */

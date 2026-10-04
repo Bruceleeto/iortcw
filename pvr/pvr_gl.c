@@ -74,6 +74,7 @@ typedef struct {
 	int			bytes;
 	int			clampS, clampT;
 	int			linear;
+	int			palBank;		/* 8 bit palette bank + 1, 0 for none */
 } pvrTexture_t;
 
 typedef struct {
@@ -153,6 +154,7 @@ static struct {
 	GLuint		bound;
 	int			textureBytes;
 	int			outOfVram;
+	int			palBanks;		/* bit per 8 bit palette bank in use */
 
 	/* immediate mode: glArrayElement's indices, drawn from the arrays bound,
 	   or glVertex's vertices; each grows to the most a glBegin has had */
@@ -753,6 +755,10 @@ static void FreeTextureData( pvrTexture_t *t ) {
 		t->data = NULL;
 		t->bytes = 0;
 	}
+	if ( t->palBank ) {
+		gl.palBanks &= ~( 1 << ( t->palBank - 1 ) );
+		t->palBank = 0;
+	}
 }
 
 void APIENTRY pvrglGenTextures( GLsizei n, GLuint *textures ) {
@@ -883,7 +889,7 @@ typedef struct {
 int pvrgl_TexImageDT( const void *file, int len, int *width, int *height ) {
 	const dtHeader_t *h = file;
 	pvrTexture_t *t;
-	int dataOfs, bytes, pf;
+	int dataOfs, bytes, pf, colors = 0, bank = 0, i;
 
 	if ( len < (int)sizeof( *h ) || memcmp( h->fourcc, "DcTx", 4 ) || h->version != 0 ) {
 		return 0;
@@ -891,8 +897,11 @@ int pvrgl_TexImageDT( const void *file, int len, int *width, int *height ) {
 	dataOfs = ( h->headerSize + 1 ) * 32;
 	bytes = (int)h->chunkSize - dataOfs;
 	pf = DT_PIXEL_FORMAT( h->pvrType );
-	if ( bytes <= 0 || dataOfs + bytes > len || pf > 2 ) {
-		return 0;	/* palettes, YUV and normal maps aren't made */
+	if ( pf == 6 ) {
+		colors = ( len - (int)h->chunkSize ) / 4;	/* rtcwconv puts the ARGB8888 palette after the texels */
+	}
+	if ( bytes <= 0 || dataOfs + bytes > len || ( pf > 3 && ( pf != 6 || colors < 1 || colors > 256 ) ) ) {
+		return 0;	/* 4 bit palettes and normal maps aren't made */
 	}
 	t = BoundTexture( 1 );
 	if ( !t ) {
@@ -900,6 +909,15 @@ int pvrgl_TexImageDT( const void *file, int len, int *width, int *height ) {
 	}
 
 	FreeTextureData( t );
+	if ( colors ) {
+		while ( bank < 4 && ( gl.palBanks & ( 1 << bank ) ) ) {
+			bank++;
+		}
+		if ( bank == 4 ) {
+			fprintf( stderr, "pvr_gl: out of palette banks\n" );
+			return 0;
+		}
+	}
 	t->data = pvr_mem_malloc( bytes );
 	if ( !t->data ) {
 		if ( !gl.outOfVram ) {
@@ -922,8 +940,17 @@ int pvrgl_TexImageDT( const void *file, int len, int *width, int *height ) {
 	t->srcHeight = h->height;
 	t->format = pf << 27;
 	t->txrFormat = h->pvrType & DT_FORMAT_BITS;
+	if ( colors ) {
+		const uint32_t *pal = (const uint32_t *)( (const uint8_t *)file + h->chunkSize );
+		for ( i = 0; i < colors; i++ ) {
+			pvr_set_pal_entry( bank * 256 + i, pal[i] );
+		}
+		gl.palBanks |= 1 << bank;
+		t->palBank = bank + 1;
+		t->txrFormat |= PVR_TXRFMT_8BPP_PAL( bank );
+	}
 	t->mipmap = ( h->pvrType & DT_MIPMAP ) != 0;
-	t->alpha = t->format != PVR_TXRFMT_RGB565;
+	t->alpha = t->format != PVR_TXRFMT_RGB565 && t->format != PVR_TXRFMT_YUV422;
 	/* a VQ codebook of fewer than 256 entries is stored as the end of a full one */
 	t->base = t->data;
 	if ( h->pvrType & DT_VQ ) {
@@ -1671,6 +1698,7 @@ int pvrgl_Init( void ) {
 	gl.texEnv = GL_MODULATE;
 	gl.shadeModel = GL_SMOOTH;
 	gl.color = 0xffffffff;
+	pvr_set_pal_format( PVR_PAL_ARGB8888 );
 	gl.inited = 1;
 	return 0;
 }
