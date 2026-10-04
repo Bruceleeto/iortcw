@@ -185,19 +185,40 @@ static struct {
 	GLenum		error;
 } gl;
 
-/* per draw call vertex cache */
-static clipVert_t	*vcache;
-static uint32_t		*vstamp;
-static int			vcacheSize;
-static uint32_t		vgen;
+/* each vertex's position as the PVR takes it, made for all of a draw's
+   vertexes before its triangles (once a lock, while what it was made
+   from stays the same) */
+typedef struct {
+	float		sx, sy, sz;		/* PVR screen space; clip x y w behind the near plane */
+	float		d;				/* clip z + w: < 0 behind the near plane */
+} posVert_t;
+
+static posVert_t	*vpos;
+static uint8_t		*vcode;			/* 1 behind the near plane, 2 4 8 16 off the viewport's edges */
+static float		*vst;			/* the texture coordinates and colours, when not as EmitVertex reads them */
+static uint32_t		*vcol;
+static int			vposSize;
+
+/* glLockArraysEXT's vertexes, and what vpos was made from for them */
+static struct {
+	int			locked, first, count;
+	int			made;
+	float		m[16];
+	float		depthScale;
+	glArray_t	array;
+} lock;
 
 /* per draw call: the mvp with the viewport in it (x y as PVR screen
-   space times w), the viewport's edges for OutCode, and the float arrays' strides */
+   space times w), the viewport's edges, and the arrays
+   EmitVertex reads (a stride of 0 for a value all the vertexes have):
+   texture coordinates as 2 floats, colours as RGBA bytes */
 static struct {
 	float		m[16];
 	float		xLo, xHi, yLo, yHi, depthScale;
-	const uint8_t	*pos, *st;
-	int			posStride, stStride, posZ;
+	const uint8_t	*pos, *st, *col;
+	int			posStride, stStride, colStride;
+	float		st0[2];
+	uint32_t	col0;
 } xf;
 
 /* ===================================================================== */
@@ -1245,7 +1266,7 @@ static void ClipSpace( const clipVert_t *c, float *x, float *y, float *w ) {
 	}
 }
 
-static inline void EmitVertex( listBuffer_t *l, const clipVert_t *c, uint32_t flags ) {
+static void EmitClipVert( listBuffer_t *l, const clipVert_t *c, uint32_t flags ) {
 	pvr_vertex_t *v = (pvr_vertex_t *)ListAlloc( l );
 
 	if ( !v ) {
@@ -1265,14 +1286,15 @@ static inline void EmitVertex( listBuffer_t *l, const clipVert_t *c, uint32_t fl
 	}
 }
 
-static int Culled( const clipVert_t *a, const clipVert_t *b, const clipVert_t *c ) {
+/* a b c their screen x y */
+static int Culled( const float *a, const float *b, const float *c ) {
 	float area;
 
 	if ( !gl.cullFace || pvrgl_hwCull ) {
 		return 0;
 	}
 	/* > 0 is counter-clockwise in GL window space (front facing) */
-	area = ( b->sx - a->sx ) * ( a->sy - c->sy ) - ( c->sx - a->sx ) * ( a->sy - b->sy );
+	area = ( b[0] - a[0] ) * ( a[1] - c[1] ) - ( c[0] - a[0] ) * ( a[1] - b[1] );
 	if ( gl.cullMode == GL_FRONT ) {
 		return area > 0.0f;
 	}
@@ -1301,16 +1323,6 @@ static void LerpVert( clipVert_t *out, const clipVert_t *a, const clipVert_t *b,
 	ToScreen( out, ax + ( bx - ax ) * t, ay + ( by - ay ) * t, aw + ( bw - aw ) * t );
 }
 
-static int OutCode( float x, float y, float d, float w ) {
-	int c = 0;
-	if ( d < 0.0f ) c |= 1;
-	if ( x < xf.xLo * w ) c |= 2;
-	if ( x > xf.xHi * w ) c |= 4;
-	if ( y < xf.yLo * w ) c |= 8;
-	if ( y > xf.yHi * w ) c |= 16;
-	return c;
-}
-
 static void __attribute__((noinline)) EmitTriangle( listBuffer_t *l, const clipVert_t *a, const clipVert_t *b,
 						  const clipVert_t *c ) {
 	int ca = a->code, cb = b->code, cc = c->code;
@@ -1325,13 +1337,13 @@ static void __attribute__((noinline)) EmitTriangle( listBuffer_t *l, const clipV
 	}
 
 	if ( !( ( ca | cb | cc ) & 1 ) ) {
-		if ( Culled( a, b, c ) ) {
+		if ( Culled( &a->sx, &b->sx, &c->sx ) ) {
 			PROF_COUNT( STAT_CULLED, 1 );
 			return;
 		}
-		EmitVertex( l, a, PVR_CMD_VERTEX );
-		EmitVertex( l, b, PVR_CMD_VERTEX );
-		EmitVertex( l, c, PVR_CMD_VERTEX_EOL );
+		EmitClipVert( l, a, PVR_CMD_VERTEX );
+		EmitClipVert( l, b, PVR_CMD_VERTEX );
+		EmitClipVert( l, c, PVR_CMD_VERTEX_EOL );
 		return;
 	}
 
@@ -1349,19 +1361,19 @@ static void __attribute__((noinline)) EmitTriangle( listBuffer_t *l, const clipV
 			LerpVert( &out[n++], p, q, dp / ( dp - dq ) );
 		}
 	}
-	if ( n < 3 || Culled( &out[0], &out[1], &out[2] ) ) {
+	if ( n < 3 || Culled( &out[0].sx, &out[1].sx, &out[2].sx ) ) {
 		return;
 	}
 	if ( n == 3 ) {
-		EmitVertex( l, &out[0], PVR_CMD_VERTEX );
-		EmitVertex( l, &out[1], PVR_CMD_VERTEX );
-		EmitVertex( l, &out[2], PVR_CMD_VERTEX_EOL );
+		EmitClipVert( l, &out[0], PVR_CMD_VERTEX );
+		EmitClipVert( l, &out[1], PVR_CMD_VERTEX );
+		EmitClipVert( l, &out[2], PVR_CMD_VERTEX_EOL );
 	} else {
 		/* quad 0 1 2 3 as the strip 0 1 3 2 */
-		EmitVertex( l, &out[0], PVR_CMD_VERTEX );
-		EmitVertex( l, &out[1], PVR_CMD_VERTEX );
-		EmitVertex( l, &out[3], PVR_CMD_VERTEX );
-		EmitVertex( l, &out[2], PVR_CMD_VERTEX_EOL );
+		EmitClipVert( l, &out[0], PVR_CMD_VERTEX );
+		EmitClipVert( l, &out[1], PVR_CMD_VERTEX );
+		EmitClipVert( l, &out[3], PVR_CMD_VERTEX );
+		EmitClipVert( l, &out[2], PVR_CMD_VERTEX_EOL );
 	}
 }
 
@@ -1410,83 +1422,177 @@ static uint32_t ArrayColor( const glArray_t *a, int index ) {
 					  a->size > 3 ? ArrayFloat( a, index, 3 ) : 1.0f );
 }
 
+/* RGBA bytes, read as a little endian word, to the PVR's ARGB, and back */
+static inline uint32_t Argb( uint32_t c ) {
+	return ( c & 0xff00ff00 ) | ( ( c >> 16 ) & 0xff ) | ( ( c & 0xff ) << 16 );
+}
+
 static void GrowCache( int count ) {
-	if ( count <= vcacheSize ) {
+	if ( count <= vposSize ) {
 		return;
 	}
-	vcacheSize = ( count + 255 ) & ~255;
-	free( vcache );
-	vcache = memalign( 32, vcacheSize * sizeof( *vcache ) );
-	vstamp = realloc( vstamp, vcacheSize * sizeof( *vstamp ) );
-	memset( vstamp, 0, vcacheSize * sizeof( *vstamp ) );
-	vgen = 0;
+	vposSize = ( count + 255 ) & ~255;
+	free( vpos );
+	vpos = memalign( 32, vposSize * sizeof( *vpos ) );
+	vcode = realloc( vcode, vposSize );
+	vst = realloc( vst, vposSize * 2 * sizeof( *vst ) );
+	vcol = realloc( vcol, vposSize * sizeof( *vcol ) );
+	lock.made = 0;
 }
 
-/* FetchVertex's way for a vertex not yet in the cache */
-static const clipVert_t * __attribute__((noinline)) FetchVertexMiss( int i ) {
-	clipVert_t *c = &vcache[i];
-	float x, y, z;
+/* vpos and vcode for vertexes first to end - 1 */
+static void __attribute__((noinline)) TransformVerts( int first, int end ) {
+	const float xLo = xf.xLo, xHi = xf.xHi, yLo = xf.yLo, yHi = xf.yHi, ds = xf.depthScale;
+	const int fast = xf.pos && gl.vertexArray.size > 2;
+	const uint8_t *src = xf.pos + first * xf.posStride;
+	const int stride = xf.posStride;
+	posVert_t *o = vpos + first;
+	uint8_t *codes = vcode;
+	int i;
 
-	vstamp[i] = vgen;
-	PROF_COUNT( STAT_VERTS, 1 );
+	PROF_COUNT( STAT_VERTS, end - first );
+	for ( i = first; i < end; i++, src += stride, o++ ) {
+		float x, y, z, cx, cy, cz, cw, d;
+		int code;
+
+		if ( fast ) {
+			const float *p = (const float *)src;
 #ifdef USE_SH4ZAM
-	shz_dcache_alloc_line( c );	/* all 32 bytes written below, so no read from RAM */
+			SHZ_PREFETCH( src + 4 * stride );
 #endif
-
-	if ( xf.pos ) {
-		const float *p = (const float *)( xf.pos + i * xf.posStride );
-		x = p[0];
-		y = p[1];
-		z = xf.posZ ? p[2] : 0.0f;
-	} else {
-		x = ArrayFloat( &gl.vertexArray, i, 0 );
-		y = ArrayFloat( &gl.vertexArray, i, 1 );
-		z = gl.vertexArray.size > 2 ? ArrayFloat( &gl.vertexArray, i, 2 ) : 0.0f;
-	}
-
-	{
-#ifdef USE_SH4ZAM
-		shz_vec4_t t = shz_xmtrx_transform_vec4( shz_vec4_init( x, y, z, 1.0f ) );
-		float cx = t.x, cy = t.y, cz = t.z, cw = t.w;
-#else
-		const float *m = xf.m;
-		float cx = m[0] * x + m[4] * y + m[8] * z + m[12];
-		float cy = m[1] * x + m[5] * y + m[9] * z + m[13];
-		float cz = m[2] * x + m[6] * y + m[10] * z + m[14];
-		float cw = m[3] * x + m[7] * y + m[11] * z + m[15];
-#endif
-
-		c->d = cz + cw;
-		c->code = OutCode( cx, cy, c->d, cw );
-		if ( c->code & 1 ) {
-			c->x = cx;
-			c->y = cy;
-			c->w = cw;
+			x = p[0];
+			y = p[1];
+			z = p[2];
 		} else {
-			ToScreen( c, cx, cy, cw );
+			x = ArrayFloat( &gl.vertexArray, i, 0 );
+			y = ArrayFloat( &gl.vertexArray, i, 1 );
+			z = gl.vertexArray.size > 2 ? ArrayFloat( &gl.vertexArray, i, 2 ) : 0.0f;
+		}
+#ifdef USE_SH4ZAM
+		if ( !( i & 1 ) ) {
+			shz_dcache_alloc_line( o );	/* two to a cache line, all written, so no read from RAM */
+		}
+		{
+			shz_vec4_t t = shz_xmtrx_transform_vec4( shz_vec4_init( x, y, z, 1.0f ) );
+			cx = t.x; cy = t.y; cz = t.z; cw = t.w;
+		}
+#else
+		{
+			const float *m = xf.m;
+			cx = m[0] * x + m[4] * y + m[8] * z + m[12];
+			cy = m[1] * x + m[5] * y + m[9] * z + m[13];
+			cz = m[2] * x + m[6] * y + m[10] * z + m[14];
+			cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+		}
+#endif
+		d = cz + cw;
+		code = d < 0.0f;
+		code |= ( cx < xLo * cw ) << 1;
+		code |= ( cx > xHi * cw ) << 2;
+		code |= ( cy < yLo * cw ) << 3;
+		code |= ( cy > yHi * cw ) << 4;
+		codes[i] = code;
+		o->d = d;
+		if ( code & 1 ) {
+			o->sx = cx;
+			o->sy = cy;
+			o->sz = cw;
+		} else {
+#ifdef USE_SH4ZAM
+			float invw = shz_invf_fsrra( cw );
+#else
+			float invw = 1.0f / cw;
+#endif
+			o->sx = cx * invw;
+			o->sy = cy * invw;
+			o->sz = invw * ds;
 		}
 	}
-
-	if ( xf.st ) {
-		const float *p = (const float *)( xf.st + i * xf.stStride );
-		c->u = p[0];
-		c->v = p[1];
-	} else if ( gl.texCoordArray[0].enabled ) {
-		c->u = ArrayFloat( &gl.texCoordArray[0], i, 0 );
-		c->v = ArrayFloat( &gl.texCoordArray[0], i, 1 );
-	} else {
-		c->u = gl.texCoord[0];
-		c->v = gl.texCoord[1];
-	}
-	c->argb = gl.colorArray.enabled ? ArrayColor( &gl.colorArray, i ) : gl.color;
-	return c;
 }
 
-static inline const clipVert_t *FetchVertex( int i ) {
-	if ( vstamp[i] == vgen ) {
-		return &vcache[i];
+/* the texture coordinates and colours EmitVertex reads, for vertexes lo to hi */
+static void SetAttribs( int lo, int hi ) {
+	const glArray_t *t = &gl.texCoordArray[0], *c = &gl.colorArray;
+	int i;
+
+	if ( !t->enabled ) {
+		xf.st0[0] = gl.texCoord[0];
+		xf.st0[1] = gl.texCoord[1];
+		xf.st = (const uint8_t *)xf.st0;
+		xf.stStride = 0;
+	} else if ( t->type == GL_FLOAT && t->size >= 2 && !( ( (uintptr_t)t->ptr | t->stride ) & 3 ) ) {
+		xf.st = t->ptr;
+		xf.stStride = t->stride ? t->stride : t->size * 4;
+	} else {
+		for ( i = lo; i <= hi; i++ ) {
+			vst[i * 2] = ArrayFloat( t, i, 0 );
+			vst[i * 2 + 1] = ArrayFloat( t, i, 1 );
+		}
+		xf.st = (const uint8_t *)vst;
+		xf.stStride = 8;
 	}
-	return FetchVertexMiss( i );
+
+	if ( !c->enabled ) {
+		xf.col0 = Argb( gl.color );
+		xf.col = (const uint8_t *)&xf.col0;
+		xf.colStride = 0;
+	} else if ( c->type == GL_UNSIGNED_BYTE && c->size == 4 && !( ( (uintptr_t)c->ptr | c->stride ) & 3 ) ) {
+		xf.col = c->ptr;
+		xf.colStride = c->stride ? c->stride : 4;
+	} else {
+		for ( i = lo; i <= hi; i++ ) {
+			vcol[i] = Argb( ArrayColor( c, i ) );
+		}
+		xf.col = (const uint8_t *)vcol;
+		xf.colStride = 4;
+	}
+}
+
+static inline void EmitVertex( listBuffer_t *l, int i, uint32_t flags ) {
+	pvr_vertex_t *v = (pvr_vertex_t *)ListAlloc( l );
+	const posVert_t *p = &vpos[i];
+	const float *st = (const float *)( xf.st + i * xf.stStride );
+
+	if ( !v ) {
+		return;
+	}
+	PROF_COUNT( STAT_EMITTED, 1 );
+	v->flags = flags;
+	v->x = p->sx;
+	v->y = p->sy;
+	v->z = p->sz;
+	v->u = st[0];
+	v->v = st[1];
+	v->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
+	v->oargb = 0;
+	if ( flags != PVR_CMD_VERTEX ) {
+		l->whole = l->used;
+	}
+}
+
+/* vertex i whole, for EmitTriangle */
+static void FullVert( clipVert_t *c, int i ) {
+	const posVert_t *p = &vpos[i];
+	const float *st = (const float *)( xf.st + i * xf.stStride );
+
+	c->sx = p->sx;
+	c->sy = p->sy;
+	c->sz = p->sz;
+	c->d = p->d;
+	c->code = vcode[i];
+	c->u = st[0];
+	c->v = st[1];
+	c->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
+}
+
+/* a triangle on its own: clipped, culled or as it is */
+static void __attribute__((noinline)) EmitTriangleIdx( listBuffer_t *l, int a, int b, int c ) {
+	clipVert_t va, vb, vc;
+
+	FullVert( &va, a );
+	FullVert( &vb, b );
+	FullVert( &vc, c );
+	EmitTriangle( l, &va, &vb, &vc );
 }
 
 typedef int ( *indexFunc_t )( const void *indices, int i );
@@ -1500,34 +1606,33 @@ static int IndexUByte( const void *p, int i ) { return ( (const GLubyte *)p )[i]
    puts them so) is sent as one more vertex of a PVR strip, unless it's to be
    culled or clipped, which ends the strip */
 static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l, int count, indexFunc_t idx, const void *indices ) {
-	int last[3] = { -1, -1, -1 }, odd = 0, open = 0;
+	int last0 = -1, last1 = -1, last2 = -1, odd = 0, open = 0;
 	const int cpuCull = gl.cullFace && !pvrgl_hwCull;
 	int i;
 
 	for ( i = 0; i + 2 < count; i += 3 ) {
 		int a = idx( indices, i ), b = idx( indices, i + 1 ), c = idx( indices, i + 2 );
-		const clipVert_t *va, *vb, *vc;
-
-#ifdef USE_SH4ZAM
-		/* the next triangle's new vertex (in strip order its last), on its way in */
-		if ( xf.pos && i + 5 < count ) {
-			SHZ_PREFETCH( xf.pos + idx( indices, i + 5 ) * xf.posStride );
-		}
-#endif
-		va = FetchVertex( a );
-		vb = FetchVertex( b );
-		vc = FetchVertex( c );
-		int on = odd ? a == last[0] && b == last[2] : a == last[2] && b == last[1];
-		int ca = va->code, cb = vb->code, cc = vc->code;
+		int ca = vcode[a], cb = vcode[b], cc = vcode[c];
+		int on = odd ? a == last0 && b == last2 : a == last2 && b == last1;
 
 		odd = on ? !odd : 0;
-		last[0] = a; last[1] = b; last[2] = c;
-		if ( ( ca | cb | cc ) & 1 || ca & cb & cc || ( cpuCull && Culled( va, vb, vc ) ) ) {
+		last0 = a; last1 = b; last2 = c;
+		if ( ca & cb & cc ) {
+			/* all off one edge */
+			PROF_COUNT( STAT_TRIS, 1 );
+			PROF_COUNT( STAT_CULLED, 1 );
 			if ( open ) {
 				EndStrip( l );
 				open = 0;
 			}
-			EmitTriangle( l, va, vb, vc );
+			continue;
+		}
+		if ( ( ca | cb | cc ) & 1 || ( cpuCull && Culled( &vpos[a].sx, &vpos[b].sx, &vpos[c].sx ) ) ) {
+			if ( open ) {
+				EndStrip( l );
+				open = 0;
+			}
+			EmitTriangleIdx( l, a, b, c );
 			continue;
 		}
 		if ( !( on && open ) ) {
@@ -1536,13 +1641,13 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 			}
 			/* as it is, so it faces the way it should for the PVR's
 			   culling: the first of its strip */
-			EmitVertex( l, va, PVR_CMD_VERTEX );
-			EmitVertex( l, vb, PVR_CMD_VERTEX );
+			EmitVertex( l, a, PVR_CMD_VERTEX );
+			EmitVertex( l, b, PVR_CMD_VERTEX );
 			open = 1;
 			odd = 0;
 		}
 		PROF_COUNT( STAT_TRIS, 1 );
-		EmitVertex( l, vc, PVR_CMD_VERTEX );
+		EmitVertex( l, c, PVR_CMD_VERTEX );
 	}
 	if ( open ) {
 		EndStrip( l );
@@ -1553,7 +1658,8 @@ static void __attribute__((noinline)) DrawTrianglesAny( listBuffer_t *l, int cou
 	DrawTriangles( l, count, idx, indices );
 }
 
-static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
+/* vertexes lo to hi, the most it might use; locked, glLockArraysEXT's */
+static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
 	listBuffer_t *l;
 	int list, i;
 
@@ -1593,18 +1699,24 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	shz_xmtrx_load_unaligned_4x4( xf.m );
 #endif
 	xf.depthScale = DepthScale();
-	xf.pos = gl.vertexArray.type == GL_FLOAT ? gl.vertexArray.ptr : NULL;
+	xf.pos = gl.vertexArray.type == GL_FLOAT && !( ( (uintptr_t)gl.vertexArray.ptr | gl.vertexArray.stride ) & 3 ) ? gl.vertexArray.ptr : NULL;
 	xf.posStride = gl.vertexArray.stride ? gl.vertexArray.stride : gl.vertexArray.size * 4;
-	xf.posZ = gl.vertexArray.size > 2;
-	xf.st = gl.texCoordArray[0].enabled && gl.texCoordArray[0].type == GL_FLOAT ? gl.texCoordArray[0].ptr : NULL;
-	xf.stStride = gl.texCoordArray[0].stride ? gl.texCoordArray[0].stride : gl.texCoordArray[0].size * 4;
-	GrowCache( maxIndex + 1 );
-	if ( ++vgen == 0 ) {
-		memset( vstamp, 0, vcacheSize * sizeof( *vstamp ) );
-		vgen = 1;
-	}
+	GrowCache( hi + 1 );
 
-#define V( n ) FetchVertex( idx( indices, n ) )
+	/* locked: made once, while the array and the transform are the same */
+	if ( !( locked && lock.made && !memcmp( &lock.array, &gl.vertexArray, sizeof( lock.array ) )
+			&& !memcmp( lock.m, xf.m, sizeof( lock.m ) ) && lock.depthScale == xf.depthScale ) ) {
+		TransformVerts( lo, hi + 1 );
+		lock.made = locked;
+		if ( locked ) {
+			memcpy( lock.m, xf.m, sizeof( lock.m ) );
+			lock.depthScale = xf.depthScale;
+			lock.array = gl.vertexArray;
+		}
+	}
+	SetAttribs( lo, hi );
+
+#define V( n ) idx( indices, n )
 	switch ( mode ) {
 	case GL_TRIANGLES:
 		/* the renderer's index type inlined; the others out of the way,
@@ -1618,28 +1730,28 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	case GL_TRIANGLE_STRIP:
 		for ( i = 0; i + 2 < count; i++ ) {
 			if ( i & 1 ) {
-				EmitTriangle( l, V( i + 1 ), V( i ), V( i + 2 ) );
+				EmitTriangleIdx( l, V( i + 1 ), V( i ), V( i + 2 ) );
 			} else {
-				EmitTriangle( l, V( i ), V( i + 1 ), V( i + 2 ) );
+				EmitTriangleIdx( l, V( i ), V( i + 1 ), V( i + 2 ) );
 			}
 		}
 		break;
 	case GL_TRIANGLE_FAN:
 	case GL_POLYGON:
 		for ( i = 1; i + 1 < count; i++ ) {
-			EmitTriangle( l, V( 0 ), V( i ), V( i + 1 ) );
+			EmitTriangleIdx( l, V( 0 ), V( i ), V( i + 1 ) );
 		}
 		break;
 	case GL_QUADS:
 		for ( i = 0; i + 3 < count; i += 4 ) {
-			EmitTriangle( l, V( i ), V( i + 1 ), V( i + 2 ) );
-			EmitTriangle( l, V( i ), V( i + 2 ), V( i + 3 ) );
+			EmitTriangleIdx( l, V( i ), V( i + 1 ), V( i + 2 ) );
+			EmitTriangleIdx( l, V( i ), V( i + 2 ), V( i + 3 ) );
 		}
 		break;
 	case GL_QUAD_STRIP:
 		for ( i = 0; i + 3 < count; i += 2 ) {
-			EmitTriangle( l, V( i ), V( i + 1 ), V( i + 3 ) );
-			EmitTriangle( l, V( i ), V( i + 3 ), V( i + 2 ) );
+			EmitTriangleIdx( l, V( i ), V( i + 1 ), V( i + 3 ) );
+			EmitTriangleIdx( l, V( i ), V( i + 3 ), V( i + 2 ) );
 		}
 		break;
 	}
@@ -1647,20 +1759,20 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 }
 
 /* DC_PROF: its time as pvr */
-static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
+static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
 	PROF_BEGIN( PROF_PVR );
 	PROF_COUNT( STAT_DRAWS, 1 );
-	DrawPrimitivesPVR( mode, count, idx, indices, maxIndex );
+	DrawPrimitivesPVR( mode, count, idx, indices, lo, hi, locked );
 	PROF_END( PROF_PVR );
 }
 
 void APIENTRY pvrglDrawArrays( GLenum mode, GLint first, GLsizei count ) {
-	DrawPrimitives( mode, count, IndexDirect, (const void *)(intptr_t)first, first + count - 1 );
+	DrawPrimitives( mode, count, IndexDirect, (const void *)(intptr_t)first, first, first + count - 1, 0 );
 }
 
 void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const GLvoid *indices ) {
 	indexFunc_t f;
-	int i, maxIndex = 0;
+	int i, minIndex, maxIndex = 0;
 
 	switch ( type ) {
 	case GL_UNSIGNED_INT:	f = IndexUInt; break;
@@ -1668,7 +1780,13 @@ void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const 
 	case GL_UNSIGNED_BYTE:	f = IndexUByte; break;
 	default:				return;
 	}
-#define MAX_INDEX( t ) for ( i = 0; i < count; i++ ) { int n = ( (const t *)indices )[i]; if ( n > maxIndex ) maxIndex = n; }
+	if ( lock.locked ) {
+		/* what the renderer locked: no need to look */
+		DrawPrimitives( mode, count, f, indices, lock.first, lock.first + lock.count - 1, 1 );
+		return;
+	}
+	minIndex = 0x7fffffff;
+#define MAX_INDEX( t ) for ( i = 0; i < count; i++ ) { int n = ( (const t *)indices )[i]; if ( n > maxIndex ) maxIndex = n; if ( n < minIndex ) minIndex = n; }
 	if ( type == GL_UNSIGNED_INT ) {
 		MAX_INDEX( GLuint )
 	} else if ( type == GL_UNSIGNED_SHORT ) {
@@ -1677,7 +1795,24 @@ void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const 
 		MAX_INDEX( GLubyte )
 	}
 #undef MAX_INDEX
-	DrawPrimitives( mode, count, f, indices, maxIndex );
+	if ( count < 3 ) {
+		return;
+	}
+	DrawPrimitives( mode, count, f, indices, minIndex, maxIndex, 0 );
+}
+
+/* the renderer's promise that vertexes first to first + count - 1 don't
+   move till the unlock: their positions made once for all its draws */
+void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count ) {
+	lock.locked = count > 0;
+	lock.first = first;
+	lock.count = count;
+	lock.made = 0;
+}
+
+void APIENTRY pvrglUnlockArraysEXT( void ) {
+	lock.locked = 0;
+	lock.made = 0;
 }
 
 /* ===================================================================== */
@@ -1768,7 +1903,7 @@ void APIENTRY pvrglEnd( void ) {
 	glArray_t saveV, saveC, saveT;
 
 	if ( gl.numImmIndexes ) {
-		DrawPrimitives( gl.immMode, gl.numImmIndexes, IndexUInt, gl.immIndexes, gl.immMaxIndex );
+		DrawPrimitives( gl.immMode, gl.numImmIndexes, IndexUInt, gl.immIndexes, 0, gl.immMaxIndex, 0 );
 		gl.numImmIndexes = 0;
 		return;
 	}
@@ -1781,7 +1916,7 @@ void APIENTRY pvrglEnd( void ) {
 	SetArray( &gl.texCoordArray[0], 2, GL_FLOAT, sizeof( immVert_t ), gl.immVerts ? gl.immVerts->st : NULL );
 	gl.vertexArray.enabled = gl.colorArray.enabled = gl.texCoordArray[0].enabled = 1;
 
-	DrawPrimitives( gl.immMode, gl.immCount, IndexDirect, (const void *)0, gl.immCount - 1 );
+	DrawPrimitives( gl.immMode, gl.immCount, IndexDirect, (const void *)0, 0, gl.immCount - 1, 0 );
 
 	gl.vertexArray = saveV;
 	gl.colorArray = saveC;
@@ -1822,6 +1957,7 @@ void pvrgl_EndFrame( void ) {
 	PROF_END( PROF_GPU );
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
+	PROF_COUNT( STAT_TR, gl.lists[PVR_LIST_TR_POLY].used / 32 );
 	PROF_BEGIN( PROF_SUBMIT );
 	pvr_scene_begin();
 	if ( getenv( "PVRGL_STATS" ) ) {
@@ -1912,11 +2048,16 @@ void pvrgl_Shutdown( void ) {
 	for ( i = 0; i < gl.numFreeBlocks; i++ ) {
 		free( gl.freeBlocks[i] );
 	}
-	free( vcache );
-	free( vstamp );
-	vcache = NULL;
-	vstamp = NULL;
-	vcacheSize = 0;
+	free( vpos );
+	free( vcode );
+	free( vst );
+	free( vcol );
+	vpos = NULL;
+	vcode = NULL;
+	vst = NULL;
+	vcol = NULL;
+	vposSize = 0;
+	lock.made = 0;
 	memset( &gl, 0, sizeof( gl ) );
 	pvr_shutdown();
 }

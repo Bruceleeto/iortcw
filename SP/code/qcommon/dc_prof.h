@@ -65,6 +65,7 @@ typedef enum {
 	STAT_FRAMEMISSES,   // R_MDSFrame decoded
 	STAT_BONECALLS,     // R_CalcBones
 	STAT_BONEMISSES,    // of them, an entity not in the bone cache
+	STAT_TR,            // translucent list entries (vertexes + headers)
 	STAT_NUM
 } profStat_t;
 

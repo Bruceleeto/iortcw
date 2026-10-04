@@ -32,6 +32,9 @@ int  pvrgl_TexImageDT( const void *file, int len, int *width, int *height );
 /* back faces culled by the PVR: 1, or on the CPU: 0 */
 extern int pvrgl_hwCull;
 
+void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count );
+void APIENTRY pvrglUnlockArraysEXT( void );
+
 /* one entry per GL function the renderer can call, as pvrgl<Name> */
 #define PVRGL_PROCS \
 	GLE(void, BindTexture, GLenum target, GLuint texture) \

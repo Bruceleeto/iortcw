@@ -70,12 +70,13 @@ static void GLimp_BindProcs( void ) {
 	qglesMajorVersion = 0;
 	qglesMinorVersion = 0;
 
-	/* one texture unit, no compiled vertex arrays */
+	/* one texture unit; compiled vertex arrays, so each surface's
+	   positions are made once for all its stages */
 	qglActiveTextureARB = NULL;
 	qglClientActiveTextureARB = NULL;
 	qglMultiTexCoord2fARB = NULL;
-	qglLockArraysEXT = NULL;
-	qglUnlockArraysEXT = NULL;
+	qglLockArraysEXT = pvrglLockArraysEXT;
+	qglUnlockArraysEXT = pvrglUnlockArraysEXT;
 }
 
 static void GLimp_ClearProcs( void ) {
