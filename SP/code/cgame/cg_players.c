@@ -4633,7 +4633,15 @@ void CG_DeadSink( centity_t *cent ) {
 CG_Player
 ===============
 */
+static void CG_Player_( centity_t *cent );
+
 void CG_Player( centity_t *cent ) {
+	PROF_BEGIN( PROF_CG_PLAYERS );
+	CG_Player_( cent );
+	PROF_END( PROF_CG_PLAYERS );
+}
+
+static void CG_Player_( centity_t *cent ) {
 	int i;
 	clientInfo_t    *ci;
 	refEntity_t legs;

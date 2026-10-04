@@ -29,6 +29,8 @@ void pvrgl_EndFrame( void );
 /* Upload a pvrtex .dt file (twiddled or VQ, mipmapped or not) as the bound
  * texture, as it is. Gives the image's size; 0 if it can't. */
 int  pvrgl_TexImageDT( const void *file, int len, int *width, int *height );
+/* back faces culled by the PVR: 1, or on the CPU: 0 */
+extern int pvrgl_hwCull;
 
 /* one entry per GL function the renderer can call, as pvrgl<Name> */
 #define PVRGL_PROCS \

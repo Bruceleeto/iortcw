@@ -154,7 +154,7 @@ cache. The last MDS_FRAME_CACHE frames asked for stay put: R_CalcBones holds
 four at once.
 =============
 */
-#define MDS_FRAME_CACHE 8
+#define MDS_FRAME_CACHE 32
 
 static struct {
 	mdsHeader_t *header;

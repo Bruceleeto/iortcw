@@ -341,6 +341,9 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 
 	tr.frameCount++;
 	tr.frameSceneNum = 0;
+#ifdef USE_PVR
+	pvrgl_hwCull = r_pvrCull->integer;
+#endif
 
 	//
 	// do overdraw measurement

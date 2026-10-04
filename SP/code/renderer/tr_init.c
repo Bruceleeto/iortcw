@@ -104,6 +104,9 @@ cvar_t  *r_nocurves;
 cvar_t  *r_allowExtensions;
 
 cvar_t  *r_ext_compressed_textures;
+#ifdef USE_PVR
+cvar_t  *r_pvrCull;
+#endif
 cvar_t  *r_ext_multitexture;
 cvar_t  *r_ext_compiled_vertex_array;
 cvar_t  *r_ext_texture_env_add;
@@ -1175,6 +1178,8 @@ void R_Register( void ) {
 	// the lightmap pass: half the world's polygons, and no lightmaps in
 	// VRAM. Always: the .wld has no lightmaps to draw.
 	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "1", CVAR_ROM );
+	// back faces culled by the PVR (1) or on the CPU (0)
+	r_pvrCull = ri.Cvar_Get( "r_pvrCull", "1", CVAR_ARCHIVE );
 #else
 	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
 #endif

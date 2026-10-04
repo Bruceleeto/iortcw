@@ -17,7 +17,19 @@ typedef enum {
 	PROF_AI,            // its AI: AICast_StartFrame / AICast_StartServerFrame
 	PROF_PATHING,       // the botlib (AAS routing), from the game
 	PROF_COLLISION,     // traces (CM_BoxTrace, CM_TransformedBoxTrace)
-	PROF_CGAME,         // the client game module
+	PROF_CGAME,         // the client game module: what the ones below don't have
+	PROF_CG_SNAPS,      //   CG_ProcessSnapshots: entity events (shots, impacts, sounds)
+	PROF_CG_PREDICT,    //   CG_PredictPlayerState
+	PROF_CG_ENTS,       //   CG_AddPacketEntities, less players
+	PROF_CG_PLAYERS,    //     CG_Player
+	PROF_CG_TAGS,       //   R_LerpTag, from wherever (tags of MDS: bones)
+	PROF_CG_STATIC,     //   CG_AddStaticEntities
+	PROF_CG_MARKS,      //   CG_AddMarks
+	PROF_CG_PARTICLES,  //   CG_AddParticles
+	PROF_CG_LOCALENTS,  //   CG_AddLocalEntities: gibs, brass, smoke, blood
+	PROF_CG_WEAPON,     //   CG_AddViewWeapon
+	PROF_CG_TRAILS,     //   CG_AddFlameChunks, CG_AddTrails
+	PROF_CG_2D,         //   CG_DrawActive, less its scene
 	PROF_UI,            // the menus
 	PROF_SCENE,         // the renderer's front end: RE_RenderScene
 	PROF_DRAW,          // its back end: the render commands, to the PVR's lists;

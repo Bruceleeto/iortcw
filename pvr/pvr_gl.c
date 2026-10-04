@@ -107,6 +107,7 @@ typedef struct {
 	int			used;			/* bytes, in all its blocks */
 	int			whole;			/* used, to the end of its last whole primitive */
 	int			overflowed;
+	uint8_t		*cur, *end;		/* room left in its last block (none once overflowed) */
 	pvr_poly_hdr_t	last;		/* last header written to this list */
 	int			hasLast;
 } listBuffer_t;
@@ -116,6 +117,8 @@ typedef struct {
 	float		st[2];
 	uint8_t		rgba[4];
 } immVert_t;
+
+int pvrgl_hwCull = 1;
 
 static struct {
 	int			inited;
@@ -1015,9 +1018,8 @@ void APIENTRY pvrglTexParameteri( GLenum target, GLenum pname, GLint param ) {
 /* primitive output                                                      */
 /* ===================================================================== */
 
-/* room for 32 bytes at the list's end, or NULL when it's full; its cache
-   line taken without a read from RAM, so all 32 are to be written */
-static uint32_t *ListAlloc( listBuffer_t *l ) {
+/* ListAlloc's way when the last block is full */
+static uint32_t * __attribute__((noinline)) ListAllocBlock( listBuffer_t *l ) {
 	uint32_t *d;
 
 	if ( l->overflowed ) {
@@ -1035,11 +1037,30 @@ static uint32_t *ListAlloc( listBuffer_t *l ) {
 			// no half a primitive for the PVR
 			l->overflowed = 1;
 			l->used = l->whole;
+			l->cur = l->end = NULL;
 			return NULL;
 		}
 		l->blocks[l->numBlocks++] = block;
 	}
 	d = (uint32_t *)( l->blocks[l->used / LIST_BLOCK] + l->used % LIST_BLOCK );
+	l->used += 32;
+	l->cur = (uint8_t *)d + 32;
+	l->end = l->blocks[l->numBlocks - 1] + LIST_BLOCK;
+#ifdef USE_SH4ZAM
+	shz_dcache_alloc_line( d );
+#endif
+	return d;
+}
+
+/* room for 32 bytes at the list's end, or NULL when it's full; its cache
+   line taken without a read from RAM, so all 32 are to be written */
+static inline uint32_t *ListAlloc( listBuffer_t *l ) {
+	uint32_t *d = (uint32_t *)l->cur;
+
+	if ( l->cur == l->end ) {
+		return ListAllocBlock( l );
+	}
+	l->cur += 32;
 	l->used += 32;
 #ifdef USE_SH4ZAM
 	shz_dcache_alloc_line( d );
@@ -1142,7 +1163,15 @@ static int BeginPrimitives( void ) {
 		pvr_poly_cxt_col( &cxt, list );
 	}
 
-	cxt.gen.culling = PVR_CULLING_NONE;		/* culled on the CPU */
+	cxt.gen.culling = PVR_CULLING_NONE;
+	if ( pvrgl_hwCull && gl.cullFace ) {
+		if ( gl.cullMode == GL_FRONT_AND_BACK ) {
+			return -1;
+		}
+		/* GL's front faces are counter-clockwise on screen; the PVR's
+		   CW / CCW are as seen on screen too */
+		cxt.gen.culling = gl.cullMode == GL_FRONT ? PVR_CULLING_CCW : PVR_CULLING_CW;
+	}
 	cxt.gen.shading = gl.shadeModel == GL_FLAT ? PVR_SHADE_FLAT : PVR_SHADE_GOURAUD;
 	cxt.gen.alpha = list != PVR_LIST_OP_POLY ? PVR_ALPHA_ENABLE : PVR_ALPHA_DISABLE;
 	cxt.depth.comparison = DepthCompare();
@@ -1216,7 +1245,7 @@ static void ClipSpace( const clipVert_t *c, float *x, float *y, float *w ) {
 	}
 }
 
-static void EmitVertex( listBuffer_t *l, const clipVert_t *c, uint32_t flags ) {
+static inline void EmitVertex( listBuffer_t *l, const clipVert_t *c, uint32_t flags ) {
 	pvr_vertex_t *v = (pvr_vertex_t *)ListAlloc( l );
 
 	if ( !v ) {
@@ -1239,7 +1268,7 @@ static void EmitVertex( listBuffer_t *l, const clipVert_t *c, uint32_t flags ) {
 static int Culled( const clipVert_t *a, const clipVert_t *b, const clipVert_t *c ) {
 	float area;
 
-	if ( !gl.cullFace ) {
+	if ( !gl.cullFace || pvrgl_hwCull ) {
 		return 0;
 	}
 	/* > 0 is counter-clockwise in GL window space (front facing) */
@@ -1282,7 +1311,7 @@ static int OutCode( float x, float y, float d, float w ) {
 	return c;
 }
 
-static void EmitTriangle( listBuffer_t *l, const clipVert_t *a, const clipVert_t *b,
+static void __attribute__((noinline)) EmitTriangle( listBuffer_t *l, const clipVert_t *a, const clipVert_t *b,
 						  const clipVert_t *c ) {
 	int ca = a->code, cb = b->code, cc = c->code;
 	const clipVert_t *in[3] = { a, b, c };
@@ -1393,13 +1422,11 @@ static void GrowCache( int count ) {
 	vgen = 0;
 }
 
-static const clipVert_t *FetchVertex( int i ) {
+/* FetchVertex's way for a vertex not yet in the cache */
+static const clipVert_t * __attribute__((noinline)) FetchVertexMiss( int i ) {
 	clipVert_t *c = &vcache[i];
 	float x, y, z;
 
-	if ( vstamp[i] == vgen ) {
-		return c;
-	}
 	vstamp[i] = vgen;
 	PROF_COUNT( STAT_VERTS, 1 );
 #ifdef USE_SH4ZAM
@@ -1455,6 +1482,13 @@ static const clipVert_t *FetchVertex( int i ) {
 	return c;
 }
 
+static inline const clipVert_t *FetchVertex( int i ) {
+	if ( vstamp[i] == vgen ) {
+		return &vcache[i];
+	}
+	return FetchVertexMiss( i );
+}
+
 typedef int ( *indexFunc_t )( const void *indices, int i );
 
 static int IndexDirect( const void *base, int i ) { return (int)(intptr_t)base + i; }
@@ -1467,6 +1501,7 @@ static int IndexUByte( const void *p, int i ) { return ( (const GLubyte *)p )[i]
    culled or clipped, which ends the strip */
 static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l, int count, indexFunc_t idx, const void *indices ) {
 	int last[3] = { -1, -1, -1 }, odd = 0, open = 0;
+	const int cpuCull = gl.cullFace && !pvrgl_hwCull;
 	int i;
 
 	for ( i = 0; i + 2 < count; i += 3 ) {
@@ -1487,7 +1522,7 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 
 		odd = on ? !odd : 0;
 		last[0] = a; last[1] = b; last[2] = c;
-		if ( ( ca | cb | cc ) & 1 || ca & cb & cc || Culled( va, vb, vc ) ) {
+		if ( ( ca | cb | cc ) & 1 || ca & cb & cc || ( cpuCull && Culled( va, vb, vc ) ) ) {
 			if ( open ) {
 				EndStrip( l );
 				open = 0;
@@ -1499,12 +1534,12 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 			if ( open ) {
 				EndStrip( l );
 			}
-			/* every other triangle of a strip is turned (c b d after
-			   a b c): from one of those, b c d, so the next (c d e)
-			   goes on from its last two */
-			EmitVertex( l, odd ? vb : va, PVR_CMD_VERTEX );
-			EmitVertex( l, odd ? va : vb, PVR_CMD_VERTEX );
+			/* as it is, so it faces the way it should for the PVR's
+			   culling: the first of its strip */
+			EmitVertex( l, va, PVR_CMD_VERTEX );
+			EmitVertex( l, vb, PVR_CMD_VERTEX );
 			open = 1;
+			odd = 0;
 		}
 		PROF_COUNT( STAT_TRIS, 1 );
 		EmitVertex( l, vc, PVR_CMD_VERTEX );
@@ -1512,6 +1547,10 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 	if ( open ) {
 		EndStrip( l );
 	}
+}
+
+static void __attribute__((noinline)) DrawTrianglesAny( listBuffer_t *l, int count, indexFunc_t idx, const void *indices ) {
+	DrawTriangles( l, count, idx, indices );
 }
 
 static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
@@ -1568,13 +1607,12 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 #define V( n ) FetchVertex( idx( indices, n ) )
 	switch ( mode ) {
 	case GL_TRIANGLES:
-		/* each index type its own copy, the index read inlined */
-		if ( idx == IndexUInt ) {
-			DrawTriangles( l, count, IndexUInt, indices );
-		} else if ( idx == IndexUShort ) {
+		/* the renderer's index type inlined; the others out of the way,
+		   to keep the loop in the instruction cache */
+		if ( idx == IndexUShort ) {
 			DrawTriangles( l, count, IndexUShort, indices );
 		} else {
-			DrawTriangles( l, count, idx, indices );
+			DrawTrianglesAny( l, count, idx, indices );
 		}
 		break;
 	case GL_TRIANGLE_STRIP:
@@ -1763,6 +1801,7 @@ static void ResetLists( void ) {
 		}
 		gl.lists[i].used = gl.lists[i].whole = 0;
 		gl.lists[i].overflowed = 0;
+		gl.lists[i].cur = gl.lists[i].end = NULL;
 		gl.lists[i].hasLast = 0;
 	}
 	gl.clears = 0;

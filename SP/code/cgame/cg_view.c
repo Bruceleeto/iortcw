@@ -1499,7 +1499,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 	DEBUGTIME
 
 	// set up cg.snap and possibly cg.nextSnap
+	PROF_BEGIN( PROF_CG_SNAPS );
 	CG_ProcessSnapshots();
+	PROF_END( PROF_CG_SNAPS );
 
 	DEBUGTIME
 
@@ -1545,7 +1547,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 	cg.clientFrame++;
 
 	// update cg.predictedPlayerState
+	PROF_BEGIN( PROF_CG_PREDICT );
 	CG_PredictPlayerState();
+	PROF_END( PROF_CG_PREDICT );
 
 	DEBUGTIME
 
@@ -1580,33 +1584,49 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 
 	// build the render lists
 	if ( !cg.hyperspace ) {
+		PROF_BEGIN( PROF_CG_ENTS );
 		CG_AddPacketEntities();         // adter calcViewValues, so predicted player state is correct
+		PROF_END( PROF_CG_ENTS );
+		PROF_BEGIN( PROF_CG_STATIC );
 		CG_AddStaticEntities();
+		PROF_END( PROF_CG_STATIC );
+		PROF_BEGIN( PROF_CG_MARKS );
 		CG_AddMarks();
+		PROF_END( PROF_CG_MARKS );
 
 		DEBUGTIME
 
 		// Rafael particles
+		PROF_BEGIN( PROF_CG_PARTICLES );
 		CG_AddParticles();
+		PROF_END( PROF_CG_PARTICLES );
 		// done.
 
 		DEBUGTIME
 
+		PROF_BEGIN( PROF_CG_LOCALENTS );
 		CG_AddLocalEntities();
+		PROF_END( PROF_CG_LOCALENTS );
 
 		DEBUGTIME
 	}
 
 
+	PROF_BEGIN( PROF_CG_WEAPON );
 	CG_AddViewWeapon( &cg.predictedPlayerState );
+	PROF_END( PROF_CG_WEAPON );
 
 
 	DEBUGTIME
 
 	// Ridah, trails
 	if ( !cg.hyperspace ) {
+		PROF_BEGIN( PROF_CG_TRAILS );
 		CG_AddFlameChunks();
+		PROF_END( PROF_CG_TRAILS );
+		PROF_BEGIN( PROF_CG_TRAILS );
 		CG_AddTrails();         // this must come last, so the trails dropped this frame get drawn
+		PROF_END( PROF_CG_TRAILS );
 	}
 	// done.
 
@@ -1640,7 +1660,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 	trap_SetUserCmdValue( cg.weaponSelect, cg.holdableSelect, cg.zoomSensitivity, cg.cld );
 
 	// actually issue the rendering calls
+	PROF_BEGIN( PROF_CG_2D );
 	CG_DrawActive( stereoView );
+	PROF_END( PROF_CG_2D );
 
 	DEBUGTIME
 

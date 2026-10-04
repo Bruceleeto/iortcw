@@ -12,7 +12,8 @@
  * and on the Dreamcast, the SH4 performance counter event com_perfEvent
  * (a PMCR mode, perfctr.h, in decimal: 37 cycles stalled on the data cache,
  * 36 on the instruction cache, 41 on the FPU, 19 instructions; 0: none)
- * counted in each section, thousands a frame:
+ * counted in each section, thousands a frame; each line the next of
+ * dcache stalls (37), instructions (19), icache stalls (36), fpu stalls (41):
  *
  *   PERF 0x25: engine 12 game 40 ... pvr 2100 ...
  */
@@ -25,7 +26,9 @@
 #endif
 
 static const char *const sectionNames[PROF_NUM] = {
-	"engine", "game", "ai", "pathing", "collision", "cgame", "ui",
+	"engine", "game", "ai", "pathing", "collision", "cgame",
+	"cg_snaps", "cg_predict", "cg_ents", "cg_players", "cg_tags", "cg_static", "cg_marks", "cg_particles",
+	"cg_localents", "cg_weapon", "cg_trails", "cg_2d", "ui",
 	"scene", "draw", "world", "models", "shade", "deform", "colors", "lighting", "texcoords", "dlights", "fog",
 	"sky", "flares", "pvr", "submit", "gpu", "sound", "idle"
 };
@@ -153,12 +156,27 @@ void Com_ProfFrame( void ) {
 
 #ifdef _arch_dreamcast
 		if ( perfEvent ) {
-			Com_sprintf( line, sizeof( line ), "PERF 0x%02x:", perfEvent );
+			// the next line counts the next of these, to see them all in one run
+			static const struct { int event; const char *name; } cycle[] = {
+				{ PMCR_PIPELINE_FREEZE_BY_DCACHE_MISS_MODE, "dcache stalls" },
+				{ PMCR_INSTRUCTION_ISSUED_MODE, "instructions" },
+				{ PMCR_PIPELINE_FREEZE_BY_ICACHE_MISS_MODE, "icache stalls" },
+				{ PMCR_PIPELINE_FREEZE_BY_FPU_MODE, "fpu stalls" },
+			};
+			int c;
+
+			for ( c = 0; c < ARRAY_LEN( cycle ) - 1 && cycle[c].event != perfEvent; c++ ) {
+			}
+			Com_sprintf( line, sizeof( line ), "PERF 0x%02x %s:", perfEvent,
+						 cycle[c].event == perfEvent ? cycle[c].name : "" );
 			for ( i = 0; i < PROF_NUM; i++ ) {
 				Q_strcat( line, sizeof( line ), va( " %s %d", sectionNames[i], (int)( sectionEvents[i] / frames / 1000 ) ) );
 			}
 			Com_Printf( "%s\n", line );
 			memset( sectionEvents, 0, sizeof( sectionEvents ) );
+			if ( cycle[c].event == perfEvent ) {
+				Cvar_Set( "com_perfEvent", va( "%d", cycle[( c + 1 ) % ARRAY_LEN( cycle )].event ) );
+			}
 		}
 #endif
 		memset( sectionTime, 0, sizeof( sectionTime ) );

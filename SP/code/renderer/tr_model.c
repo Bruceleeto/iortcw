@@ -2389,7 +2389,18 @@ R_LerpTag
   returns the index of the tag it found, for cycling through tags with the same name
 ================
 */
+static int R_LerpTag_( orientation_t *tag, const refEntity_t *refent, const char *tagNameIn, int startIndex );
+
 int R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagNameIn, int startIndex ) {
+	int r;
+
+	PROF_BEGIN( PROF_CG_TAGS );
+	r = R_LerpTag_( tag, refent, tagNameIn, startIndex );
+	PROF_END( PROF_CG_TAGS );
+	return r;
+}
+
+static int R_LerpTag_( orientation_t *tag, const refEntity_t *refent, const char *tagNameIn, int startIndex ) {
 	md3Tag_t    *start, *end;
 #ifndef NO_IQM_MDR
 	md3Tag_t	start_space, end_space;
