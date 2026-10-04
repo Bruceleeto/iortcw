@@ -1015,7 +1015,8 @@ void APIENTRY pvrglTexParameteri( GLenum target, GLenum pname, GLint param ) {
 /* primitive output                                                      */
 /* ===================================================================== */
 
-/* room for 32 bytes at the list's end, or NULL when it's full */
+/* room for 32 bytes at the list's end, or NULL when it's full; its cache
+   line taken without a read from RAM, so all 32 are to be written */
 static uint32_t *ListAlloc( listBuffer_t *l ) {
 	uint32_t *d;
 
@@ -1027,7 +1028,7 @@ static uint32_t *ListAlloc( listBuffer_t *l ) {
 
 		if ( gl.numFreeBlocks ) {
 			block = gl.freeBlocks[--gl.numFreeBlocks];
-		} else if ( gl.numBlocks < LIST_BLOCKS && ( block = malloc( LIST_BLOCK ) ) ) {
+		} else if ( gl.numBlocks < LIST_BLOCKS && ( block = memalign( 32, LIST_BLOCK ) ) ) {
 			gl.numBlocks++;
 		}
 		if ( !block ) {
@@ -1040,6 +1041,9 @@ static uint32_t *ListAlloc( listBuffer_t *l ) {
 	}
 	d = (uint32_t *)( l->blocks[l->used / LIST_BLOCK] + l->used % LIST_BLOCK );
 	l->used += 32;
+#ifdef USE_SH4ZAM
+	shz_dcache_alloc_line( d );
+#endif
 	return d;
 }
 
@@ -1218,6 +1222,7 @@ static void EmitVertex( listBuffer_t *l, const clipVert_t *c, uint32_t flags ) {
 	if ( !v ) {
 		return;
 	}
+	PROF_COUNT( STAT_EMITTED, 1 );
 	v->flags = flags;
 	v->x = c->sx;
 	v->y = c->sy;
@@ -1284,12 +1289,15 @@ static void EmitTriangle( listBuffer_t *l, const clipVert_t *a, const clipVert_t
 	clipVert_t out[4];
 	int i, n;
 
+	PROF_COUNT( STAT_TRIS, 1 );
 	if ( ca & cb & cc ) {
+		PROF_COUNT( STAT_CULLED, 1 );
 		return;		/* all outside one plane */
 	}
 
 	if ( !( ( ca | cb | cc ) & 1 ) ) {
 		if ( Culled( a, b, c ) ) {
+			PROF_COUNT( STAT_CULLED, 1 );
 			return;
 		}
 		EmitVertex( l, a, PVR_CMD_VERTEX );
@@ -1299,6 +1307,7 @@ static void EmitTriangle( listBuffer_t *l, const clipVert_t *a, const clipVert_t
 	}
 
 	/* clip against the near plane z = -w */
+	PROF_COUNT( STAT_CLIPPED, 1 );
 	n = 0;
 	for ( i = 0; i < 3; i++ ) {
 		const clipVert_t *p = in[i], *q = in[( i + 1 ) % 3];
@@ -1392,6 +1401,10 @@ static const clipVert_t *FetchVertex( int i ) {
 		return c;
 	}
 	vstamp[i] = vgen;
+	PROF_COUNT( STAT_VERTS, 1 );
+#ifdef USE_SH4ZAM
+	shz_dcache_alloc_line( c );	/* all 32 bytes written below, so no read from RAM */
+#endif
 
 	if ( xf.pos ) {
 		const float *p = (const float *)( xf.pos + i * xf.posStride );
@@ -1458,7 +1471,17 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 
 	for ( i = 0; i + 2 < count; i += 3 ) {
 		int a = idx( indices, i ), b = idx( indices, i + 1 ), c = idx( indices, i + 2 );
-		const clipVert_t *va = FetchVertex( a ), *vb = FetchVertex( b ), *vc = FetchVertex( c );
+		const clipVert_t *va, *vb, *vc;
+
+#ifdef USE_SH4ZAM
+		/* the next triangle's new vertex (in strip order its last), on its way in */
+		if ( xf.pos && i + 5 < count ) {
+			SHZ_PREFETCH( xf.pos + idx( indices, i + 5 ) * xf.posStride );
+		}
+#endif
+		va = FetchVertex( a );
+		vb = FetchVertex( b );
+		vc = FetchVertex( c );
 		int on = odd ? a == last[0] && b == last[2] : a == last[2] && b == last[1];
 		int ca = va->code, cb = vb->code, cc = vc->code;
 
@@ -1483,6 +1506,7 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 			EmitVertex( l, odd ? va : vb, PVR_CMD_VERTEX );
 			open = 1;
 		}
+		PROF_COUNT( STAT_TRIS, 1 );
 		EmitVertex( l, vc, PVR_CMD_VERTEX );
 	}
 	if ( open ) {
@@ -1587,6 +1611,7 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 /* DC_PROF: its time as pvr */
 static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int maxIndex ) {
 	PROF_BEGIN( PROF_PVR );
+	PROF_COUNT( STAT_DRAWS, 1 );
 	DrawPrimitivesPVR( mode, count, idx, indices, maxIndex );
 	PROF_END( PROF_PVR );
 }

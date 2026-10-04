@@ -775,7 +775,7 @@ void RB_CalcWaveColor( const waveForm_t *wf, unsigned char *dstColors ) {
 		glow = 1;
 	}
 
-	v = ri.ftol( 255 * glow );
+	v = (int)( 255 * glow + 0.5f );
 	color[0] = color[1] = color[2] = v;
 	color[3] = 255;
 	v = *(int *)color;
@@ -1223,19 +1223,19 @@ static void RB_CalcDiffuseColor_scalar( unsigned char *colors )
 		if ( incoming <= 0 ) {
 			incoming = 0.0f;
 		}
-		j = ri.ftol( ambientLight[0] + incoming * directedLight[0] );
+		j = (int)( ambientLight[0] + incoming * directedLight[0] + 0.5f );
 		if ( j > 255 ) {
 			j = 255;
 		}
 		colors[i * 4 + 0] = j;
 
-		j = ri.ftol( ambientLight[1] + incoming * directedLight[1] );
+		j = (int)( ambientLight[1] + incoming * directedLight[1] + 0.5f );
 		if ( j > 255 ) {
 			j = 255;
 		}
 		colors[i * 4 + 1] = j;
 
-		j = ri.ftol( ambientLight[2] + incoming * directedLight[2] );
+		j = (int)( ambientLight[2] + incoming * directedLight[2] + 0.5f );
 		if ( j > 255 ) {
 			j = 255;
 		}

@@ -791,8 +791,12 @@ vec_t VectorNormalize( vec3_t v ) {
 	length = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 
 	if ( length ) {
+#ifdef USE_SH4ZAM
+		ilength = shz_inv_sqrtf_fsrra( length );
+#else
 		/* writing it this way allows gcc to recognize that rsqrt can be used */
 		ilength = 1/(float)sqrt (length);
+#endif
 		/* sqrt(length) = length * (1 / sqrt(length)) */
 		length *= ilength;
 		v[0] *= ilength;
@@ -809,8 +813,12 @@ vec_t VectorNormalize2( const vec3_t v, vec3_t out ) {
 	length = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 
 	if ( length ) {
+#ifdef USE_SH4ZAM
+		ilength = shz_inv_sqrtf_fsrra( length );
+#else
 		/* writing it this way allows gcc to recognize that rsqrt can be used */
 		ilength = 1/(float)sqrt (length);
+#endif
 		/* sqrt(length) = length * (1 / sqrt(length)) */
 		length *= ilength;
 		out[0] = v[0] * ilength;

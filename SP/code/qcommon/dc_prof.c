@@ -4,16 +4,37 @@
  * milliseconds a frame:
  *
  *   PROF 24.6 fps (40.7 ms, worst 81): game 2.1 ai 6.0 pathing 0.8 ...
+ *
+ * and under it the renderer's counts a frame (profStats):
+ *
+ *   RSTAT draws 410 verts 21000 tris 18000 culled 7000 clipped 30 emitted 15000
+ *
+ * and on the Dreamcast, the SH4 performance counter event com_perfEvent
+ * (a PMCR mode, perfctr.h, in decimal: 37 cycles stalled on the data cache,
+ * 36 on the instruction cache, 41 on the FPU, 19 instructions; 0: none)
+ * counted in each section, thousands a frame:
+ *
+ *   PERF 0x25: engine 12 game 40 ... pvr 2100 ...
  */
 #ifdef DC_PROF
 
 #include "q_shared.h"
 #include "qcommon.h"
+#ifdef _arch_dreamcast
+#include <dc/perfctr.h>
+#endif
 
 static const char *const sectionNames[PROF_NUM] = {
 	"engine", "game", "ai", "pathing", "collision", "cgame", "ui",
-	"scene", "draw", "world", "models", "shade", "sky", "flares", "pvr", "submit", "gpu", "sound", "idle"
+	"scene", "draw", "world", "models", "shade", "deform", "colors", "lighting", "texcoords", "dlights", "fog",
+	"sky", "flares", "pvr", "submit", "gpu", "sound", "idle"
 };
+
+static const char *const statNames[STAT_NUM] = {
+	"draws", "verts", "tris", "culled", "clipped", "emitted"
+};
+
+int profStats[STAT_NUM];
 
 #define PROF_DEPTH  32
 
@@ -24,12 +45,29 @@ static long long last;                  // when the time was last given out
 
 static cvar_t *com_profile;
 
+#ifdef _arch_dreamcast
+static cvar_t *com_perfEvent;
+static int perfEvent;                   // the one counting, 0: none
+static uint64_t sectionEvents[PROF_NUM];
+static uint64_t lastEvents;
+#endif
+
 // what's gone since last to the section now running
 static void Charge( long long now ) {
+	profSection_t running = depth ? stack[depth - 1] : PROF_ENGINE;
+
 	if ( last ) {
-		sectionTime[depth ? stack[depth - 1] : PROF_ENGINE] += now - last;
+		sectionTime[running] += now - last;
 	}
 	last = now;
+#ifdef _arch_dreamcast
+	if ( perfEvent ) {
+		uint64_t events = perf_cntr_count( PRFC1 );
+
+		sectionEvents[running] += events - lastEvents;
+		lastEvents = events;
+	}
+#endif
 }
 
 void Com_ProfBegin( profSection_t section ) {
@@ -65,6 +103,21 @@ void Com_ProfFrame( void ) {
 	if ( !com_profile ) {
 		com_profile = Cvar_Get( "com_profile", "5", 0 );
 	}
+#ifdef _arch_dreamcast
+	if ( !com_perfEvent ) {
+		com_perfEvent = Cvar_Get( "com_perfEvent", "37", 0 );
+	}
+	if ( com_perfEvent->integer != perfEvent ) {
+		perf_cntr_stop( PRFC1 );
+		perf_cntr_clear( PRFC1 );
+		perfEvent = com_perfEvent->integer;
+		if ( perfEvent ) {
+			perf_cntr_start( PRFC1, (perf_cntr_event_t)perfEvent, PMCR_COUNT_CPU_CYCLES );
+		}
+		lastEvents = perf_cntr_count( PRFC1 );
+		memset( sectionEvents, 0, sizeof( sectionEvents ) );
+	}
+#endif
 	now = Sys_Microseconds();
 	Charge( now );
 	depth = 0;
@@ -92,7 +145,24 @@ void Com_ProfFrame( void ) {
 		}
 		Com_Printf( "%s\n", line );
 
+		Q_strncpyz( line, "RSTAT", sizeof( line ) );
+		for ( i = 0; i < STAT_NUM; i++ ) {
+			Q_strcat( line, sizeof( line ), va( " %s %d", statNames[i], profStats[i] / frames ) );
+		}
+		Com_Printf( "%s\n", line );
+
+#ifdef _arch_dreamcast
+		if ( perfEvent ) {
+			Com_sprintf( line, sizeof( line ), "PERF 0x%02x:", perfEvent );
+			for ( i = 0; i < PROF_NUM; i++ ) {
+				Q_strcat( line, sizeof( line ), va( " %s %d", sectionNames[i], (int)( sectionEvents[i] / frames / 1000 ) ) );
+			}
+			Com_Printf( "%s\n", line );
+			memset( sectionEvents, 0, sizeof( sectionEvents ) );
+		}
+#endif
 		memset( sectionTime, 0, sizeof( sectionTime ) );
+		memset( profStats, 0, sizeof( profStats ) );
 		lineStart = now;
 		frames = 0;
 		worst = 0;

@@ -101,8 +101,11 @@ static void DC_Controller( int time ) {
 
 	msec = time - padTime;
 	padTime = time;
-	if ( msec < 0 || msec > 100 ) {
+	/* capped, not dropped: a slow frame (under 10 fps) still turns */
+	if ( msec < 0 ) {
 		msec = 0;
+	} else if ( msec > 250 ) {
+		msec = 250;
 	}
 
 	if ( !dev || !( state = maple_dev_status( dev ) ) ) {

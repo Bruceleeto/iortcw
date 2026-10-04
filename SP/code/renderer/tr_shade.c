@@ -503,6 +503,7 @@ static void ProjectDlightTexture_scalar( void ) {
 	float	radius;
 	vec3_t	floatColor;
 	float	modulate = 0.0f;
+	int		backs = r_dlightBacks->integer;
 
 	if ( !backEnd.refdef.num_dlights ) {
 		return;
@@ -559,33 +560,32 @@ static void ProjectDlightTexture_scalar( void ) {
 		for ( i = 0 ; i < tess.numVertexes ; i++, texCoords += 2, colors += 4 ) {
 			int		clip = 0;
 			vec3_t	dist;
+			float	s, t;
 			
 			VectorSubtract( origin, tess.xyz[i], dist );
 
-			backEnd.pc.c_dlightVertexes++;
+			s = 0.5f + dist[0] * scale;
+			t = 0.5f + dist[1] * scale;
+			texCoords[0] = s;
+			texCoords[1] = t;
 
-			texCoords[0] = 0.5f + dist[0] * scale;
-			texCoords[1] = 0.5f + dist[1] * scale;
-
-			if( !r_dlightBacks->integer &&
+			if( !backs &&
 					// dist . tess.normal[i]
 					( dist[0] * tess.normal[i][0] +
 					dist[1] * tess.normal[i][1] +
 					dist[2] * tess.normal[i][2] ) < 0.0f ) {
 				clip = 63;
 			} else {
-				if ( texCoords[0] < 0.0f ) {
+				if ( s < 0.0f ) {
 					clip |= 1;
-				} else if ( texCoords[0] > 1.0f ) {
+				} else if ( s > 1.0f ) {
 					clip |= 2;
 				}
-				if ( texCoords[1] < 0.0f ) {
+				if ( t < 0.0f ) {
 					clip |= 4;
-				} else if ( texCoords[1] > 1.0f ) {
+				} else if ( t > 1.0f ) {
 					clip |= 8;
 				}
-				texCoords[0] = texCoords[0];
-				texCoords[1] = texCoords[1];
 
 				// modulate the strength based on the height and color
 				if ( dist[2] > radius ) {
@@ -604,11 +604,12 @@ static void ProjectDlightTexture_scalar( void ) {
 				}
 			}
 			clipBits[i] = clip;
-			colors[0] = ri.ftol(floatColor[0] * modulate);
-			colors[1] = ri.ftol(floatColor[1] * modulate);
-			colors[2] = ri.ftol(floatColor[2] * modulate);
+			colors[0] = (int)( floatColor[0] * modulate + 0.5f );
+			colors[1] = (int)( floatColor[1] * modulate + 0.5f );
+			colors[2] = (int)( floatColor[2] * modulate + 0.5f );
 			colors[3] = 255;
 		}
+		backEnd.pc.c_dlightVertexes += tess.numVertexes;
 
 		// build a list of triangles that need light
 		numIndexes = 0;
@@ -680,14 +681,15 @@ static void ProjectDlightTexture_scalar( void ) {
 }
 
 static void ProjectDlightTexture( void ) {
+	PROF_BEGIN( PROF_DLIGHTS );
 #if idppc_altivec
 	if (com_altivec->integer) {
 		// must be in a separate translation unit or G3 systems will crash.
 		ProjectDlightTexture_altivec();
-		return;
-	}
+	} else
 #endif
 	ProjectDlightTexture_scalar();
+	PROF_END( PROF_DLIGHTS );
 }
 
 
@@ -706,6 +708,7 @@ static void RB_FogPass( void ) {
 		return;
 	}
 
+	PROF_BEGIN( PROF_FOG );
 	qglEnableClientState( GL_COLOR_ARRAY );
 	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
 
@@ -729,6 +732,7 @@ static void RB_FogPass( void ) {
 	}
 
 	R_DrawElements( tess.numIndexes, tess.indexes );
+	PROF_END( PROF_FOG );
 }
 
 /*
@@ -752,7 +756,9 @@ static void ComputeColors( shaderStage_t *pStage ) {
 		memset( tess.svars.colors, tr.identityLightByte, tess.numVertexes * 4 );
 		break;
 	case CGEN_LIGHTING_DIFFUSE:
+		PROF_BEGIN( PROF_LIGHTING );
 		RB_CalcDiffuseColor( ( unsigned char * ) tess.svars.colors );
+		PROF_END( PROF_LIGHTING );
 		break;
 	case CGEN_EXACT_VERTEX:
 		memcpy( tess.svars.colors, tess.vertexColors, tess.numVertexes * sizeof( tess.vertexColors[0] ) );
@@ -1177,8 +1183,12 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			break;
 		}
 
+		PROF_BEGIN( PROF_COLORS );
 		ComputeColors( pStage );
+		PROF_END( PROF_COLORS );
+		PROF_BEGIN( PROF_TEXCOORDS );
 		ComputeTexCoords( pStage );
+		PROF_END( PROF_TEXCOORDS );
 
 		if ( !setArraysOnce ) {
 			qglEnableClientState( GL_COLOR_ARRAY );
@@ -1283,7 +1293,9 @@ void RB_StageIteratorGeneric( void ) {
 	input = &tess;
 	shader = input->shader;
 
+	PROF_BEGIN( PROF_DEFORM );
 	RB_DeformTessGeometry();
+	PROF_END( PROF_DEFORM );
 
 	//
 	// log this call
@@ -1422,7 +1434,9 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	// compute colors
 	//
+	PROF_BEGIN( PROF_LIGHTING );
 	RB_CalcDiffuseColor( ( unsigned char * ) tess.svars.colors );
+	PROF_END( PROF_LIGHTING );
 
 	//
 	// log this call

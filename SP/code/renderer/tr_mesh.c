@@ -248,7 +248,7 @@ int R_ComputeLOD( trRefEntity_t *ent ) {
 		}
 
 		flod *= tr.currentModel->numLods;
-		lod = ri.ftol( flod );
+		lod = (int)( flod + 0.5f );
 
 		if ( lod < 0 ) {
 			lod = 0;

@@ -24,7 +24,13 @@ typedef enum {
 						// what the ones below don't have (2D, sorting, state)
 	PROF_WORLD,         //   the world's surfaces into tess (rb_surfaceTable)
 	PROF_MODELS,        //   entities' surfaces into tess: model lerp, MDS skinning
-	PROF_SHADE,         //   a shader's stages: colours, texcoords, deforms
+	PROF_SHADE,         //   a shader's stages: what the ones below don't have (state, binds, draws' setup)
+	PROF_DEFORM,        //     deformVertexes (RB_DeformTessGeometry)
+	PROF_COLORS,        //     rgbGen / alphaGen (ComputeColors)
+	PROF_LIGHTING,      //     model lighting (RB_CalcDiffuseColor)
+	PROF_TEXCOORDS,     //     tcGen / tcMod (ComputeTexCoords)
+	PROF_DLIGHTS,       //     dynamic lights' passes (ProjectDlightTexture), less their pvr
+	PROF_FOG,           //     fog passes (RB_FogPass), less their pvr
 	PROF_SKY,           //   the sky's (RB_StageIteratorSky) and the sun
 	PROF_FLARES,        //   RB_RenderFlares
 	PROF_PVR,           //   pvr_gl: transform, clip, PVR vertices into the lists
@@ -34,6 +40,24 @@ typedef enum {
 	PROF_IDLE,          // Com_Frame waiting for its next frame (com_maxfps)
 	PROF_NUM
 } profSection_t;
+
+/* counts a frame, printed under the PROF line as RSTAT */
+typedef enum {
+	STAT_DRAWS,         // pvr_gl draw calls
+	STAT_VERTS,         // vertexes transformed (once each a draw)
+	STAT_TRIS,          // triangles in
+	STAT_CULLED,        // of them, back facing or off screen
+	STAT_CLIPPED,       // of them, through the near plane
+	STAT_EMITTED,       // PVR vertexes written
+	STAT_NUM
+} profStat_t;
+
+#ifdef DC_PROF
+extern int profStats[STAT_NUM];
+#define PROF_COUNT( stat, n )   ( profStats[stat] += ( n ) )
+#else
+#define PROF_COUNT( stat, n )
+#endif
 
 #ifdef DC_PROF
 void Com_ProfBegin( profSection_t section );

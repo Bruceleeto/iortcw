@@ -3390,6 +3390,21 @@ void Item_TextColor( itemDef_t *item, vec4_t *newColor ) {
 	}
 }
 
+/* buff to newLine, as a line of Item_Text_AutoWrapped_Paint's */
+static void Item_Text_AutoWrapped_Line( itemDef_t *item, char *buff, int newLine, int newLineWidth, float y, vec4_t color ) {
+	if ( item->textalignment == ITEM_ALIGN_LEFT ) {
+		item->textRect.x = item->textalignx;
+	} else if ( item->textalignment == ITEM_ALIGN_RIGHT ) {
+		item->textRect.x = item->textalignx - newLineWidth;
+	} else if ( item->textalignment == ITEM_ALIGN_CENTER ) {
+		item->textRect.x = item->textalignx - newLineWidth / 2;
+	}
+	item->textRect.y = y;
+	ToWindowCoords( &item->textRect.x, &item->textRect.y, &item->window );
+	buff[newLine] = '\0';
+	DC->drawText( item->textRect.x, item->textRect.y, item->font, item->textscale, color, buff, 0, 0, item->textStyle );
+}
+
 void Item_Text_AutoWrapped_Paint( itemDef_t *item ) {
 	char text[1024];
 	const char *p, *textPtr, *newLinePtr;
@@ -3398,7 +3413,6 @@ void Item_Text_AutoWrapped_Paint( itemDef_t *item ) {
 	float y;
 	vec4_t color;
 
-	textWidth = 0;
 	newLinePtr = NULL;
 
 	if ( item->text == NULL ) {
@@ -3425,36 +3439,35 @@ void Item_Text_AutoWrapped_Paint( itemDef_t *item ) {
 	p = textPtr;
 	while ( p ) {
 		if ( *p == ' ' || *p == '\t' || *p == '\n' || *p == '\0' ) {
+			/* a word's end: the line measured only here, and if this word
+			   made it too wide, it's to the word before */
+			textWidth = DC->textWidth( buff, item->font, item->textscale, 0 );
+			if ( newLine && textWidth > item->window.rect.w ) {
+				Item_Text_AutoWrapped_Line( item, buff, newLine, newLineWidth, y, color );
+				y += height + 5;
+				p = newLinePtr;
+				len = 0;
+				newLine = 0;
+				newLineWidth = 0;
+				continue;
+			}
 			newLine = len;
 			newLinePtr = p + 1;
 			newLineWidth = textWidth;
-		}
-		textWidth = DC->textWidth( buff, item->font, item->textscale, 0 );
-		if ( ( newLine && textWidth > item->window.rect.w ) || *p == '\n' || *p == '\0' ) {
-			if ( len ) {
-				if ( item->textalignment == ITEM_ALIGN_LEFT ) {
-					item->textRect.x = item->textalignx;
-				} else if ( item->textalignment == ITEM_ALIGN_RIGHT ) {
-					item->textRect.x = item->textalignx - newLineWidth;
-				} else if ( item->textalignment == ITEM_ALIGN_CENTER ) {
-					item->textRect.x = item->textalignx - newLineWidth / 2;
+			if ( *p == '\n' || *p == '\0' ) {
+				if ( len ) {
+					Item_Text_AutoWrapped_Line( item, buff, newLine, newLineWidth, y, color );
 				}
-				item->textRect.y = y;
-				ToWindowCoords( &item->textRect.x, &item->textRect.y, &item->window );
-				//
-				buff[newLine] = '\0';
-				DC->drawText( item->textRect.x, item->textRect.y, item->font, item->textscale, color, buff, 0, 0, item->textStyle );
+				if ( *p == '\0' ) {
+					break;
+				}
+				y += height + 5;
+				p = newLinePtr;
+				len = 0;
+				newLine = 0;
+				newLineWidth = 0;
+				continue;
 			}
-			if ( *p == '\0' ) {
-				break;
-			}
-			//
-			y += height + 5;
-			p = newLinePtr;
-			len = 0;
-			newLine = 0;
-			newLineWidth = 0;
-			continue;
 		}
 		buff[len++] = *p++;
 
