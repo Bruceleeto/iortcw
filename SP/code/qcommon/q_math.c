@@ -165,7 +165,7 @@ float   Q_random( int *seed ) {
 }
 
 float   Q_crandom( int *seed ) {
-	return 2.0 * ( Q_random( seed ) - 0.5 );
+	return 2.0f * ( Q_random( seed ) - 0.5f );
 }
 
 
@@ -399,7 +399,7 @@ void vectoangles( const vec3_t value1, vec3_t angles ) {
 			yaw += 360;
 		}
 
-		forward = sqrt( value1[0] * value1[0] + value1[1] * value1[1] );
+		forward = sqrtf( value1[0] * value1[0] + value1[1] * value1[1] );
 		pitch = ( atan2( value1[2], forward ) * 180 / M_PI );
 		if ( pitch < 0 ) {
 			pitch += 360;
@@ -578,7 +578,7 @@ void AnglesSubtract( vec3_t v1, vec3_t v2, vec3_t v3 ) {
 
 
 float   AngleMod( float a ) {
-	a = ( 360.0 / 65536 ) * ( (int)( a * ( 65536 / 360.0 ) ) & 65535 );
+	a = ( 360.0f / 65536 ) * ( (int)( a * ( 65536 / 360.0f ) ) & 65535 );
 	return a;
 }
 
@@ -700,8 +700,8 @@ float RadiusFromBounds( const vec3_t mins, const vec3_t maxs ) {
 	float a, b;
 
 	for ( i = 0 ; i < 3 ; i++ ) {
-		a = fabs( mins[i] );
-		b = fabs( maxs[i] );
+		a = fabsf( mins[i] );
+		b = fabsf( maxs[i] );
 		corner[i] = a > b ? a : b;
 	}
 

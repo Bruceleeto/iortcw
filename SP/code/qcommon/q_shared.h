@@ -424,6 +424,10 @@ typedef int fixed4_t;
 typedef int fixed8_t;
 typedef int fixed16_t;
 
+#ifdef USE_SH4ZAM
+#undef M_PI		// math.h's is a double: everything using it went double
+#define M_PI        SHZ_F_PI
+#endif
 #ifndef M_PI
 #define M_PI        3.14159265358979323846f // matches value in gcc v2 math.h
 #endif
@@ -688,7 +692,11 @@ static ID_INLINE int VectorCompare( const vec3_t v1, const vec3_t v2 ) {
 }
 
 static ID_INLINE vec_t VectorLength( const vec3_t v ) {
+#ifdef USE_SH4ZAM
+	return shz_sqrtf( shz_mag_sqr3f( v[0], v[1], v[2] ) );
+#else
 	return (vec_t)sqrt (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+#endif
 }
 
 static ID_INLINE vec_t VectorLengthSquared( const vec3_t v ) {

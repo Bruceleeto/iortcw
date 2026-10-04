@@ -1090,12 +1090,12 @@ void CM_TraceThroughTree( traceWork_t *tw, int num, float p1f, float p2f, vec3_t
 
 	// put the crosspoint SURFACE_CLIP_EPSILON pixels on the near side
 	if ( t1 < t2 ) {
-		idist = 1.0 / ( t1 - t2 );
+		idist = 1.0f / ( t1 - t2 );
 		side = 1;
 		frac2 = ( t1 + offset + SURFACE_CLIP_EPSILON ) * idist;
 		frac = ( t1 - offset + SURFACE_CLIP_EPSILON ) * idist;
 	} else if ( t1 > t2 ) {
-		idist = 1.0 / ( t1 - t2 );
+		idist = 1.0f / ( t1 - t2 );
 		side = 0;
 		frac2 = ( t1 - offset - SURFACE_CLIP_EPSILON ) * idist;
 		frac = ( t1 + offset + SURFACE_CLIP_EPSILON ) * idist;
