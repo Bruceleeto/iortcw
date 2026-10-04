@@ -89,9 +89,9 @@ static void AddSkyPolygon( int nump, vec3_t vecs ) {
 	{
 		VectorAdd( vp, v, v );
 	}
-	av[0] = fabs( v[0] );
-	av[1] = fabs( v[1] );
-	av[2] = fabs( v[2] );
+	av[0] = fabsf( v[0] );
+	av[1] = fabsf( v[1] );
+	av[2] = fabsf( v[2] );
 	if ( av[0] > av[1] && av[0] > av[2] ) {
 		if ( v[0] < 0 ) {
 			axis = 1;
@@ -122,7 +122,7 @@ static void AddSkyPolygon( int nump, vec3_t vecs ) {
 		} else {
 			dv = -vecs[-j - 1];
 		}
-		if ( dv < 0.001 ) {
+		if ( dv < 0.001f ) {
 			continue;   // don't divide by zero
 		}
 		j = vec_to_st[axis][0];
@@ -321,12 +321,12 @@ static void MakeSkyVec( float s, float t, int axis, float outSt[2], vec3_t outXY
 //		boxSize = glfogsettings[FOG_CURRENT].end / 1.75;
 		boxSize = glfogsettings[FOG_SKY].end;       // (SA) trying this...
 	} else {
-		boxSize = backEnd.viewParms.zFar / 1.75;        // div sqrt(3)
+		boxSize = backEnd.viewParms.zFar / 1.75f;        // div sqrt(3)
 
 	}
 	// make sure the sky is not near clipped
-	if ( boxSize < r_znear->value * 2.0 ) {
-		boxSize = r_znear->value * 2.0;
+	if ( boxSize < r_znear->value * 2.0f ) {
+		boxSize = r_znear->value * 2.0f;
 	}
 
 	b[0] = s * boxSize;
@@ -345,8 +345,8 @@ static void MakeSkyVec( float s, float t, int axis, float outSt[2], vec3_t outXY
 	}
 
 	// avoid bilerp seam
-	s = ( s + 1 ) * 0.5;
-	t = ( t + 1 ) * 0.5;
+	s = ( s + 1 ) * 0.5f;
+	t = ( t + 1 ) * 0.5f;
 	if ( s < sky_min ) {
 		s = sky_min;
 	} else if ( s > sky_max )     {
@@ -359,7 +359,7 @@ static void MakeSkyVec( float s, float t, int axis, float outSt[2], vec3_t outXY
 		t = sky_max;
 	}
 
-	t = 1.0 - t;
+	t = 1.0f - t;
 
 
 	if ( outSt ) {
@@ -521,10 +521,10 @@ static void DrawSkyBox( shader_t *shader ) {
 		int sky_mins_subd[2], sky_maxs_subd[2];
 		int s, t;
 
-		sky_mins[0][i] = floor( sky_mins[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_mins[1][i] = floor( sky_mins[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_maxs[0][i] = ceil( sky_maxs[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_maxs[1][i] = ceil( sky_maxs[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_mins[0][i] = floorf( sky_mins[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_mins[1][i] = floorf( sky_mins[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_maxs[0][i] = ceilf( sky_maxs[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_maxs[1][i] = ceilf( sky_maxs[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
 
 		if ( ( sky_mins[0][i] >= sky_maxs[0][i] ) ||
 			 ( sky_mins[1][i] >= sky_maxs[1][i] ) ) {
@@ -611,10 +611,10 @@ static void DrawSkyBoxInner( shader_t *shader ) {
 		int sky_mins_subd[2], sky_maxs_subd[2];
 		int s, t;
 
-		sky_mins[0][i] = floor( sky_mins[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_mins[1][i] = floor( sky_mins[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_maxs[0][i] = ceil( sky_maxs[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_maxs[1][i] = ceil( sky_maxs[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_mins[0][i] = floorf( sky_mins[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_mins[1][i] = floorf( sky_mins[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_maxs[0][i] = ceilf( sky_maxs[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_maxs[1][i] = ceilf( sky_maxs[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
 
 		if ( ( sky_mins[0][i] >= sky_maxs[0][i] ) ||
 			 ( sky_mins[1][i] >= sky_maxs[1][i] ) ) {
@@ -769,10 +769,10 @@ static void FillCloudBox( const shader_t *shader, int stage ) {
 			}
 		}
 
-		sky_mins[0][i] = floor( sky_mins[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_mins[1][i] = floor( sky_mins[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_maxs[0][i] = ceil( sky_maxs[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
-		sky_maxs[1][i] = ceil( sky_maxs[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_mins[0][i] = floorf( sky_mins[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_mins[1][i] = floorf( sky_mins[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_maxs[0][i] = ceilf( sky_maxs[0][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
+		sky_maxs[1][i] = ceilf( sky_maxs[1][i] * HALF_SKY_SUBDIVISIONS ) / HALF_SKY_SUBDIVISIONS;
 
 		if ( ( sky_mins[0][i] >= sky_maxs[0][i] ) ||
 			 ( sky_mins[1][i] >= sky_maxs[1][i] ) ) {
@@ -840,8 +840,8 @@ void R_BuildCloudData( shaderCommands_t *input ) {
 
 	assert( shader->isSky );
 
-	sky_min = 1.0 / 256.0f;     // FIXME: not correct?
-	sky_max = 255.0 / 256.0f;
+	sky_min = 1.0f / 256.0f;     // FIXME: not correct?
+	sky_max = 255.0f / 256.0f;
 
 	// set up for drawing
 	tess.numIndexes = 0;
@@ -891,7 +891,7 @@ void R_InitSkyTexCoords( float heightCloud ) {
 				// compute parametric value 'p' that intersects with cloud layer
 				p = ( 1.0f / ( 2 * DotProduct( skyVec, skyVec ) ) ) *
 					( -2 * skyVec[2] * radiusWorld +
-					  2 * sqrt( SQR( skyVec[2] ) * SQR( radiusWorld ) +
+					  2 * sqrtf( SQR( skyVec[2] ) * SQR( radiusWorld ) +
 								2 * SQR( skyVec[0] ) * radiusWorld * heightCloud +
 								SQR( skyVec[0] ) * SQR( heightCloud ) +
 								2 * SQR( skyVec[1] ) * radiusWorld * heightCloud +
@@ -944,7 +944,7 @@ void RB_DrawSun( float scale, shader_t *shader ) {
 	qglLoadMatrixf( backEnd.viewParms.world.modelMatrix );
 	qglTranslatef( backEnd.viewParms.or.origin[0], backEnd.viewParms.or.origin[1], backEnd.viewParms.or.origin[2] );
 
-	dist =  backEnd.viewParms.zFar / 1.75;      // div sqrt(3)
+	dist =  backEnd.viewParms.zFar / 1.75f;      // div sqrt(3)
 
 	// (SA) shrunk the size of the sun
 	size = dist * scale;
@@ -971,7 +971,7 @@ void RB_DrawSun( float scale, shader_t *shader ) {
 		//				If we decide to use the flare business I will /definatly/ improve all this
 
 		// get a point a little closer
-		dist = dist * 0.7;
+		dist = dist * 0.7f;
 		VectorScale( tr.sunDirection, dist, origin );
 
 		// and make the flare a little smaller
@@ -983,9 +983,9 @@ void RB_DrawSun( float scale, shader_t *shader ) {
 		VectorNormalize( temp );
 
 		// amplify the result
-		origin[0] += temp[0] * 500.0;
-		origin[1] += temp[1] * 500.0;
-		origin[2] += temp[2] * 500.0;
+		origin[0] += temp[0] * 500.0f;
+		origin[1] += temp[1] * 500.0f;
+		origin[2] += temp[2] * 500.0f;
 
 		// (SA) FIXME: todo: flare effect should render last (on top of everything else) and only when sun is in view (sun moving out of camera past degree n should start to cause flare dimming until view angle to sun is off by angle n + x.
 

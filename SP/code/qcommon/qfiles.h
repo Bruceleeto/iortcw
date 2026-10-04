@@ -97,7 +97,7 @@ typedef struct {
 #define MD3_MAX_TAGS        16      // per frame
 
 // vertex scales
-#define MD3_XYZ_SCALE       ( 1.0 / 64 )
+#define MD3_XYZ_SCALE       ( 1.0f / 64 )
 
 typedef struct md3Frame_s {
 	vec3_t bounds[2];
@@ -207,7 +207,7 @@ typedef struct {
 	char name[MAX_QPATH];           // tag name
 } mdcTagName_t;
 
-#define MDC_TAG_ANGLE_SCALE ( 360.0 / 32700.0 )
+#define MDC_TAG_ANGLE_SCALE ( 360.0f / 32700.0f )
 
 typedef struct {
 	short xyz[3];

@@ -2408,7 +2408,7 @@ int R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagNam
 	handle = refent->hModel;
 	startFrame = refent->oldframe;
 	endFrame = refent->frame;
-	frac = 1.0 - refent->backlerp;
+	frac = 1.0f - refent->backlerp;
 
 	Q_strncpyz( tagName, tagNameIn, MAX_QPATH );
 /*

@@ -214,7 +214,7 @@ void R_SetFog( int fogvar, int var1, int var2, float r, float g, float b, float 
 			glfogsettings[fogvar].mode          = GL_LINEAR;
 			glfogsettings[fogvar].drawsky       = qfalse;
 			glfogsettings[fogvar].clearscreen   = qtrue;
-			glfogsettings[fogvar].density       = 1.0;
+			glfogsettings[fogvar].density       = 1.0f;
 		} else
 		{
 			glfogsettings[fogvar].mode          = GL_EXP;
@@ -470,8 +470,8 @@ void R_TransformClipToWindow( const vec4_t clip, const viewParms_t *view, vec4_t
 	window[1] = 0.5f * ( 1.0f + normalized[1] ) * view->viewportHeight;
 	window[2] = normalized[2];
 
-	window[0] = (int) ( window[0] + 0.5 );
-	window[1] = (int) ( window[1] + 0.5 );
+	window[0] = (int) ( window[0] + 0.5f );
+	window[1] = (int) ( window[1] + 0.5f );
 }
 
 
@@ -780,7 +780,7 @@ static void R_SetFarClip( void ) {
 		}
 	}
 
-	tr.viewParms.zFar = sqrt( farthestCornerDistance );
+	tr.viewParms.zFar = sqrtf( farthestCornerDistance );
 	R_SetFrameFog();
 }
 
@@ -803,7 +803,7 @@ void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymax, floa
 		// symmetric case can be simplified
 		VectorCopy(dest->or.origin, ofsorigin);
 
-		length = sqrt(xmax * xmax + zProj * zProj);
+		length = sqrtf(xmax * xmax + zProj * zProj);
 		oppleg = xmax / length;
 		adjleg = zProj / length;
 
@@ -820,17 +820,17 @@ void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymax, floa
 		VectorMA(dest->or.origin, stereoSep, dest->or.axis[1], ofsorigin);
 	
 		oppleg = xmax + stereoSep;
-		length = sqrt(oppleg * oppleg + zProj * zProj);
+		length = sqrtf(oppleg * oppleg + zProj * zProj);
 		VectorScale(dest->or.axis[0], oppleg / length, dest->frustum[0].normal);
 		VectorMA(dest->frustum[0].normal, zProj / length, dest->or.axis[1], dest->frustum[0].normal);
 
 		oppleg = xmin + stereoSep;
-		length = sqrt(oppleg * oppleg + zProj * zProj);
+		length = sqrtf(oppleg * oppleg + zProj * zProj);
 		VectorScale(dest->or.axis[0], -oppleg / length, dest->frustum[1].normal);
 		VectorMA(dest->frustum[1].normal, -zProj / length, dest->or.axis[1], dest->frustum[1].normal);
 	}
 
-	length = sqrt(ymax * ymax + zProj * zProj);
+	length = sqrtf(ymax * ymax + zProj * zProj);
 	oppleg = ymax / length;
 	adjleg = zProj / length;
 
@@ -872,10 +872,10 @@ void R_SetupProjection(viewParms_t *dest, float zProj, qboolean computeFrustum)
 			stereoSep = 0;
 	}
 
-	ymax = zProj * tan(dest->fovY * M_PI / 360.0f);
+	ymax = zProj * tan(dest->fovY * (float)M_PI / 360.0f);
 	ymin = -ymax;
 
-	xmax = zProj * tan(dest->fovX * M_PI / 360.0f);
+	xmax = zProj * tan(dest->fovX * (float)M_PI / 360.0f);
 	xmin = -xmax;
 
 	width = xmax - xmin;

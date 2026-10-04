@@ -29,7 +29,6 @@ If you have questions concerning this license or the applicable additional terms
 // tr_noise.c
 #include "tr_local.h"
 
-#define NOISE_SIZE 256
 #define NOISE_MASK ( NOISE_SIZE - 1 )
 
 #define VAL( a ) s_noise_perm[ ( a ) & ( NOISE_MASK )]
@@ -49,12 +48,12 @@ void R_NoiseInit( void ) {
 
 	for ( i = 0; i < NOISE_SIZE; i++ )
 	{
-		s_noise_table[i] = ( float ) ( ( ( rand() / ( float ) RAND_MAX ) * 2.0 - 1.0 ) );
+		s_noise_table[i] = rand() / ( float ) RAND_MAX * 2.0f - 1.0f;
 		s_noise_perm[i] = ( unsigned char )( rand() / ( float ) RAND_MAX * 255 );
 	}
 }
 
-float R_NoiseGet4f( float x, float y, float z, double t ) {
+float R_NoiseGet4f( float x, float y, float z, float t ) {
 	int i;
 	int ix, iy, iz, it;
 	float fx, fy, fz, ft;
@@ -62,13 +61,13 @@ float R_NoiseGet4f( float x, float y, float z, double t ) {
 	float back[4];
 	float fvalue, bvalue, value[2], finalvalue;
 
-	ix = ( int ) floor( x );
+	ix = ( int ) floorf( x );
 	fx = x - ix;
-	iy = ( int ) floor( y );
+	iy = ( int ) floorf( y );
 	fy = y - iy;
-	iz = ( int ) floor( z );
+	iz = ( int ) floorf( z );
 	fz = z - iz;
-	it = ( int ) floor( t );
+	it = ( int ) floorf( t );
 	ft = t - it;
 
 	for ( i = 0; i < 2; i++ )

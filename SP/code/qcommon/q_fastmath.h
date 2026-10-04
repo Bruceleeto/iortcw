@@ -8,7 +8,7 @@
 // not its double ones (the game's float): sh4zam's atan2 is up to half a
 // degree out, its acos and asin a quarter, too much for aiming and the
 // view, and its pow's rough, wrong for 0 and less.
-#include <sh4zam/shz_trig.h>
+#include <sh4zam/shz_sh4zam.h>
 #define sin( x )        shz_sinf( x )
 #define cos( x )        shz_cosf( x )
 #define tan( x )        shz_tanf( x )

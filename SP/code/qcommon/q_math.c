@@ -38,9 +38,6 @@ If you have questions concerning this license or the applicable additional terms
 #endif
 
 #include "q_shared.h"
-#ifdef USE_SH4ZAM
-#include <sh4zam/shz_scalar.h>
-#endif
 
 vec3_t vec3_origin = {0,0,0};
 vec3_t axisDefault[3] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
@@ -594,7 +591,7 @@ returns angle normalized to the range [0 <= angle < 360]
 =================
 */
 float AngleNormalize360( float angle ) {
-	return ( 360.0 / 65536 ) * ( (int)( angle * ( 65536 / 360.0 ) ) & 65535 );
+	return ( 360.0f / 65536 ) * ( (int)( angle * ( 65536 / 360.0f ) ) & 65535 );
 }
 
 
@@ -607,8 +604,8 @@ returns angle normalized to the range [-180 < angle <= 180]
 */
 float AngleNormalize180( float angle ) {
 	angle = AngleNormalize360( angle );
-	if ( angle > 180.0 ) {
-		angle -= 360.0;
+	if ( angle > 180.0f ) {
+		angle -= 360.0f;
 	}
 	return angle;
 }

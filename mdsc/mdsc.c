@@ -28,8 +28,10 @@ static float ShortToAngle( short s ) {
 	return s * ( 360.0f / 65536.0f );
 }
 
-static short AngleToShort( float a ) {
-	return (short)(unsigned short)( lrintf( a * ( 65536.0f / 360.0f ) ) & 65535 );
+/* radians (atan2f's, -pi to pi) to the nearest 1/65536 turn; the offset
+   keeps it positive so the cast rounds without lrintf */
+static short RadToShort( float r ) {
+	return (short)(unsigned short)( (int)( r * ( 32768.0f / (float)M_PI ) + 65536.5f ) & 65535 );
 }
 
 /* q_math.c's AnglesToAxis */
@@ -55,13 +57,13 @@ static void MatrixToAngles( const mdscMatrix_t m, short angles[3] ) {
 	float horiz = sqrtf( m[0][0] * m[0][0] + m[0][1] * m[0][1] );
 
 	if ( horiz > 1e-5f ) {
-		angles[0] = AngleToShort( RAD2DEG( atan2f( -m[0][2], horiz ) ) );
-		angles[1] = AngleToShort( RAD2DEG( atan2f( m[0][1], m[0][0] ) ) );
-		angles[2] = AngleToShort( RAD2DEG( atan2f( m[1][2], m[2][2] ) ) );
+		angles[0] = RadToShort( atan2f( -m[0][2], horiz ) );
+		angles[1] = RadToShort( atan2f( m[0][1], m[0][0] ) );
+		angles[2] = RadToShort( atan2f( m[1][2], m[2][2] ) );
 	} else {
 		/* straight up or down: yaw and roll are the same turn, call it yaw */
-		angles[0] = AngleToShort( m[0][2] < 0 ? 90.0f : -90.0f );
-		angles[1] = AngleToShort( RAD2DEG( atan2f( -m[1][0], m[1][1] ) ) );
+		angles[0] = m[0][2] < 0 ? 16384 : -16384;
+		angles[1] = RadToShort( atan2f( -m[1][0], m[1][1] ) );
 		angles[2] = 0;
 	}
 }
@@ -123,8 +125,8 @@ static void DirFromAngles( short pitch, short yaw, float dir[3] ) {
 static void DirToAngles( const float dir[3], short *pitch, short *yaw ) {
 	float horiz = sqrtf( dir[0] * dir[0] + dir[1] * dir[1] );
 
-	*pitch = AngleToShort( RAD2DEG( atan2f( -dir[2], horiz ) ) );
-	*yaw = horiz > 1e-5f ? AngleToShort( RAD2DEG( atan2f( dir[1], dir[0] ) ) ) : 0;
+	*pitch = RadToShort( atan2f( -dir[2], horiz ) );
+	*yaw = horiz > 1e-5f ? RadToShort( atan2f( dir[1], dir[0] ) ) : 0;
 }
 
 void MDSC_LocalRotation( const mdscMatrix_t p, const short angles[3], float q[4] ) {

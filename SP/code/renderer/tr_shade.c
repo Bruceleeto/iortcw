@@ -244,7 +244,7 @@ R_BindAnimatedImage
 =================
 */
 void R_BindAnimatedImage( textureBundle_t *bundle ) {
-	int64_t index;
+	int index;
 
 	if ( bundle->isVideoMap ) {
 		ri.CIN_RunCinematic( bundle->videoMapHandle );
@@ -885,12 +885,12 @@ static void ComputeColors( shaderStage_t *pStage ) {
 
 			// special handling for Zombie fade effect
 			if ( zombieEffect ) {
-				alpha = (float)backEnd.currentEntity->e.shaderRGBA[3] * ( dot + 1.0 ) / 2.0;
-				alpha += ( 2.0 * (float)backEnd.currentEntity->e.shaderRGBA[3] ) * ( 1.0 - ( dot + 1.0 ) / 2.0 );
-				if ( alpha > 255.0 ) {
-					alpha = 255.0;
-				} else if ( alpha < 0.0 ) {
-					alpha = 0.0;
+				alpha = (float)backEnd.currentEntity->e.shaderRGBA[3] * ( dot + 1.0f ) / 2.0f;
+				alpha += ( 2.0f * (float)backEnd.currentEntity->e.shaderRGBA[3] ) * ( 1.0f - ( dot + 1.0f ) / 2.0f );
+				if ( alpha > 255.0f ) {
+					alpha = 255.0f;
+				} else if ( alpha < 0.0f ) {
+					alpha = 0.0f;
 				}
 				tess.svars.colors[i][3] = (byte)( alpha );
 				continue;
@@ -901,17 +901,17 @@ static void ComputeColors( shaderStage_t *pStage ) {
 					if ( dot < lowest + range / 2 ) {
 						alpha = ( (float)pStage->constantColor[3] * ( ( dot - lowest ) / ( range / 2 ) ) );
 					} else {
-						alpha = ( (float)pStage->constantColor[3] * ( 1.0 - ( ( dot - lowest - range / 2 ) / ( range / 2 ) ) ) );
+						alpha = ( (float)pStage->constantColor[3] * ( 1.0f - ( ( dot - lowest - range / 2 ) / ( range / 2 ) ) ) );
 					}
-					if ( alpha > 255.0 ) {
-						alpha = 255.0;
-					} else if ( alpha < 0.0 ) {
-						alpha = 0.0;
+					if ( alpha > 255.0f ) {
+						alpha = 255.0f;
+					} else if ( alpha < 0.0f ) {
+						alpha = 0.0f;
 					}
 
 					// finally, scale according to the entity's alpha
 					if ( backEnd.currentEntity->e.hModel ) {
-						alpha *= (float)backEnd.currentEntity->e.shaderRGBA[3] / 255.0;
+						alpha *= (float)backEnd.currentEntity->e.shaderRGBA[3] / 255.0f;
 					}
 
 					tess.svars.colors[i][3] = (byte)( alpha );

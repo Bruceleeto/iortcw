@@ -164,7 +164,7 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		float v;
 
 		v = lightOrigin[i] * tr.world->lightGridInverseSize[i];
-		pos[i] = floor( v );
+		pos[i] = floorf( v );
 		frac[i] = v - pos[i];
 		if ( pos[i] < 0 ) {
 			pos[i] = 0;
@@ -194,7 +194,7 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		#if idppc
 		float d0, d1, d2, d3, d4, d5;
 		#endif
-		factor = 1.0;
+		factor = 1.0f;
 		point = gridPoint;
 		for ( j = 0 ; j < 3 ; j++ ) {
 			if ( i & ( 1 << j ) ) {
@@ -255,7 +255,7 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		VectorMA( direction, factor, normal, direction );
 	}
 
-	if ( totalFactor > 0 && totalFactor < 0.99 ) {
+	if ( totalFactor > 0 && totalFactor < 0.99f ) {
 		totalFactor = 1.0f / totalFactor;
 		VectorScale( ent->ambientLight, totalFactor, ent->ambientLight );
 		VectorScale( ent->directedLight, totalFactor, ent->directedLight );

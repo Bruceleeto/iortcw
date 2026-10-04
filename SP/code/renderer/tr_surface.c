@@ -668,8 +668,8 @@ static void LerpMeshVertexes_scalar(md3Surface_t *surf, float backlerp)
 		+ (backEnd.currentEntity->e.frame * surf->numVerts * 4);
 	newNormals = newXyz + 3;
 
-	newXyzScale = MD3_XYZ_SCALE * (1.0 - backlerp);
-	newNormalScale = 1.0 - backlerp;
+	newXyzScale = MD3_XYZ_SCALE * ( 1.0f - backlerp );
+	newNormalScale = 1.0f - backlerp;
 
 	numVerts = surf->numVerts;
 
@@ -813,26 +813,6 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 }
 
 /*
-** R_LatLongToNormal
-*/
-void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
-	unsigned lat, lng;
-
-	lat = ( latLong >> 8 ) & 0xff;
-	lng = ( latLong & 0xff );
-	lat *= ( FUNCTABLE_SIZE / 256 );
-	lng *= ( FUNCTABLE_SIZE / 256 );
-
-	// decode X as cos( lat ) * sin( long )
-	// decode Y as sin( lat ) * sin( long )
-	// decode Z as cos( long )
-
-	outNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
-	outNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
-	outNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
-}
-
-/*
 ** R_MdbWeights
 
 What an .mdb surface's kept frames each give to the frame drawn: the entity's
@@ -924,6 +904,30 @@ static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
 		m[2][1] = ( y * z + ww * x ) * l;
 		m[2][2] = 1 - ( x * x + y * y ) * l;
 
+#ifdef USE_SH4ZAM
+		{
+			shz_vec4_t r0 = shz_vec4_init( m[0][0], m[0][1], m[0][2], t[0] );
+			shz_vec4_t r1 = shz_vec4_init( m[1][0], m[1][1], m[1][2], t[1] );
+			shz_vec4_t r2 = shz_vec4_init( m[2][0], m[2][1], m[2][2], t[2] );
+			shz_vec4_t r3 = shz_vec4_init( 0, 0, 0, 1 );
+
+			shz_xmtrx_load_rows_4x4( &r0, &r1, &r2, &r3 );
+		}
+		for ( i = 0 ; i < count[bone] ; i++, v++, outXyz += 4, outNormal += 4 ) {
+			shz_vec4_t p = shz_xmtrx_transform_vec4( shz_vec4_init( v->xyz[0] * MD3_XYZ_SCALE,
+							v->xyz[1] * MD3_XYZ_SCALE, v->xyz[2] * MD3_XYZ_SCALE, 1 ) );
+			vec3_t n;
+
+			outXyz[0] = p.x;
+			outXyz[1] = p.y;
+			outXyz[2] = p.z;
+			R_LatLongToNormal( n, v->normal );
+			p = shz_xmtrx_transform_vec4( shz_vec4_init( n[0], n[1], n[2], 0 ) );
+			outNormal[0] = p.x;
+			outNormal[1] = p.y;
+			outNormal[2] = p.z;
+		}
+#else
 		for ( i = 0 ; i < count[bone] ; i++, v++, outXyz += 4, outNormal += 4 ) {
 			vec3_t p, n;
 
@@ -939,6 +943,7 @@ static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
 			outNormal[1] = m[1][0] * n[0] + m[1][1] * n[1] + m[1][2] * n[2];
 			outNormal[2] = m[2][0] * n[0] + m[2][1] * n[1] + m[2][2] * n[2];
 		}
+#endif
 	}
 }
 
@@ -986,7 +991,7 @@ static void LerpMdbKeyVertexes( mdcSurface_t *surf, float backlerp ) {
 			VectorMA( outNormal, w[j].weight, n, outNormal );
 		}
 		if ( numWeights > 1 ) {
-			VectorNormalize( outNormal );
+			R_NormalizeFast( outNormal );
 		}
 	}
 }
@@ -1001,7 +1006,6 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 	float oldXyzScale, newXyzScale;
 	float oldNormalScale, newNormalScale;
 	int vertNum;
-	unsigned lat, lng;
 	int numVerts;
 
 	int oldBase, newBase;
@@ -1028,8 +1032,8 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 		}
 	}
 
-	newXyzScale = MD3_XYZ_SCALE * ( 1.0 - backlerp );
-	newNormalScale = 1.0 - backlerp;
+	newXyzScale = MD3_XYZ_SCALE * ( 1.0f - backlerp );
+	newNormalScale = 1.0f - backlerp;
 
 	numVerts = surf->numVerts;
 
@@ -1052,14 +1056,7 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 				newXyzComp++;
 				VectorAdd( outXyz, newOfsVec, outXyz );
 			} else {
-				lat = ( newNormals[0] >> 8 ) & 0xff;
-				lng = ( newNormals[0] & 0xff );
-				lat *= 4;
-				lng *= 4;
-
-				outNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
-				outNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
-				outNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
+				R_LatLongToNormal( outNormal, newNormals[0] );
 			}
 		}
 	} else {
@@ -1097,16 +1094,9 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 			if ( hasComp && *newComp >= 0 ) {
 				R_MDC_DecodeXyzCompressed( newXyzComp->ofsVec, newOfsVec, uncompressedNewNormal );
 				newXyzComp++;
-				VectorMA( outXyz, 1.0 - backlerp, newOfsVec, outXyz );
+				VectorMA( outXyz, 1.0f - backlerp, newOfsVec, outXyz );
 			} else {
-				lat = ( newNormals[0] >> 8 ) & 0xff;
-				lng = ( newNormals[0] & 0xff );
-				lat *= 4;
-				lng *= 4;
-
-				uncompressedNewNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
-				uncompressedNewNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
-				uncompressedNewNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
+				R_LatLongToNormal( uncompressedNewNormal, newNormals[0] );
 			}
 
 			if ( hasComp && *oldComp >= 0 ) {
@@ -1114,21 +1104,14 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 				oldXyzComp++;
 				VectorMA( outXyz, backlerp, oldOfsVec, outXyz );
 			} else {
-				lat = ( oldNormals[0] >> 8 ) & 0xff;
-				lng = ( oldNormals[0] & 0xff );
-				lat *= 4;
-				lng *= 4;
-
-				uncompressedOldNormal[0] = R_SinIndex( ( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK ) * R_SinIndex( lng );
-				uncompressedOldNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
-				uncompressedOldNormal[2] = R_SinIndex( ( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK );
+				R_LatLongToNormal( uncompressedOldNormal, oldNormals[0] );
 			}
 
 			outNormal[0] = uncompressedOldNormal[0] * oldNormalScale + uncompressedNewNormal[0] * newNormalScale;
 			outNormal[1] = uncompressedOldNormal[1] * oldNormalScale + uncompressedNewNormal[1] * newNormalScale;
 			outNormal[2] = uncompressedOldNormal[2] * oldNormalScale + uncompressedNewNormal[2] * newNormalScale;
 
-			VectorNormalize( outNormal );
+			R_NormalizeFast( outNormal );
 		}
 	}
 }

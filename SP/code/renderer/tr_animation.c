@@ -312,17 +312,17 @@ float RB_CalcMDSLod( refEntity_t *refent, vec3_t origin, float radius, float mod
 	}
 
 	if ( refent->reFlags & REFLAG_FORCE_LOD ) {
-		flod *= 0.5;
+		flod *= 0.5f;
 	}
 //----(SA)	like reflag_force_lod, but separate for the moment
 	if ( refent->reFlags & REFLAG_DEAD_LOD ) {
-		flod *= 0.8;
+		flod *= 0.8f;
 	}
 
-	flod -= 0.25 * ( r_lodbias->value ) + modelBias;
+	flod -= 0.25f * ( r_lodbias->value ) + modelBias;
 
-	if ( flod < 0.0 ) {
-		flod = 0.0;
+	if ( flod < 0.0f ) {
+		flod = 0.0f;
 	} else if ( flod > 1.0f ) {
 		flod = 1.0f;
 	}
@@ -483,10 +483,10 @@ static float sp, sy;
 static float cp, cy;
 
 static ID_INLINE void LocalAngleVector( vec3_t angles, vec3_t forward ) {
-	LAVangle = angles[YAW] * ( M_PI * 2 / 360 );
+	LAVangle = angles[YAW] * (float)( M_PI * 2 / 360 );
 	sy = sin( LAVangle );
 	cy = cos( LAVangle );
-	LAVangle = angles[PITCH] * ( M_PI * 2 / 360 );
+	LAVangle = angles[PITCH] * (float)( M_PI * 2 / 360 );
 	sp = sin( LAVangle );
 	cp = cos( LAVangle );
 
@@ -504,7 +504,7 @@ static ID_INLINE void LocalVectorMA( vec3_t org, float dist, vec3_t vec, vec3_t 
 #define ANGLES_SHORT_TO_FLOAT( pf, sh )     { *( pf++ ) = SHORT2ANGLE( *( sh++ ) ); *( pf++ ) = SHORT2ANGLE( *( sh++ ) ); *( pf++ ) = SHORT2ANGLE( *( sh++ ) ); }
 
 static ID_INLINE void SLerp_Normal( vec3_t from, vec3_t to, float tt, vec3_t out ) {
-	float ft = 1.0 - tt;
+	float ft = 1.0f - tt;
 
 	out[0] = from[0] * ft + to[0] * tt;
 	out[1] = from[1] * ft + to[1] * tt;
@@ -635,7 +635,7 @@ void R_CalcBone( mdsHeader_t *header, const refEntity_t *refent, int boneNum ) {
 			// blend the angles together
 			for ( j = 0; j < 3; j++ ) {
 				diff = tangles[j] - angles[j];
-				if ( fabs( diff ) > 180 ) {
+				if ( fabsf( diff ) > 180 ) {
 					diff = AngleNormalize180( diff );
 				}
 				angles[j] = angles[j] + thisBoneInfo->torsoWeight * diff;
@@ -659,7 +659,7 @@ void R_CalcBone( mdsHeader_t *header, const refEntity_t *refent, int boneNum ) {
 			// blend the angles together
 			for ( j = 0; j < 3; j++ ) {
 				diff = tangles[j] - angles[j];
-				if ( fabs( diff ) > 180 ) {
+				if ( fabsf( diff ) > 180 ) {
 					diff = AngleNormalize180( diff );
 				}
 				angles[j] = angles[j] + thisBoneInfo->torsoWeight * diff;
@@ -823,7 +823,7 @@ void R_CalcBoneLerp( mdsHeader_t *header, const refEntity_t *refent, int boneNum
 			// blend the angles together
 			for ( j = 0; j < 3; j++ ) {
 				diff = tangles[j] - angles[j];
-				if ( fabs( diff ) > 180 ) {
+				if ( fabsf( diff ) > 180 ) {
 					diff = AngleNormalize180( diff );
 				}
 				angles[j] = angles[j] + thisBoneInfo->torsoWeight * diff;
@@ -1125,8 +1125,8 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 
 //----(SA)	modification to allow dead skeletal bodies to go below minlod (experiment)
 	if ( refent->reFlags & REFLAG_DEAD_LOD ) {
-		if ( lodScale < 0.35 ) {   // allow dead to lod down to 35% (even if below surf->minLod) (%35 is arbitrary and probably not good generally.  worked for the blackguard/infantry as a test though)
-			lodScale = 0.35;
+		if ( lodScale < 0.35f ) {   // allow dead to lod down to 35% (even if below surf->minLod) (%35 is arbitrary and probably not good generally.  worked for the blackguard/infantry as a test though)
+			lodScale = 0.35f;
 		}
 		render_count = (int)( (float) surface->numVerts * lodScale );
 

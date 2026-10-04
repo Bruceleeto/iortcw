@@ -1377,7 +1377,12 @@ extern cvar_t   *r_wolffog;
 extern cvar_t  *r_highQualityVideo;
 //====================================================================
 
-float R_NoiseGet4f( float x, float y, float z, double t );
+#define NOISE_SIZE 256     // the noise repeats every NOISE_SIZE in each of x y z t
+// t: R_NoiseTime's, so a float keeps it right
+float R_NoiseGet4f( float x, float y, float z, float t );
+static ID_INLINE float R_NoiseTime( double t ) {
+	return (float)( t - floor( t / NOISE_SIZE ) * NOISE_SIZE );
+}
 void  R_NoiseInit( void );
 
 void R_SwapBuffers( int );
@@ -2019,11 +2024,11 @@ extern float r_anormals[NUMMDCVERTEXNORMALS][3];
 #define MDC_MAX_ERROR       0.1     // if any compressed vert is off by more than this from the
 									// actual vert, make this a baseframe
 
-#define MDC_DIST_SCALE      0.05    // lower for more accuracy, but less range
+#define MDC_DIST_SCALE      0.05f   // lower for more accuracy, but less range
 
 // note: we are locked in at 8 or less bits since changing to byte-encoded normals
 #define MDC_BITS_PER_AXIS   8
-#define MDC_MAX_OFS         127.0   // to be safe
+#define MDC_MAX_OFS         127.0f  // to be safe
 
 #define MDC_MAX_DIST        ( MDC_MAX_OFS * MDC_DIST_SCALE )
 
@@ -2041,7 +2046,39 @@ void R_AddMDCSurfaces( trRefEntity_t *ent );
 // done.
 //------------------------------------------------------------------------------
 
-void R_LatLongToNormal( vec3_t outNormal, short latLong );
+// a .md3 normal: lat and long a byte each, X cos( lat ) * sin( long ),
+// Y sin( lat ) * sin( long ), Z cos( long )
+static ID_INLINE void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
+#ifdef USE_SH4ZAM
+	shz_sincos_t lat = shz_sincosu16( (uint16_t)( latLong & 0xff00 ) );
+	shz_sincos_t lng = shz_sincosu16( (uint16_t)( ( latLong & 0xff ) << 8 ) );
+
+	outNormal[0] = lat.cos * lng.sin;
+	outNormal[1] = lat.sin * lng.sin;
+	outNormal[2] = lng.cos;
+#else
+	int lat = ( ( latLong >> 8 ) & 0xff ) * ( FUNCTABLE_SIZE / 256 );
+	int lng = ( latLong & 0xff ) * ( FUNCTABLE_SIZE / 256 );
+
+	outNormal[0] = R_SinIndex( lat + FUNCTABLE_SIZE / 4 ) * R_SinIndex( lng );
+	outNormal[1] = R_SinIndex( lat ) * R_SinIndex( lng );
+	outNormal[2] = R_SinIndex( lng + FUNCTABLE_SIZE / 4 );
+#endif
+}
+
+// a lerped normal back to length 1 (fsrra with sh4zam)
+static ID_INLINE void R_NormalizeFast( vec3_t n ) {
+	float l = DotProduct( n, n );
+
+	if ( l > 0 ) {
+#ifdef USE_SH4ZAM
+		l = shz_inv_sqrtf( l );
+#else
+		l = Q_rsqrt( l );
+#endif
+		VectorScale( n, l, n );
+	}
+}
 
 
 /*
