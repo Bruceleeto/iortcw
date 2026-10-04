@@ -1228,6 +1228,10 @@ void CG_DrawSkyBoxPortal( void ) {
 	float zoomFov;
 	float f;
 	static qboolean foginited = qfalse; // only set the portal fog values once
+	static char skyString[MAX_QPATH * 2];
+	static vec3_t skyOrg;
+	static int skyFog, skyFogStart, skyFogEnd;
+	static vec3_t skyFogColor;
 
 	if ( !( cstr = (char *)CG_ConfigString( CS_SKYBOXORG ) ) || !strlen( cstr ) ) {
 		// no skybox in this map
@@ -1244,80 +1248,83 @@ void CG_DrawSkyBoxPortal( void ) {
 	backuprefdef = cg.refdef;
 
 	if ( cg_skybox.integer ) {
-		token = COM_ParseExt( &cstr, qfalse );
-		if ( !token[0] ) {
-			CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
-		}
-		cg.refdef.vieworg[0] = atof( token );
+		// parsed (atof is slow) only when the configstring changes
+		if ( strcmp( cstr, skyString ) ) {
+			Q_strncpyz( skyString, cstr, sizeof( skyString ) );
+			token = COM_ParseExt( &cstr, qfalse );
+			if ( !token[0] ) {
+				CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
+			}
+			skyOrg[0] = atof( token );
 
-		token = COM_ParseExt( &cstr, qfalse );
-		if ( !token[0] ) {
-			CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
-		}
-		cg.refdef.vieworg[1] = atof( token );
+			token = COM_ParseExt( &cstr, qfalse );
+			if ( !token[0] ) {
+				CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
+			}
+			skyOrg[1] = atof( token );
 
-		token = COM_ParseExt( &cstr, qfalse );
-		if ( !token[0] ) {
-			CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
-		}
-		cg.refdef.vieworg[2] = atof( token );
+			token = COM_ParseExt( &cstr, qfalse );
+			if ( !token[0] ) {
+				CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
+			}
+			skyOrg[2] = atof( token );
 
-		token = COM_ParseExt( &cstr, qfalse );
-		if ( !token[0] ) {
-			CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
-		}
+			token = COM_ParseExt( &cstr, qfalse );
+			if ( !token[0] ) {
+				CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring\n" );
+			}
 
-		// setup fog the first time, ignore this part of the configstring after that
-		token = COM_ParseExt( &cstr, qfalse );
-		if ( !token[0] ) {
-			CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog state\n" );
-		} else {
-			vec4_t fogColor;
-			int fogStart, fogEnd;
-
-			if ( atoi( token ) ) {   // this camera has fog
-				if ( 1 ) {
-					token = COM_ParseExt( &cstr, qfalse );
-					if ( !token[0] ) {
-						CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog[0]\n" );
-					}
-					fogColor[0] = atof( token );
-
-					token = COM_ParseExt( &cstr, qfalse );
-					if ( !token[0] ) {
-						CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog[1]\n" );
-					}
-					fogColor[1] = atof( token );
-
-					token = COM_ParseExt( &cstr, qfalse );
-					if ( !token[0] ) {
-						CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog[2]\n" );
-					}
-					fogColor[2] = atof( token );
-
-					token = COM_ParseExt( &cstr, qfalse );
-					if ( !token[0] ) {
-						fogStart = 0;
-					} else {
-						fogStart = atoi( token );
-					}
-
-					token = COM_ParseExt( &cstr, qfalse );
-					if ( !token[0] ) {
-						fogEnd = 0;
-					} else {
-						fogEnd = atoi( token );
-					}
-
-					trap_R_SetFog( FOG_PORTALVIEW, fogStart, fogEnd, fogColor[0], fogColor[1], fogColor[2], 1.1 );
-					foginited = qtrue;
-				}
+			// setup fog the first time, ignore this part of the configstring after that
+			token = COM_ParseExt( &cstr, qfalse );
+			if ( !token[0] ) {
+				CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog state\n" );
 			} else {
-				if ( !foginited ) {
-					trap_R_SetFog( FOG_PORTALVIEW, 0,0,0,0,0,0 ); // init to null
-					foginited = qtrue;
+				skyFog = atoi( token );
+				if ( skyFog ) {   // this camera has fog
+					if ( 1 ) {
+						token = COM_ParseExt( &cstr, qfalse );
+						if ( !token[0] ) {
+							CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog[0]\n" );
+						}
+						skyFogColor[0] = atof( token );
+
+						token = COM_ParseExt( &cstr, qfalse );
+						if ( !token[0] ) {
+							CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog[1]\n" );
+						}
+						skyFogColor[1] = atof( token );
+
+						token = COM_ParseExt( &cstr, qfalse );
+						if ( !token[0] ) {
+							CG_Error( "CG_DrawSkyBoxPortal: error parsing skybox configstring.  No fog[2]\n" );
+						}
+						skyFogColor[2] = atof( token );
+
+						token = COM_ParseExt( &cstr, qfalse );
+						if ( !token[0] ) {
+							skyFogStart = 0;
+						} else {
+							skyFogStart = atoi( token );
+						}
+
+						token = COM_ParseExt( &cstr, qfalse );
+						if ( !token[0] ) {
+							skyFogEnd = 0;
+						} else {
+							skyFogEnd = atoi( token );
+						}
+					}
 				}
 			}
+		}
+
+		VectorCopy( skyOrg, cg.refdef.vieworg );
+		if ( skyFog ) {
+			trap_R_SetFog( FOG_PORTALVIEW, skyFogStart, skyFogEnd, skyFogColor[0], skyFogColor[1], skyFogColor[2], 1.1 );
+			foginited = qtrue;
+		} else if ( !foginited ) {
+			trap_R_SetFog( FOG_PORTALVIEW, 0,0,0,0,0,0 ); // init to null
+			foginited = qtrue;
 		}
 
 		//----(SA)	end

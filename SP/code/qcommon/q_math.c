@@ -648,8 +648,8 @@ Returns 1, 2, or 1 + 2
 */
 int BoxOnPlaneSide(vec3_t emins, vec3_t emaxs, struct cplane_s *p)
 {
-	float	dist[2];
-	int		sides, b, i;
+	float	dist0, dist1;
+	int		sides;
 
 	// fast axial cases
 	if ( p->type < 3 ) {
@@ -662,22 +662,21 @@ int BoxOnPlaneSide(vec3_t emins, vec3_t emaxs, struct cplane_s *p)
 		return 3;
 	}
 
-	// general case
-	dist[0] = dist[1] = 0;
+	// general case: the corner furthest along the normal and the nearest
+	dist0 = dist1 = 0;
 	if (p->signbits < 8) // >= 8: default case is original code (dist[0]=dist[1]=0)
 	{
-		for (i=0 ; i<3 ; i++)
-		{
-			b = (p->signbits >> i) & 1;
-			dist[ b] += p->normal[i]*emaxs[i];
-			dist[!b] += p->normal[i]*emins[i];
-		}
+		const int s = p->signbits;
+		const float *n = p->normal;
+
+		dist0 = n[0] * ( s & 1 ? emins[0] : emaxs[0] ) + n[1] * ( s & 2 ? emins[1] : emaxs[1] ) + n[2] * ( s & 4 ? emins[2] : emaxs[2] );
+		dist1 = n[0] * ( s & 1 ? emaxs[0] : emins[0] ) + n[1] * ( s & 2 ? emaxs[1] : emins[1] ) + n[2] * ( s & 4 ? emaxs[2] : emins[2] );
 	}
 
 	sides = 0;
-	if (dist[0] >= p->dist)
+	if (dist0 >= p->dist)
 		sides = 1;
-	if (dist[1] < p->dist)
+	if (dist1 < p->dist)
 		sides |= 2;
 
 	return sides;

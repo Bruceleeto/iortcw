@@ -374,13 +374,22 @@ leaves are a box a unit about it, with an area joined to p1's and a cluster in
 p1's PVS
 ====================
 */
+// p1's leaf, for the next call from the same point (cgame asks for each of its
+// static entities from the view); CL_InitCGame forgets it with the map
+static vec3_t inPVSPoint;
+static int inPVSLeaf = -1;
+
 static qboolean CL_inPVS( const vec3_t p1, const vec3_t p2 ) {
 	int leafs[16], num, lastLeaf, i, area, cluster, area1;
 	qboolean areaOk = qfalse, clusterOk = qfalse;
 	byte *mask;
 	vec3_t mins, maxs;
 
-	num = CM_PointLeafnum( p1 );
+	if ( inPVSLeaf < 0 || !VectorCompare( p1, inPVSPoint ) ) {
+		inPVSLeaf = CM_PointLeafnum( p1 );
+		VectorCopy( p1, inPVSPoint );
+	}
+	num = inPVSLeaf;
 	area1 = CM_LeafArea( num );
 	mask = CM_ClusterPVS( CM_LeafCluster( num ) );
 
@@ -938,6 +947,7 @@ void CL_InitCGame( void ) {
 	vmInterpret_t interpret;
 
 	t1 = Sys_Milliseconds();
+	inPVSLeaf = -1;
 
 	// put away the console
 	Con_Close();

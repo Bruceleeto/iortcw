@@ -68,7 +68,7 @@ static vec3_t angles, tangles, torsoAxis[3], tmpAxis[3];
 static float *torsoParentOffset;
 static float           *tempVert, *tempNormal;
 static vec3_t vec, v2, dir;
-static float diff, a1, a2;
+static float diff, a1;
 static int render_count;
 static float lodRadius, lodScale;
 static unsigned short  *collapse_map, *pCollapseMap;
@@ -805,11 +805,11 @@ void R_CalcBoneLerp( mdsHeader_t *header, const refEntity_t *refent, int boneNum
 		sh2 = (short *)cOldTBonePtr->angles;
 		pf = angles;
 
-		a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+		a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 		*( pf++ ) = a1 - torsoBacklerp * diff;
-		a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+		a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 		*( pf++ ) = a1 - torsoBacklerp * diff;
-		a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+		a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 		*( pf++ ) = a1 - torsoBacklerp * diff;
 
 	} else {
@@ -818,11 +818,11 @@ void R_CalcBoneLerp( mdsHeader_t *header, const refEntity_t *refent, int boneNum
 		sh2 = (short *)cOldBonePtr->angles;
 		pf = angles;
 
-		a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+		a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 		*( pf++ ) = a1 - backlerp * diff;
-		a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+		a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 		*( pf++ ) = a1 - backlerp * diff;
-		a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+		a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 		*( pf++ ) = a1 - backlerp * diff;
 
 		if ( isTorso ) {
@@ -831,11 +831,11 @@ void R_CalcBoneLerp( mdsHeader_t *header, const refEntity_t *refent, int boneNum
 			sh2 = (short *)cOldTBonePtr->angles;
 			pf = tangles;
 
-			a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+			a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 			*( pf++ ) = a1 - torsoBacklerp * diff;
-			a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+			a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 			*( pf++ ) = a1 - torsoBacklerp * diff;
-			a1 = SHORT2ANGLE( *( sh++ ) ); a2 = SHORT2ANGLE( *( sh2++ ) ); diff = AngleNormalize180( a1 - a2 );
+			a1 = SHORT2ANGLE( *sh ); diff = SHORT2ANGLE( (short)( *( sh++ ) - *( sh2++ ) ) );
 			*( pf++ ) = a1 - torsoBacklerp * diff;
 
 			// blend the angles together
@@ -1264,10 +1264,34 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	tempNormal = ( float * )( tess.normal + baseVertex );
 	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
 		const mdscWeight_t *w = (const mdscWeight_t *)( v + 1 );
+#ifndef USE_SH4ZAM
 		vec3_t ofs;
+#endif
 
 		VectorClear( tempVert );
 
+#ifdef USE_SH4ZAM
+		// fipr: ( matrix row, translation ) . ( offset, MDSC_OFS_SCALE ), the
+		// offset's scale moved into the weight
+		for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
+			const float ox = w->offset[0], oy = w->offset[1], oz = w->offset[2];
+			const float s = w->boneWeight * ( 1.0f / ( MDSC_WEIGHT_SCALE * MDSC_OFS_SCALE ) );
+
+			bone = &bones[w->boneIndex];
+			tempVert[0] += s * shz_dot8f( ox, oy, oz, MDSC_OFS_SCALE, bone->matrix[0][0], bone->matrix[0][1], bone->matrix[0][2], bone->translation[0] );
+			tempVert[1] += s * shz_dot8f( ox, oy, oz, MDSC_OFS_SCALE, bone->matrix[1][0], bone->matrix[1][1], bone->matrix[1][2], bone->translation[1] );
+			tempVert[2] += s * shz_dot8f( ox, oy, oz, MDSC_OFS_SCALE, bone->matrix[2][0], bone->matrix[2][1], bone->matrix[2][2], bone->translation[2] );
+		}
+		w = (const mdscWeight_t *)( v + 1 );
+		{
+			const float nx = v->normal[0], ny = v->normal[1], nz = v->normal[2];
+
+			bone = &bones[w->boneIndex];
+			tempNormal[0] = shz_dot6f( nx, ny, nz, bone->matrix[0][0], bone->matrix[0][1], bone->matrix[0][2] ) * ( 1.0f / MDSC_NORMAL_SCALE );
+			tempNormal[1] = shz_dot6f( nx, ny, nz, bone->matrix[1][0], bone->matrix[1][1], bone->matrix[1][2] ) * ( 1.0f / MDSC_NORMAL_SCALE );
+			tempNormal[2] = shz_dot6f( nx, ny, nz, bone->matrix[2][0], bone->matrix[2][1], bone->matrix[2][2] ) * ( 1.0f / MDSC_NORMAL_SCALE );
+		}
+#else
 		for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
 			bone = &bones[w->boneIndex];
 			ofs[0] = w->offset[0] * ( 1.0f / MDSC_OFS_SCALE );
@@ -1281,6 +1305,7 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		ofs[1] = v->normal[1] * ( 1.0f / MDSC_NORMAL_SCALE );
 		ofs[2] = v->normal[2] * ( 1.0f / MDSC_NORMAL_SCALE );
 		LocalMatrixTransformVector( ofs, bones[w->boneIndex].matrix, tempNormal );
+#endif
 
 		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0] * ( 1.0f / MDSC_TC_SCALE );
 		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1] * ( 1.0f / MDSC_TC_SCALE );
