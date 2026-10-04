@@ -493,16 +493,11 @@ void VectorRotate( vec3_t in, vec3_t matrix[3], vec3_t out ) {
 
 //============================================================================
 
-#if !idppc
+#if !idppc && !defined( USE_SH4ZAM )
 /*
 ** float q_rsqrt( float number )
 */
 float Q_rsqrt( float number ) {
-#ifdef USE_SH4ZAM
-	// sh4zam: the SH4's fsrra, one instruction (its C version elsewhere); 0
-	// for 0, where the trick below gives a huge number
-	return shz_inv_sqrtf( number );
-#else
 	floatint_t t;
 	float x2, y;
 	const float threehalfs = 1.5F;
@@ -515,7 +510,6 @@ float Q_rsqrt( float number ) {
 //	y  = y * ( threehalfs - ( x2 * y * y ) );   // 2nd iteration, this can be removed
 
 	return y;
-#endif
 }
 
 float Q_fabs( float f ) {

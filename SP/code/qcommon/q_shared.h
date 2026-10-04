@@ -604,6 +604,9 @@ static ID_INLINE float Q_fabs(float x) {
 #define Q_fabs __fabsf
 #endif
 
+#elif defined( USE_SH4ZAM )
+static ID_INLINE float Q_fabs( float f ) { return fabsf( f ); }
+static ID_INLINE float Q_rsqrt( float f ) { return shz_inv_sqrtf( f ); }
 #else
 float Q_fabs( float f );
 float Q_rsqrt( float f );       // reciprocal square root
