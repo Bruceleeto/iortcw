@@ -54,8 +54,8 @@ static int indexes;
 static int baseIndex, baseVertex, oldIndexes;
 static int numVerts;
 static mdscVertex_t    *v;
-static mdsBoneFrame_t bones[MDS_MAX_BONES], rawBones[MDS_MAX_BONES], oldBones[MDS_MAX_BONES];
-static char validBones[MDS_MAX_BONES];
+static mdsBoneFrame_t bones[MDS_MAX_BONES], *rawBones, *oldBones;
+static char *validBones;
 static char newBones[ MDS_MAX_BONES ];
 static mdsBoneFrame_t  *bonePtr, *bone, *parentBone;
 static mdsBoneFrameCompressed_t    *cBonePtr, *cTBonePtr, *cOldBonePtr, *cOldTBonePtr, *cBoneList, *cOldBoneList, *cBoneListTorso, *cOldBoneListTorso;
@@ -64,7 +64,8 @@ static mdsFrame_t      *frame, *torsoFrame;
 static mdsFrame_t      *oldFrame, *oldTorsoFrame;
 static short           *sh, *sh2;
 static float           *pf;
-static vec3_t angles, tangles, torsoParentOffset, torsoAxis[3], tmpAxis[3];
+static vec3_t angles, tangles, torsoAxis[3], tmpAxis[3];
+static float *torsoParentOffset;
 static float           *tempVert, *tempNormal;
 static vec3_t vec, v2, dir;
 static float diff, a1, a2;
@@ -77,7 +78,20 @@ static qboolean isTorso, fullTorso;
 static vec4_t m1[4], m2[4];
 //static  vec4_t m3[4], m4[4], tmp1[4], tmp2[4]; // TTimo: unused
 static vec3_t t;
-static refEntity_t lastBoneEntity;
+
+// the bones of the last BONE_CACHE entities (tags and surfaces of one entity
+// come at different times in a frame); R_CalcBones points rawBones, oldBones,
+// validBones and torsoParentOffset at the entity's slot
+#define BONE_CACHE 8
+
+static struct {
+	refEntity_t entity;
+	int used;
+	char valid[MDS_MAX_BONES];
+	mdsBoneFrame_t raw[MDS_MAX_BONES], old[MDS_MAX_BONES];
+	vec3_t torsoParentOffset;
+} boneCache[BONE_CACHE];
+static int boneCacheTime;
 
 static int totalrv, totalrt, totalv, totalt;    //----(SA)
 
@@ -161,6 +175,7 @@ mdsFrame_t *R_MDSFrame( mdsHeader_t *header, int frame ) {
 	for ( i = 0; i < MDS_FRAME_CACHE; i++ ) {
 		if ( mdsFrameCache[i].header == header && mdsFrameCache[i].frame == frame ) {
 			mdsFrameCache[i].used = ++mdsFrameTime;
+			PROF_COUNT( STAT_FRAMEHITS, 1 );
 			return (mdsFrame_t *)mdsFrameData[i];
 		}
 		if ( mdsFrameCache[i].used < mdsFrameCache[oldest].used ) {
@@ -168,6 +183,7 @@ mdsFrame_t *R_MDSFrame( mdsHeader_t *header, int frame ) {
 		}
 	}
 
+	PROF_COUNT( STAT_FRAMEMISSES, 1 );
 	if ( header->version == MDSC_VERSION_SHARED ) {
 		const mdscShare_t *share = (const mdscShare_t *)( (byte *)header + header->ofsFrames );
 		MDSC_DecodeSharedFrame( header, R_GetModelByHandle( share->baseHandle )->mds, frame, mdsFrameData[oldest] );
@@ -184,6 +200,8 @@ mdsFrame_t *R_MDSFrame( mdsHeader_t *header, int frame ) {
 void R_ClearMDSFrames( void ) {
 	Com_Memset( mdsFrameCache, 0, sizeof( mdsFrameCache ) );
 	mdsFrameTime = 0;
+	Com_Memset( boneCache, 0, sizeof( boneCache ) );
+	boneCacheTime = 0;
 }
 
 /*
@@ -617,7 +635,7 @@ void R_CalcBone( mdsHeader_t *header, const refEntity_t *refent, int boneNum ) {
 
 	// we can assume the parent has already been uncompressed for this frame + lerp
 	if ( thisBoneInfo->parent >= 0 ) {
-		parentBone = &bones[ thisBoneInfo->parent ];
+		parentBone = &rawBones[ thisBoneInfo->parent ];
 		parentBoneInfo = &boneInfo[ thisBoneInfo->parent ];
 	} else {
 		parentBone = NULL;
@@ -755,7 +773,7 @@ void R_CalcBoneLerp( mdsHeader_t *header, const refEntity_t *refent, int boneNum
 	thisBoneInfo = &boneInfo[boneNum];
 
 	if ( thisBoneInfo->parent >= 0 ) {
-		parentBone = &bones[ thisBoneInfo->parent ];
+		parentBone = &rawBones[ thisBoneInfo->parent ];
 		parentBoneInfo = &boneInfo[ thisBoneInfo->parent ];
 	} else {
 		parentBone = NULL;
@@ -920,17 +938,34 @@ R_CalcBones
 */
 void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList, int numBones ) {
 
-	int i;
+	int i, slot;
 	int     *boneRefs;
 	float torsoWeight;
+
+	PROF_COUNT( STAT_BONECALLS, 1 );
+	for ( slot = 0, i = 0; i < BONE_CACHE; i++ ) {
+		if ( !memcmp( &boneCache[i].entity, refent, sizeof( refEntity_t ) ) ) {
+			slot = i;
+			break;
+		}
+		if ( boneCache[i].used < boneCache[slot].used ) {
+			slot = i;
+		}
+	}
+	validBones = boneCache[slot].valid;
+	rawBones = boneCache[slot].raw;
+	oldBones = boneCache[slot].old;
+	torsoParentOffset = boneCache[slot].torsoParentOffset;
+	boneCache[slot].used = ++boneCacheTime;
 
 	//
 	// if the entity has changed since the last time the bones were built, reset them
 	//
-	if ( memcmp( &lastBoneEntity, refent, sizeof( refEntity_t ) ) ) {
+	if ( i == BONE_CACHE ) {
 		// different, cached bones are not valid
+		PROF_COUNT( STAT_BONEMISSES, 1 );
 		memset( validBones, 0, header->numBones );
-		lastBoneEntity = *refent;
+		boneCache[slot].entity = *refent;
 
 		if ( r_bonesDebug->integer == 4 && totalrt ) {
 			ri.Printf( PRINT_ALL, "Lod %.2f  verts %4d/%4d  tris %4d/%4d  (%.2f%%)\n",
@@ -1077,7 +1112,11 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 	}
 
 	// backup the final bones
-	memcpy( oldBones, bones, sizeof( bones[0] ) * header->numBones );
+	for ( i = 0; i < header->numBones; i++ ) {
+		if ( newBones[i] ) {
+			oldBones[i] = bones[i];
+		}
+	}
 }
 
 #ifdef DBG_PROFILE_BONES

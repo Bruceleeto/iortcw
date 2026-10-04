@@ -49,6 +49,10 @@ typedef enum {
 	STAT_CULLED,        // of them, back facing or off screen
 	STAT_CLIPPED,       // of them, through the near plane
 	STAT_EMITTED,       // PVR vertexes written
+	STAT_FRAMEHITS,     // R_MDSFrame found in its cache
+	STAT_FRAMEMISSES,   // R_MDSFrame decoded
+	STAT_BONECALLS,     // R_CalcBones
+	STAT_BONEMISSES,    // of them, an entity not in the bone cache
 	STAT_NUM
 } profStat_t;
 

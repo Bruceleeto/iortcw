@@ -31,7 +31,7 @@ static const char *const sectionNames[PROF_NUM] = {
 };
 
 static const char *const statNames[STAT_NUM] = {
-	"draws", "verts", "tris", "culled", "clipped", "emitted"
+	"draws", "verts", "tris", "culled", "clipped", "emitted", "framehits", "framemisses", "bonecalls", "bonemisses"
 };
 
 int profStats[STAT_NUM];

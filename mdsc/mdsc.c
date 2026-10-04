@@ -11,6 +11,15 @@
 
 #include "mdsc.h"
 
+#ifdef USE_SH4ZAM
+#include <sh4zam/shz_scalar.h>
+#define FastSqrt( x )       shz_sqrtf( x )
+#define FastDiv( a, b )     shz_divf_fsrra( a, b )     /* b > 0 */
+#else
+#define FastSqrt( x )       sqrtf( x )
+#define FastDiv( a, b )     ( ( a ) / ( b ) )
+#endif
+
 /* where they are in an mdsHeader_t / mdscBoneInfo_t */
 #define HDR_NUMFRAMES   80
 #define HDR_NUMBONES    84
@@ -196,7 +205,7 @@ static void UnpackQuat( unsigned int packed, float q[4] ) {
 		sum += q[i] * q[i];
 		shift -= 10;
 	}
-	q[big] = sum < 1 ? sqrtf( 1 - sum ) : 0;
+	q[big] = sum < 1 ? FastSqrt( 1 - sum ) : 0;
 }
 
 void MDSC_PackDir( const float dir[3], short packed[4] ) {
@@ -392,7 +401,7 @@ static void TrackFloats( const unsigned char *animBase, const mdscTrack_t *track
 	if ( kf == frame || nf < 0 ) {
 		memcpy( out, v, n * 4 );
 	} else {
-		float t = (float)( frame - kf ) / (float)( nf - kf );
+		float t = FastDiv( (float)( frame - kf ), (float)( nf - kf ) );
 		for ( c = 0; c < n; c++ ) {
 			out[c] = v[c] + ( v[c + n] - v[c] ) * t;
 		}
@@ -411,7 +420,7 @@ static void TrackQuatAt( const unsigned char *animBase, const mdscTrack_t *track
 
 		UnpackQuat( values[k], a );
 		UnpackQuat( values[k + 1], b );
-		LerpQuat( a, b, (float)( frame - kf ) / (float)( nf - kf ), q );
+		LerpQuat( a, b, FastDiv( (float)( frame - kf ), (float)( nf - kf ) ), q );
 	}
 }
 
@@ -425,7 +434,7 @@ static void TrackDirAt( const unsigned char *animBase, const mdscTrack_t *track,
 			dir[i] = a[i];
 		}
 	} else {
-		float t = (float)( frame - kf ) / (float)( nf - kf );
+		float t = FastDiv( (float)( frame - kf ), (float)( nf - kf ) );
 		for ( i = 0; i < 3; i++ ) {
 			dir[i] = a[i] + ( a[i + 4] - a[i] ) * t;
 		}
