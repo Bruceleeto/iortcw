@@ -54,8 +54,13 @@ typedef struct {
 	int firstLeafSurface;
 
 	unsigned short numLeafBrushes;
-	unsigned short numLeafSurfaces;
+	unsigned short numLeafSurfaces; // CM_LEAF_NEARLADDER | the count (CM_LeafSurfaces)
 } cLeaf_t;
+
+// a ladder brush is within reach of this leaf (a .col's COL_LEAF_NEARLADDER;
+// every leaf of a .bsp): CM_PointContents reports CONTENTS_NEARLADDER
+#define CM_LEAF_NEARLADDER      0x8000
+#define CM_LeafSurfaces( l )    ( ( l )->numLeafSurfaces & 0x7fff )
 
 typedef struct cmodel_s {
 	vec3_t mins, maxs;
@@ -71,13 +76,23 @@ typedef struct {
 #define CM_SidePlane( s )           ( &cm.planes[( s )->planeNum] )
 #define CM_SideSurfaceFlags( s )    ( ( s )->shaderNum == CM_NO_SHADER ? 0 : cm.shaders[( s )->shaderNum].surfaceFlags )
 
+// 32 bytes: one SH4 cache line, and never written (the per-trace checkcount
+// is in cm.brushChecks). A plain axial box (CM_BRUSH_AXIAL: 6 sides, in
+// CM_BoundBrush's order -x +x -y +y -z +z) is traced from bounds alone,
+// without reading its sides or planes.
 typedef struct {
 	int contents;               // its shader's
 	vec3_t bounds[2];
-	int numsides;
-	cbrushside_t    *sides;
-	int checkcount;             // to avoid repeated testings
+	unsigned int sides;         // first side << CM_BRUSH_SIDES_SHIFT | CM_BRUSH_AXIAL | number of sides
 } cbrush_t;
+
+#define CM_BRUSH_SIDES_SHIFT    9
+#define CM_BRUSH_AXIAL          0x100
+#define CM_BRUSH_NUMSIDES_MASK  0xff
+#define CM_BrushNumSides( b )   ( ( b )->sides & CM_BRUSH_NUMSIDES_MASK )
+#define CM_BrushSides( b )      ( cm.brushsides + ( ( b )->sides >> CM_BRUSH_SIDES_SHIFT ) )
+#define CM_BrushAxial( b )      ( ( b )->sides & CM_BRUSH_AXIAL )
+#define CM_BrushSidesWord( first, num, axial )  ( ( (unsigned)( first ) << CM_BRUSH_SIDES_SHIFT ) | ( ( axial ) ? CM_BRUSH_AXIAL : 0 ) | ( num ) )
 
 
 typedef struct {
@@ -126,6 +141,7 @@ typedef struct {
 
 	int numBrushes;
 	cbrush_t    *brushes;
+	int         *brushChecks;   // a brush's: cm.checkcount once this trace tested it
 
 	int numClusters;
 	int clusterBytes;

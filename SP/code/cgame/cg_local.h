@@ -2418,6 +2418,9 @@ qboolean    trap_GetServerCommand( int serverCommandNumber );
 // snapshot, and it may be quite a few higher if it is a fast computer on
 // a lagged connection
 int         trap_GetCurrentCmdNumber( void );
+// the player state the server in this process has right now, after this
+// frame's usercmd; false when there is no local player
+qboolean    trap_GetLocalPlayerState( playerState_t *ps );
 
 qboolean    trap_GetUserCmd( int cmdNumber, usercmd_t *ucmd );
 

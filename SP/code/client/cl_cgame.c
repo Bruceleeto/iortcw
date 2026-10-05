@@ -648,6 +648,8 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return CL_GetServerCommand( args[1] );
 	case CG_GETCURRENTCMDNUMBER:
 		return CL_GetCurrentCmdNumber();
+	case CG_GETLOCALPLAYERSTATE:
+		return SV_LocalPlayerState( VMA( 1 ) );
 	case CG_GETUSERCMD:
 		return CL_GetUserCmd( args[1], VMA( 2 ) );
 	case CG_SETUSERCMDVALUE:

@@ -75,6 +75,8 @@ cmodel_t box_model;
 cplane_t    *box_planes;
 cbrush_t    *box_brush;
 
+static qboolean cm_loadingCol;  // the lumps being loaded are a .col's (CMod_LoadLeafs)
+
 
 
 void    CM_InitBoxHull( void );
@@ -164,7 +166,7 @@ void CMod_LoadSubmodels( bspLump_t *l ) {
 		}
 
 		// make a "leaf" just to hold the model's brushes and surfaces
-		if ( (unsigned)LittleLong( in->numBrushes ) > 0xffff || (unsigned)LittleLong( in->numSurfaces ) > 0xffff
+		if ( (unsigned)LittleLong( in->numBrushes ) > 0xffff || (unsigned)LittleLong( in->numSurfaces ) > 0x7fff
 			 || (unsigned)( LittleLong( in->firstBrush ) + LittleLong( in->numBrushes ) ) > 0x10000
 			 || (unsigned)( LittleLong( in->firstSurface ) + LittleLong( in->numSurfaces ) ) > 0x10000 ) {
 			Com_Error( ERR_DROP, "CMod_LoadSubmodels: model %i out of range", i );
@@ -231,14 +233,42 @@ CM_BoundBrush
 =================
 */
 void CM_BoundBrush( cbrush_t *b ) {
-	b->bounds[0][0] = -CM_SidePlane( &b->sides[0] )->dist;
-	b->bounds[1][0] = CM_SidePlane( &b->sides[1] )->dist;
+	cbrushside_t *sides = CM_BrushSides( b );
 
-	b->bounds[0][1] = -CM_SidePlane( &b->sides[2] )->dist;
-	b->bounds[1][1] = CM_SidePlane( &b->sides[3] )->dist;
+	b->bounds[0][0] = -CM_SidePlane( &sides[0] )->dist;
+	b->bounds[1][0] = CM_SidePlane( &sides[1] )->dist;
 
-	b->bounds[0][2] = -CM_SidePlane( &b->sides[4] )->dist;
-	b->bounds[1][2] = CM_SidePlane( &b->sides[5] )->dist;
+	b->bounds[0][1] = -CM_SidePlane( &sides[2] )->dist;
+	b->bounds[1][1] = CM_SidePlane( &sides[3] )->dist;
+
+	b->bounds[0][2] = -CM_SidePlane( &sides[4] )->dist;
+	b->bounds[1][2] = CM_SidePlane( &sides[5] )->dist;
+}
+
+/*
+=================
+CM_BrushIsAxialBox
+
+Six sides whose planes are exactly the axial ones in CM_BoundBrush's order,
+so the brush is its bounds (CM_BRUSH_AXIAL)
+=================
+*/
+static qboolean CM_BrushIsAxialBox( const cbrushside_t *sides, int numsides ) {
+	int i, j;
+
+	if ( numsides != 6 ) {
+		return qfalse;
+	}
+	for ( i = 0 ; i < 6 ; i++ ) {
+		const cplane_t *p = CM_SidePlane( &sides[i] );
+
+		for ( j = 0 ; j < 3 ; j++ ) {
+			if ( p->normal[j] != ( j != i >> 1 ? 0.0f : ( i & 1 ) ? 1.0f : -1.0f ) ) {
+				return qfalse;
+			}
+		}
+	}
+	return qtrue;
 }
 
 
@@ -264,13 +294,19 @@ void CMod_LoadBrushes( bspLump_t *l ) {
 	}
 
 	cm.brushes = Hunk_Alloc( ( BOX_BRUSHES + count ) * sizeof( *cm.brushes ), h_high );
+	cm.brushChecks = Hunk_Alloc( ( BOX_BRUSHES + count ) * sizeof( *cm.brushChecks ), h_high );
 	cm.numBrushes = count;
 
 	out = cm.brushes;
 
 	for ( i = 0 ; i < count ; i++, out++, in++ ) {
-		out->sides = cm.brushsides + LittleLong( in->firstSide );
-		out->numsides = LittleLong( in->numSides );
+		int firstSide = LittleLong( in->firstSide ), numSides = LittleLong( in->numSides );
+
+		if ( firstSide < 0 || numSides < 0 || numSides > CM_BRUSH_NUMSIDES_MASK || firstSide + numSides > cm.numBrushSides
+			 || firstSide >= 1 << ( 32 - CM_BRUSH_SIDES_SHIFT ) ) {
+			Com_Error( ERR_DROP, "CMod_LoadBrushes: brush %i: sides %i to %i out of range", i, firstSide, firstSide + numSides );
+		}
+		out->sides = CM_BrushSidesWord( firstSide, numSides, CM_BrushIsAxialBox( cm.brushsides + firstSide, numSides ) );
 
 		shaderNum = LittleLong( in->shaderNum );
 		if ( shaderNum < 0 || shaderNum >= cm.numShaders ) {
@@ -312,9 +348,12 @@ void CMod_LoadLeafs( bspLump_t *l ) {
 	{
 		int cluster = LittleLong( in->cluster ), area = LittleLong( in->area );
 		int numBrushes = LittleLong( in->numLeafBrushes ), numSurfaces = LittleLong( in->numLeafSurfaces );
+		// a .col says which leaves have a ladder within reach; a .bsp can't, so all do
+		int nearLadder = cm_loadingCol ? ( numSurfaces & COL_LEAF_NEARLADDER ) : 1;
 
+		numSurfaces &= ~COL_LEAF_NEARLADDER;
 		if ( cluster < -1 || cluster > 0x7fff || area < -1 || area > 0x7fff
-			 || (unsigned)numBrushes > 0xffff || (unsigned)numSurfaces > 0xffff ) {
+			 || (unsigned)numBrushes > 0xffff || (unsigned)numSurfaces > 0x7fff ) {
 			Com_Error( ERR_DROP, "CMod_LoadLeafs: leaf %i out of range", i );
 		}
 		out->cluster = cluster;
@@ -322,7 +361,7 @@ void CMod_LoadLeafs( bspLump_t *l ) {
 		out->firstLeafBrush = LittleLong( in->firstLeafBrush );
 		out->numLeafBrushes = numBrushes;
 		out->firstLeafSurface = LittleLong( in->firstLeafSurface );
-		out->numLeafSurfaces = numSurfaces;
+		out->numLeafSurfaces = numSurfaces | ( nearLadder ? CM_LEAF_NEARLADDER : 0 );
 
 		if ( out->cluster >= cm.numClusters ) {
 			cm.numClusters = out->cluster + 1;
@@ -911,6 +950,7 @@ static qboolean CM_LoadCol( const char *name ) {
 		Com_Error( ERR_DROP, "%s isn't a version %i .col", colName, COL_VERSION );
 	}
 
+	cm_loadingCol = qtrue;
 	CMod_LoadColLump( f, &header, COL_LUMP_SHADERS, CMod_LoadShaders );
 	CMod_LoadColLump( f, &header, COL_LUMP_LEAFS, CMod_LoadLeafs );
 	CMod_LoadColLump( f, &header, COL_LUMP_LEAFBRUSHES, CMod_LoadLeafBrushes );
@@ -928,6 +968,7 @@ static qboolean CM_LoadCol( const char *name ) {
 	CM_FreeLump( &patches );
 
 	FS_FCloseFile( f );
+	cm_loadingCol = qfalse;
 	return qtrue;
 }
 
@@ -984,6 +1025,7 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	CM_FreeEntityString();
 	Com_Memset( &cm, 0, sizeof( cm ) );
 	CM_ClearLevelPatches();
+	cm_loadingCol = qfalse;
 
 	if ( !name[0] ) {
 		cm.numLeafs = 1;
@@ -1139,8 +1181,7 @@ void CM_InitBoxHull( void ) {
 	box_planes = &cm.planes[cm.numPlanes];
 
 	box_brush = &cm.brushes[cm.numBrushes];
-	box_brush->numsides = 6;
-	box_brush->sides = cm.brushsides + cm.numBrushSides;
+	box_brush->sides = CM_BrushSidesWord( cm.numBrushSides, 6, qtrue );    // its sides are in CM_BoundBrush's order
 	box_brush->contents = CONTENTS_BODY;
 
 	box_model.leaf.numLeafBrushes = 1;
@@ -1152,9 +1193,10 @@ void CM_InitBoxHull( void ) {
 	{
 		side = i & 1;
 
-		// brush sides
+		// brush sides, in CM_BoundBrush's order (-x +x -y +y -z +z): side 0
+		// is the -x plane at mins (box_planes[3]), side 1 the +x at maxs ([0])
 		s = &cm.brushsides[cm.numBrushSides + i];
-		s->planeNum = cm.numPlanes + i * 2 + side;
+		s->planeNum = cm.numPlanes + ( i >> 1 ) * 4 + ( side ? 0 : 3 );
 		s->shaderNum = CM_NO_SHADER;
 
 		// planes

@@ -559,3 +559,22 @@ qboolean SV_LocalSnapshot( int snapshotNum, snapshot_t *snapshot ) {
 	}
 	return qtrue;
 }
+
+/*
+=======================
+SV_LocalPlayerState
+
+The player's state as the game has it now: after this frame's usercmd, which
+CL_SendCmd ran through SV_LocalClientMessage before cgame draws, so cgame can
+take it instead of predicting (CG_PredictPlayerState)
+=======================
+*/
+qboolean SV_LocalPlayerState( playerState_t *ps ) {
+	client_t *cl = SV_LocalClient();
+
+	if ( !cl || cl->state != CS_ACTIVE || !cl->gentity ) {
+		return qfalse;
+	}
+	*ps = *SV_GameClientNum( cl - svs.clients );
+	return qtrue;
+}

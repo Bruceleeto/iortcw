@@ -110,10 +110,10 @@ void CM_StoreBrushes( leafList_t *ll, int nodenum ) {
 	for ( k = 0 ; k < leaf->numLeafBrushes ; k++ ) {
 		brushnum = cm.leafbrushes[leaf->firstLeafBrush + k];
 		b = &cm.brushes[brushnum];
-		if ( b->checkcount == cm.checkcount ) {
+		if ( cm.brushChecks[brushnum] == cm.checkcount ) {
 			continue;   // already checked this brush in another leaf
 		}
-		b->checkcount = cm.checkcount;
+		cm.brushChecks[brushnum] = cm.checkcount;
 		for ( i = 0 ; i < 3 ; i++ ) {
 			if ( b->bounds[0][i] >= ll->bounds[1][i] || b->bounds[1][i] <= ll->bounds[0][i] ) {
 				break;
@@ -130,7 +130,7 @@ void CM_StoreBrushes( leafList_t *ll, int nodenum ) {
 	}
 #if 0
 	// store patches?
-	for ( k = 0 ; k < leaf->numLeafSurfaces ; k++ ) {
+	for ( k = 0 ; k < CM_LeafSurfaces( leaf ) ; k++ ) {
 		patch = cm.surfaces[ cm.leafsurfaces[ leaf->firstleafsurface + k ] ];
 		if ( !patch ) {
 			continue;
@@ -255,7 +255,13 @@ int CM_PointContents( const vec3_t p, clipHandle_t model ) {
 	}
 
 	contents = 0;
+	if ( !model && ( leaf->numLeafSurfaces & CM_LEAF_NEARLADDER ) ) {
+		contents |= CONTENTS_NEARLADDER;
+	}
 	for ( k = 0 ; k < leaf->numLeafBrushes ; k++ ) {
+		int numsides;
+		cbrushside_t *sides;
+
 		brushnum = cm.leafbrushes[leaf->firstLeafBrush + k];
 		b = &cm.brushes[brushnum];
 
@@ -264,16 +270,28 @@ int CM_PointContents( const vec3_t p, clipHandle_t model ) {
 		}
 
 		// see if the point is in the brush
-		for ( i = 0 ; i < b->numsides ; i++ ) {
-			d = DotProduct( p, CM_SidePlane( &b->sides[i] )->normal );
+		if ( CM_BrushAxial( b ) ) {
+			// an axial box: exactly its bounds (the test above has an epsilon)
+			if ( p[0] > b->bounds[1][0] || p[0] < b->bounds[0][0]
+				 || p[1] > b->bounds[1][1] || p[1] < b->bounds[0][1]
+				 || p[2] > b->bounds[1][2] || p[2] < b->bounds[0][2] ) {
+				continue;
+			}
+			contents |= b->contents;
+			continue;
+		}
+		numsides = CM_BrushNumSides( b );
+		sides = CM_BrushSides( b );
+		for ( i = 0 ; i < numsides ; i++ ) {
+			d = DotProduct( p, CM_SidePlane( &sides[i] )->normal );
 // FIXME test for Cash
-//			if ( d >= CM_SidePlane( &b->sides[i] )->dist ) {
-			if ( d > CM_SidePlane( &b->sides[i] )->dist ) {
+//			if ( d >= CM_SidePlane( &sides[i] )->dist ) {
+			if ( d > CM_SidePlane( &sides[i] )->dist ) {
 				break;
 			}
 		}
 
-		if ( i == b->numsides ) {
+		if ( i == numsides ) {
 			contents |= b->contents;
 		}
 	}

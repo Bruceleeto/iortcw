@@ -8,6 +8,7 @@
 
 #include "bspfile.h"
 #include "colfile.h"
+#include "surfaceflags.h"
 #include "col_glue.h"
 #include "rtcwconv.h"
 
@@ -25,31 +26,133 @@ template <class T> static void PutArray( std::vector<uint8_t> &out, const std::v
 	out.assign( (const uint8_t *)a.data(), (const uint8_t *)( a.data() + a.size() ) );
 }
 
+/* the planes in the order the collision code meets them: brush by brush,
+ * side by side (a brush's planes then mostly share cache lines; a .bsp's
+ * are spread over the whole array), then the tree's in walk order */
+static void PlaneRemapNodes( const BspNode *nodes, int numNodes, int num, std::vector<int32_t> &remap, int &numUsed ) {
+	while ( num >= 0 && num < numNodes ) {
+		if ( remap[nodes[num].planeNum] < 0 ) {
+			remap[nodes[num].planeNum] = numUsed++;
+		}
+		PlaneRemapNodes( nodes, numNodes, nodes[num].children[0], remap, numUsed );
+		num = nodes[num].children[1];
+	}
+}
+
 bool BspPlaneRemap( const std::vector<uint8_t> &bsp, std::vector<int32_t> &remap, int &numUsed ) {
-	int numPlanes, numNodes, numSides;
+	int numPlanes, numNodes, numSides, numBrushes;
 	const BspPlane *planes = BspLumpArray<BspPlane>( bsp, BSP_PLANES, numPlanes );
 	const BspNode *nodes = BspLumpArray<BspNode>( bsp, BSP_NODES, numNodes );
 	const BspBrushSide *sides = BspLumpArray<BspBrushSide>( bsp, BSP_BRUSHSIDES, numSides );
-	if ( !planes || !nodes || !sides ) {
+	const BspBrush *brushes = BspLumpArray<BspBrush>( bsp, BSP_BRUSHES, numBrushes );
+	if ( !planes || !nodes || !sides || !brushes ) {
 		return false;
 	}
-	remap.assign( numPlanes, -1 );
 	for ( int i = 0; i < numNodes; i++ ) {
 		if ( nodes[i].planeNum < 0 || nodes[i].planeNum >= numPlanes ) {
 			return false;
 		}
-		remap[nodes[i].planeNum] = 0;
 	}
 	for ( int i = 0; i < numSides; i++ ) {
 		if ( sides[i].planeNum < 0 || sides[i].planeNum >= numPlanes ) {
 			return false;
 		}
-		remap[sides[i].planeNum] = 0;
 	}
+	remap.assign( numPlanes, -1 );
 	numUsed = 0;
-	for ( int i = 0; i < numPlanes; i++ ) {
-		if ( !remap[i] ) {
-			remap[i] = numUsed++;
+	for ( int i = 0; i < numBrushes; i++ ) {
+		const BspBrush &b = brushes[i];
+		if ( b.firstSide < 0 || b.numSides < 0 || b.firstSide + b.numSides > numSides ) {
+			return false;
+		}
+		for ( int k = 0; k < b.numSides; k++ ) {
+			int32_t &r = remap[sides[b.firstSide + k].planeNum];
+			if ( r < 0 ) {
+				r = numUsed++;
+			}
+		}
+	}
+	for ( int i = 0; i < numSides; i++ ) {   /* any a brush doesn't reach */
+		if ( remap[sides[i].planeNum] < 0 ) {
+			remap[sides[i].planeNum] = numUsed++;
+		}
+	}
+	PlaneRemapNodes( nodes, numNodes, 0, remap, numUsed );
+	for ( int i = 0; i < numNodes; i++ ) {   /* any the walk from 0 doesn't reach */
+		if ( remap[nodes[i].planeNum] < 0 ) {
+			remap[nodes[i].planeNum] = numUsed++;
+		}
+	}
+	return true;
+}
+
+/* the leaves a ladder brush is within COL_LADDER_REACH of (COL_LEAF_NEARLADDER):
+ * every leaf when a submodel has one, since movers move; false on a bad lump */
+static bool LadderLeafs( const std::vector<uint8_t> &bsp, std::vector<bool> &near, int &numLadderBrushes ) {
+	int numShaders, numPlanes, numSides, numBrushes, numLeafs, numModels;
+	const BspShader *shaders = BspLumpArray<BspShader>( bsp, BSP_SHADERS, numShaders );
+	const BspPlane *planes = BspLumpArray<BspPlane>( bsp, BSP_PLANES, numPlanes );
+	const BspBrushSide *sides = BspLumpArray<BspBrushSide>( bsp, BSP_BRUSHSIDES, numSides );
+	const BspBrush *brushes = BspLumpArray<BspBrush>( bsp, BSP_BRUSHES, numBrushes );
+	const BspLeaf *leafs = BspLumpArray<BspLeaf>( bsp, BSP_LEAFS, numLeafs );
+	const BspModel *models = BspLumpArray<BspModel>( bsp, BSP_MODELS, numModels );
+	if ( !shaders || !planes || !sides || !brushes || !leafs || !models ) {
+		return false;
+	}
+	near.assign( numLeafs, false );
+	numLadderBrushes = 0;
+	for ( int i = 0; i < numBrushes; i++ ) {
+		const BspBrush &b = brushes[i];
+		if ( b.firstSide < 0 || b.numSides < 0 || b.firstSide + b.numSides > numSides ) {
+			return false;
+		}
+		bool ladder = false;
+		float mins[3] = { 1e30f, 1e30f, 1e30f }, maxs[3] = { -1e30f, -1e30f, -1e30f };
+		for ( int k = 0; k < b.numSides; k++ ) {
+			const BspBrushSide &s = sides[b.firstSide + k];
+			if ( s.planeNum < 0 || s.planeNum >= numPlanes ) {
+				return false;
+			}
+			if ( s.shaderNum >= 0 && s.shaderNum < numShaders && ( shaders[s.shaderNum].surfaceFlags & SURF_LADDER ) ) {
+				ladder = true;
+			}
+			/* an axial side bounds the brush on its axis (every brush's
+			 * first six are its axial bevels, as CM_BoundBrush relies on) */
+			const BspPlane &p = planes[s.planeNum];
+			for ( int a = 0; a < 3; a++ ) {
+				if ( p.normal[a] == 1.0f && p.dist < maxs[a] ) {
+					maxs[a] = p.dist;
+				} else if ( p.normal[a] == -1.0f && -p.dist > mins[a] ) {
+					mins[a] = -p.dist;
+				}
+			}
+		}
+		if ( !ladder ) {
+			continue;
+		}
+		numLadderBrushes++;
+		bool bounded = true;
+		for ( int a = 0; a < 3; a++ ) {
+			bounded = bounded && mins[a] <= maxs[a];
+		}
+		bool submodel = false;
+		for ( int m = 1; m < numModels; m++ ) {
+			if ( i >= models[m].firstBrush && i < models[m].firstBrush + models[m].numBrushes ) {
+				submodel = true;
+			}
+		}
+		if ( !bounded || submodel ) {
+			near.assign( numLeafs, true );
+			return true;
+		}
+		for ( int l = 0; l < numLeafs; l++ ) {
+			bool touch = true;
+			for ( int a = 0; a < 3; a++ ) {
+				touch = touch && leafs[l].mins[a] <= maxs[a] + COL_LADDER_REACH && leafs[l].maxs[a] >= mins[a] - COL_LADDER_REACH;
+			}
+			if ( touch ) {
+				near[l] = true;
+			}
 		}
 	}
 	return true;
@@ -169,7 +272,14 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 	{
 		std::vector<int32_t> outLeafSurfaces;
 		std::vector<BspLeaf> outLeafs( leafs, leafs + numLeafs );
-		for ( BspLeaf &l : outLeafs ) {
+		std::vector<bool> nearLadder;
+		int numLadderBrushes;
+		if ( !LadderLeafs( bsp, nearLadder, numLadderBrushes ) ) {
+			fprintf( stderr, "%s: bad lumps\n", name );
+			return false;
+		}
+		for ( int i = 0; i < numLeafs; i++ ) {
+			BspLeaf &l = outLeafs[i];
 			if ( l.firstLeafSurface < 0 || l.numLeafSurfaces < 0 || l.firstLeafSurface + l.numLeafSurfaces > numLeafSurfaces ) {
 				fprintf( stderr, "%s: bad leaf\n", name );
 				return false;
@@ -183,7 +293,13 @@ bool ConvertCol( const std::vector<uint8_t> &bsp, std::vector<uint8_t> &out, Col
 			}
 			l.firstLeafSurface = first;
 			l.numLeafSurfaces = outLeafSurfaces.size() - first;
+			if ( nearLadder[i] ) {
+				l.numLeafSurfaces |= COL_LEAF_NEARLADDER;
+				st.ladderLeafs++;
+			}
 		}
+		st.leafs += numLeafs;
+		st.ladderBrushes += numLadderBrushes;
 		/* a submodel's surfaces are a run, and so are the ones of them kept */
 		std::vector<BspModel> outModels( models, models + numModels );
 		for ( BspModel &m : outModels ) {

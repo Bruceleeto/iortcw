@@ -754,7 +754,7 @@ void CG_AddSparkElements( localEntity_t *le ) {
 //		if ((le->endTime - le->startTime) > 500) {
 
 		// trace a line from previous position to new position
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SHOT );
+		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
 
 		// if stuck, kill it
 		if ( trace.startsolid ) {
@@ -870,7 +870,7 @@ void CG_AddBloodElements( localEntity_t *le ) {
 		BG_EvaluateTrajectory( &le->pos, cg.time, newOrigin );
 
 		// trace a line from previous position to new position
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SHOT );
+		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
 
 		// if stuck, kill it
 		if ( trace.startsolid ) {
@@ -1245,7 +1245,7 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 		BG_EvaluateTrajectory( &le->pos, t, newOrigin );
 
 		// trace a line from previous position to new position
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SHOT );
+		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
 
 		// if stuck, kill it
 		if ( trace.startsolid ) {

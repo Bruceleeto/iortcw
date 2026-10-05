@@ -423,7 +423,13 @@ cvarTable_t cvarTable[] = {
 	{ &cg_crosshairHealth, "cg_crosshairHealth", "1", CVAR_ARCHIVE },
 	{ &cg_crosshairX, "cg_crosshairX", "0", CVAR_ARCHIVE },
 	{ &cg_crosshairY, "cg_crosshairY", "0", CVAR_ARCHIVE },
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// no shell casings: nine soldiers firing keep about 100 alive, each
+	// traced every frame (assets/PERF_COLLISION_AI.md)
+	{ &cg_brassTime, "cg_brassTime", "0", CVAR_ARCHIVE },
+#else
 	{ &cg_brassTime, "cg_brassTime", "1250", CVAR_ARCHIVE },
+#endif
 	{ &cg_simpleItems, "cg_simpleItems", "0", CVAR_ARCHIVE },
 	{ &cg_reticles, "cg_reticles", "1", CVAR_CHEAT },
 	{ &cg_reticleBrightness, "cg_reticleBrightness", "0.7", CVAR_ARCHIVE },

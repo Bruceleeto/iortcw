@@ -142,6 +142,7 @@ struct ColStats {
 	size_t bytesIn, bytesOut;
 	int patches, patchesSkipped;
 	long planesIn, planesOut, leafSurfacesIn, leafSurfacesOut;
+	long leafs, ladderLeafs, ladderBrushes;    /* leaves flagged COL_LEAF_NEARLADDER */
 };
 
 /* a .bsp's planes' numbers with only those used (by nodes and brush sides)

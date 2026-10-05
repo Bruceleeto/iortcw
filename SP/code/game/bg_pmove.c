@@ -3778,6 +3778,12 @@ void PM_CheckLadderMove( void ) {
 		return;
 	}
 
+	// no ladder brush within reach of this leaf (CONTENTS_NEARLADDER, from a
+	// .col's COL_LEAF_NEARLADDER): the traces below can't find one
+	if ( !( pm->pointcontents( pm->ps->origin, pm->ps->clientNum ) & CONTENTS_NEARLADDER ) ) {
+		return;
+	}
+
 	// check for ladder
 	flatforward[0] = pml.forward[0];
 	flatforward[1] = pml.forward[1];

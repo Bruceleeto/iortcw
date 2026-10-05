@@ -1556,7 +1556,11 @@ static void CG_Trap( centity_t *cent ) {
 CG_Corona
 ==============
 */
-static void CG_AddCorona( const vec3_t origin, int dli, int density, int id ) {
+// a corona's sight trace is run every CORONA_TRACE_FRAMES frames and the
+// answer kept in *seen: the frame it was traced on << 1 | whether it was clear
+#define CORONA_TRACE_FRAMES 3
+
+static void CG_AddCorona( const vec3_t origin, int dli, int density, int id, int *seen ) {
 	trace_t tr;
 	int r, g, b;
 	int flags = 0;
@@ -1598,18 +1602,21 @@ static void CG_AddCorona( const vec3_t origin, int dli, int density, int id ) {
 
 
 	if ( !behind && !toofar ) {
-		CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, origin, -1, MASK_SOLID | CONTENTS_BODY ); // added blockage by players.  not sure how this is going to be since this is their bb, not their model (too much blockage)
-
-		if ( tr.fraction == 1 ) {
-			flags = 1;
+		// (unsigned: a stale frame from a previous map counts as old)
+		if ( !*seen || (unsigned)( cg.clientFrame - ( *seen >> 1 ) ) >= CORONA_TRACE_FRAMES ) {
+			// not bodies (an entity clip per soldier in range for a corona they'd rarely hide)
+			CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, origin, -1, MASK_SOLID );
+			*seen = ( cg.clientFrame << 1 ) | ( tr.fraction == 1 );
 		}
+		flags = *seen & 1;
 
 		trap_R_AddCoronaToScene( origin, (float)r / 255.0f, (float)g / 255.0f, (float)b / 255.0f, (float)density / 255.0f, id, flags );
 	}
 }
 
 static void CG_Corona( centity_t *cent ) {
-	CG_AddCorona( cent->lerpOrigin, cent->currentState.dl_intensity, cent->currentState.density, cent->currentState.number );
+	// miscTime: a corona entity has no other use for it
+	CG_AddCorona( cent->lerpOrigin, cent->currentState.dl_intensity, cent->currentState.density, cent->currentState.number, &cent->miscTime );
 }
 
 
@@ -2810,7 +2817,7 @@ void CG_AddStaticEntities( void ) {
 			continue;
 		}
 		if ( !se->sound ) {
-			CG_AddCorona( se->origin, se->dli, se->density, MAX_GENTITIES + i );
+			CG_AddCorona( se->origin, se->dli, se->density, MAX_GENTITIES + i, &se->nextTime );   // nextTime: a speaker's
 			continue;
 		}
 		if ( se->loop && loops < MAX_STATIC_LOOPS ) {

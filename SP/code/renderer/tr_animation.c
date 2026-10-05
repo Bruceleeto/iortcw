@@ -81,14 +81,18 @@ static vec3_t t;
 
 // the bones of the last BONE_CACHE entities (tags and surfaces of one entity
 // come at different times in a frame); R_CalcBones points rawBones, oldBones,
-// validBones and torsoParentOffset at the entity's slot
-#define BONE_CACHE 8
+// validBones and torsoParentOffset at the entity's slot. A heavy fight draws
+// 10 skeletons, each needing its bones at least twice a frame, so 8 slots
+// evicted every one before its second use; 12 slots of BONE_CACHE_BONES
+// (R_LoadMDS refuses more; the game's biggest has 75) take less RAM than
+// 8 of MDS_MAX_BONES did
+#define BONE_CACHE 12
 
 static struct {
 	refEntity_t entity;
 	int used;
-	char valid[MDS_MAX_BONES];
-	mdsBoneFrame_t raw[MDS_MAX_BONES], old[MDS_MAX_BONES];
+	char valid[BONE_CACHE_BONES];
+	mdsBoneFrame_t raw[BONE_CACHE_BONES], old[BONE_CACHE_BONES];
 	vec3_t torsoParentOffset;
 } boneCache[BONE_CACHE];
 static int boneCacheTime;

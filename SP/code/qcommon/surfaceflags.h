@@ -71,6 +71,9 @@ If you have questions concerning this license or the applicable additional terms
 #define CONTENTS_DONOTENTER     0x200000
 #define CONTENTS_DONOTENTER_LARGE       0x400000
 
+#define CONTENTS_NEARLADDER     0x800000    // never on a brush: CM_PointContents says a ladder brush is within
+											// reach of the point's leaf (a .col's COL_LEAF_NEARLADDER), so
+											// PM_CheckLadderMove can skip its traces elsewhere
 #define CONTENTS_ORIGIN         0x1000000   // removed before bsping an entity
 
 #define CONTENTS_BODY           0x2000000   // should never be on a brush, only in game

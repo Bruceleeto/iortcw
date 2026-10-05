@@ -386,6 +386,10 @@ int         trap_GetCurrentCmdNumber( void ) {
 	return syscall( CG_GETCURRENTCMDNUMBER );
 }
 
+qboolean    trap_GetLocalPlayerState( playerState_t *ps ) {
+	return syscall( CG_GETLOCALPLAYERSTATE, ps );
+}
+
 qboolean    trap_GetUserCmd( int cmdNumber, usercmd_t *ucmd ) {
 	return syscall( CG_GETUSERCMD, cmdNumber, ucmd );
 }

@@ -171,17 +171,19 @@ CM_TestBoxInBrush
 ================
 */
 void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
-	int i;
+	int i, numsides;
 	cplane_t    *plane;
 	float dist;
 	float d1;
-	cbrushside_t    *side;
+	cbrushside_t    *side, *sides;
 	float t;
 	vec3_t startp;
 
-	if ( !brush->numsides ) {
+	numsides = CM_BrushNumSides( brush );
+	if ( !numsides ) {
 		return;
 	}
+	sides = CM_BrushSides( brush );
 
 	// special test for axial
 	// the first 6 brush planes are always axial
@@ -198,8 +200,8 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 	if ( tw->sphere.use ) {
 		// the first six planes are the axial planes, so we only
 		// need to test the remainder
-		for ( i = 6 ; i < brush->numsides ; i++ ) {
-			side = brush->sides + i;
+		for ( i = 6 ; i < numsides ; i++ ) {
+			side = sides + i;
 			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for radius
@@ -221,8 +223,8 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 	} else {
 		// the first six planes are the axial planes, so we only
 		// need to test the remainder
-		for ( i = 6 ; i < brush->numsides ; i++ ) {
-			side = brush->sides + i;
+		for ( i = 6 ; i < numsides ; i++ ) {
+			side = sides + i;
 			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for mins/maxs
@@ -260,10 +262,10 @@ void CM_TestInLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 	for ( k = 0 ; k < leaf->numLeafBrushes ; k++ ) {
 		brushnum = cm.leafbrushes[leaf->firstLeafBrush + k];
 		b = &cm.brushes[brushnum];
-		if ( b->checkcount == cm.checkcount ) {
+		if ( cm.brushChecks[brushnum] == cm.checkcount ) {
 			continue;   // already checked this brush in another leaf
 		}
-		b->checkcount = cm.checkcount;
+		cm.brushChecks[brushnum] = cm.checkcount;
 
 		if ( !( b->contents & tw->contents ) ) {
 			continue;
@@ -281,7 +283,7 @@ void CM_TestInLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 #else
 	if ( !cm_noCurves->integer ) {
 #endif //BSPC
-		for ( k = 0 ; k < leaf->numLeafSurfaces ; k++ ) {
+		for ( k = 0 ; k < CM_LeafSurfaces( leaf ) ; k++ ) {
 			patch = cm.surfaces[ cm.leafsurfaces[ leaf->firstLeafSurface + k ] ];
 			if ( !patch ) {
 				continue;
@@ -490,14 +492,15 @@ CM_TraceThroughBrush
 ================
 */
 void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
-	int i;
+	int i, numsides, axial;
 	cplane_t    *plane, *clipplane;
+	cplane_t axialPlane;        // an axial box's clip plane, made when a side becomes it
 	float dist;
 	float enterFrac, leaveFrac;
 	float d1, d2;
 	qboolean getout, startout;
 	float f;
-	cbrushside_t    *side, *leadside;
+	cbrushside_t    *side, *leadside, *sides;
 	float t;
 	vec3_t startp;
 	vec3_t endp;
@@ -506,9 +509,12 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 	leaveFrac = 1.0;
 	clipplane = NULL;
 
-	if ( !brush->numsides ) {
+	numsides = CM_BrushNumSides( brush );
+	if ( !numsides ) {
 		return;
 	}
+	sides = CM_BrushSides( brush );
+	axial = CM_BrushAxial( brush );
 
 	c_brush_traces++;
 
@@ -517,14 +523,45 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 
 	leadside = NULL;
 
-	if ( tw->sphere.use ) {
-		//
-		// compare the trace against all planes of the brush
-		// find the latest time the trace crosses a plane towards the interior
-		// and the earliest time the trace crosses a plane towards the exterior
-		//
-		for ( i = 0; i < brush->numsides; i++ ) {
-			side = brush->sides + i;
+	//
+	// compare the trace against all planes of the brush
+	// find the latest time the trace crosses a plane towards the interior
+	// and the earliest time the trace crosses a plane towards the exterior
+	//
+	for ( i = 0; i < numsides; i++ ) {
+		side = sides + i;
+
+		if ( axial ) {
+			// side i is the plane s * e_a at bounds (CM_BoundBrush's order),
+			// so its dot products are one term: the same values the general
+			// case gets, without reading the side or its plane
+			int a = i >> 1;
+			float s = ( i & 1 ) ? 1.0f : -1.0f;
+
+			dist = ( i & 1 ) ? brush->bounds[1][a] : -brush->bounds[0][a];
+			plane = &axialPlane;
+			if ( tw->sphere.use ) {
+				// adjust the plane distance apropriately for radius
+				dist += tw->sphere.radius;
+
+				// find the closest point on the capsule to the plane
+				t = s * tw->sphere.offset[a];
+				if ( t > 0 ) {
+					d1 = ( tw->start[a] - tw->sphere.offset[a] ) * s - dist;
+					d2 = ( tw->end[a] - tw->sphere.offset[a] ) * s - dist;
+				} else {
+					d1 = ( tw->start[a] + tw->sphere.offset[a] ) * s - dist;
+					d2 = ( tw->end[a] + tw->sphere.offset[a] ) * s - dist;
+				}
+			} else {
+				// adjust the plane distance apropriately for mins/maxs
+				// (the plane's signbits are 1 << a for -e_a, 0 for +e_a)
+				dist -= tw->offsets[ ( i & 1 ) ? 0 : 1 << a ][a] * s;
+
+				d1 = tw->start[a] * s - dist;
+				d2 = tw->end[a] * s - dist;
+			}
+		} else if ( tw->sphere.use ) {
 			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for radius
@@ -543,53 +580,7 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 
 			d1 = DotProduct( startp, plane->normal ) - dist;
 			d2 = DotProduct( endp, plane->normal ) - dist;
-
-			if ( d2 > 0 ) {
-				getout = qtrue; // endpoint is not in solid
-			}
-			if ( d1 > 0 ) {
-				startout = qtrue;
-			}
-
-			// if completely in front of face, no intersection with the entire brush
-			if ( d1 > 0 && ( d2 >= SURFACE_CLIP_EPSILON || d2 >= d1 )  ) {
-				return;
-			}
-
-			// if it doesn't cross the plane, the plane isn't relevent
-			if ( d1 <= 0 && d2 <= 0 ) {
-				continue;
-			}
-
-			// crosses face
-			if ( d1 > d2 ) {  // enter
-				f = ( d1 - SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
-				if ( f < 0 ) {
-					f = 0;
-				}
-				if ( f > enterFrac ) {
-					enterFrac = f;
-					clipplane = plane;
-					leadside = side;
-				}
-			} else {    // leave
-				f = ( d1 + SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
-				if ( f > 1 ) {
-					f = 1;
-				}
-				if ( f < leaveFrac ) {
-					leaveFrac = f;
-				}
-			}
-		}
-	} else {
-		//
-		// compare the trace against all planes of the brush
-		// find the latest time the trace crosses a plane towards the interior
-		// and the earliest time the trace crosses a plane towards the exterior
-		//
-		for ( i = 0; i < brush->numsides; i++ ) {
-			side = brush->sides + i;
+		} else {
 			plane = CM_SidePlane( side );
 
 			// adjust the plane distance apropriately for mins/maxs
@@ -597,43 +588,51 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 
 			d1 = DotProduct( tw->start, plane->normal ) - dist;
 			d2 = DotProduct( tw->end, plane->normal ) - dist;
+		}
 
-			if ( d2 > 0 ) {
-				getout = qtrue; // endpoint is not in solid
-			}
-			if ( d1 > 0 ) {
-				startout = qtrue;
-			}
+		if ( d2 > 0 ) {
+			getout = qtrue; // endpoint is not in solid
+		}
+		if ( d1 > 0 ) {
+			startout = qtrue;
+		}
 
-			// if completely in front of face, no intersection with the entire brush
-			if ( d1 > 0 && ( d2 >= SURFACE_CLIP_EPSILON || d2 >= d1 )  ) {
-				return;
-			}
+		// if completely in front of face, no intersection with the entire brush
+		if ( d1 > 0 && ( d2 >= SURFACE_CLIP_EPSILON || d2 >= d1 )  ) {
+			return;
+		}
 
-			// if it doesn't cross the plane, the plane isn't relevent
-			if ( d1 <= 0 && d2 <= 0 ) {
-				continue;
-			}
+		// if it doesn't cross the plane, the plane isn't relevent
+		if ( d1 <= 0 && d2 <= 0 ) {
+			continue;
+		}
 
-			// crosses face
-			if ( d1 > d2 ) {  // enter
-				f = ( d1 - SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
-				if ( f < 0 ) {
-					f = 0;
+		// crosses face
+		if ( d1 > d2 ) {  // enter
+			f = ( d1 - SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
+			if ( f < 0 ) {
+				f = 0;
+			}
+			if ( f > enterFrac ) {
+				enterFrac = f;
+				clipplane = plane;
+				leadside = side;
+				if ( axial ) {
+					VectorClear( axialPlane.normal );
+					axialPlane.normal[i >> 1] = ( i & 1 ) ? 1.0f : -1.0f;
+					axialPlane.dist = ( i & 1 ) ? brush->bounds[1][i >> 1] : -brush->bounds[0][i >> 1];
+					axialPlane.type = i >> 1;
+					axialPlane.signbits = ( i & 1 ) ? 0 : 1 << ( i >> 1 );
+					axialPlane.pad[0] = axialPlane.pad[1] = 0;
 				}
-				if ( f > enterFrac ) {
-					enterFrac = f;
-					clipplane = plane;
-					leadside = side;
-				}
-			} else {    // leave
-				f = ( d1 + SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
-				if ( f > 1 ) {
-					f = 1;
-				}
-				if ( f < leaveFrac ) {
-					leaveFrac = f;
-				}
+			}
+		} else {    // leave
+			f = ( d1 + SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
+			if ( f > 1 ) {
+				f = 1;
+			}
+			if ( f < leaveFrac ) {
+				leaveFrac = f;
 			}
 		}
 	}
@@ -684,10 +683,10 @@ void CM_TraceThroughLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 		brushnum = cm.leafbrushes[leaf->firstLeafBrush + k];
 
 		b = &cm.brushes[brushnum];
-		if ( b->checkcount == cm.checkcount ) {
+		if ( cm.brushChecks[brushnum] == cm.checkcount ) {
 			continue;   // already checked this brush in another leaf
 		}
-		b->checkcount = cm.checkcount;
+		cm.brushChecks[brushnum] = cm.checkcount;
 
 		if ( !( b->contents & tw->contents ) ) {
 			continue;
@@ -710,7 +709,7 @@ void CM_TraceThroughLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 #else
 	if ( !cm_noCurves->integer ) {
 #endif
-		for ( k = 0 ; k < leaf->numLeafSurfaces ; k++ ) {
+		for ( k = 0 ; k < CM_LeafSurfaces( leaf ) ; k++ ) {
 			patch = cm.surfaces[ cm.leafsurfaces[ leaf->firstLeafSurface + k ] ];
 			if ( !patch ) {
 				continue;
@@ -1073,8 +1072,13 @@ void CM_TraceThroughTree( traceWork_t *tw, int num, float p1f, float p2f, vec3_t
 		if ( tw->isPoint ) {
 			offset = 0;
 		} else {
-			// this is silly
-			offset = 2048;
+			// how far the box reaches along the normal: the brush test is
+			// exact (offsets[signbits]), so the tree only has to reach every
+			// leaf the swept box touches. Q3 used 2048 here ("this is
+			// silly"), which walks both children at every non-axial node.
+			offset = tw->extents[0] * fabsf( plane->normal[0] )
+					 + tw->extents[1] * fabsf( plane->normal[1] )
+					 + tw->extents[2] * fabsf( plane->normal[2] );
 		}
 	}
 

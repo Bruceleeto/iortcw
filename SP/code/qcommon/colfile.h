@@ -33,7 +33,13 @@
 #define COLFILE_H
 
 #define COL_IDENT       ( ( 'L' << 24 ) + ( 'O' << 16 ) + ( 'C' << 8 ) + 'R' )   // "RCOL"
-#define COL_VERSION     3
+#define COL_VERSION     4
+
+// set in a leaf's numLeafSurfaces when a ladder brush's bounds, grown by
+// COL_LADDER_REACH, touch the leaf's: PM_CheckLadderMove traces only there
+// (CM_PointContents reports it as CONTENTS_NEARLADDER). Version 4.
+#define COL_LEAF_NEARLADDER 0x40000000
+#define COL_LADDER_REACH    80      // the player's half width (18) + TRACE_LADDER_DIST (48) + slack
 
 enum {
 	COL_LUMP_SHADERS,

@@ -850,6 +850,8 @@ const char *SV_LocalConfigstring( int index );
 int SV_LocalSnapshotInfo( int *serverTime, int *snapFlags, int *serverCommandSequence, playerState_t *ps );
 // the newest snapshot number, 0 if none
 qboolean SV_LocalSnapshot( int snapshotNum, struct snapshot_s *snapshot );
+// the player's state as the game has it now, false if not in the game
+qboolean SV_LocalPlayerState( playerState_t *ps );
 const char *SV_LocalServerCommand( int serverCommandNum );
 
 //

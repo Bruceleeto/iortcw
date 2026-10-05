@@ -541,6 +541,29 @@ void CG_PredictPlayerState( void ) {
 		return;
 	}
 
+	// the server runs in this process and has already run this frame's
+	// usercmd (CL_SendCmd -> SV_LocalClientMessage -> SV_ClientThink, before
+	// cgame draws), so its player state is what replaying the commands since
+	// the snapshot would give: take it and skip the Pmove, whose traces were
+	// the biggest trace source in a fight (assets/PERF_COLLISION_AI.md)
+	if ( !cg_nopredict.integer && !cg_synchronousClients.integer ) {
+		oldPlayerState = cg.predictedPlayerState;
+		if ( trap_GetLocalPlayerState( &cg.predictedPlayerState ) ) {
+			cg.physicsTime = cg.predictedPlayerState.commandTime;
+			cg.thisFrameTeleport = qfalse;
+			VectorClear( cg.predictedError );
+
+			// adjust for the movement of the groundentity
+			CG_AdjustPositionForMover( cg.predictedPlayerState.origin,
+				cg.predictedPlayerState.groundEntityNum,
+				cg.physicsTime, cg.time, cg.predictedPlayerState.origin, cg.predictedPlayerState.viewangles, cg.predictedPlayerState.viewangles, deltaAngles );
+
+			// fire events and other transition triggered things
+			CG_TransitionPlayerState( &cg.predictedPlayerState, &oldPlayerState );
+			return;
+		}
+	}
+
 	// non-predicting local movement will grab the latest angles
 	if ( cg_nopredict.integer || cg_synchronousClients.integer
 		 || ( cg.snap->ps.eFlags & EF_MG42_ACTIVE ) ) { // RF, somewhat of a hack, but just disable prediction if on MG42, since it's just not very prediction friendly

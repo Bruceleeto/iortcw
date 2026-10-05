@@ -753,6 +753,10 @@ qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] 
 // that order, which the PVR backend sends as a strip
 #define STRIP_START     0x8000
 
+// the most bones an .mds/.mdsc may have: the bone cache (tr_animation.c)
+// keeps this many a slot. The game's biggest skeleton has 75.
+#define BONE_CACHE_BONES    80
+
 glIndex_t *R_StripTriangles( const unsigned short *strips, int numTriangles, glIndex_t *out, int add );
 int R_PackTriangles( void *triangles, int numTriangles, int numVerts );
 int R_StripsSize( const unsigned short *strips, int maxShorts, int numTriangles, int numVerts );

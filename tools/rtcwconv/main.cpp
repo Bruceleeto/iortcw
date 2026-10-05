@@ -489,8 +489,8 @@ int main( int argc, char **argv ) {
 	if ( col.files ) {
 		printf( "col: %d files, %.1f MB of bsp -> %.1f MB; %d patches (%d with no contents left out)\n",
 				col.files, col.bytesIn / 1048576.0, col.bytesOut / 1048576.0, col.patches, col.patchesSkipped );
-		printf( "col: planes %ld -> %ld, leaf surfaces %ld -> %ld\n",
-				col.planesIn, col.planesOut, col.leafSurfacesIn, col.leafSurfacesOut );
+		printf( "col: planes %ld -> %ld, leaf surfaces %ld -> %ld; %ld of %ld leaves near one of %ld ladder brushes\n",
+				col.planesIn, col.planesOut, col.leafSurfacesIn, col.leafSurfacesOut, col.ladderLeafs, col.leafs, col.ladderBrushes );
 	}
 	if ( wld.files ) {
 		printf( "wld: %d files, %.1f MB of bsp -> %.1f MB; %ld surfaces -> %ld; %ld vertexes, %ld triangles; light grids %.1f MB -> %.1f MB\n",

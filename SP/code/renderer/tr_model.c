@@ -1922,8 +1922,8 @@ static qboolean R_LoadMDS( model_t *mod, void *buffer, const char *mod_name, qbo
 		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s: MDSC is little endian only\n", mod_name );
 		return qfalse;
 	}
-	if ( LittleLong( pinmodel->numBones ) > MDSC_MAX_BONES ) {
-		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has more than %i bones\n", mod_name, MDSC_MAX_BONES );
+	if ( LittleLong( pinmodel->numBones ) > BONE_CACHE_BONES ) {
+		ri.Printf( PRINT_WARNING, "R_LoadMDS: %s has more than %i bones\n", mod_name, BONE_CACHE_BONES );
 		return qfalse;
 	}
 
