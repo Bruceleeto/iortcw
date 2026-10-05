@@ -32,6 +32,26 @@ int  pvrgl_TexImageDT( const void *file, int len, int *width, int *height );
 /* back faces culled by the PVR: 1, or on the CPU: 0 */
 extern int pvrgl_hwCull;
 
+/* A vertex as pvrglDrawPackedStrips takes it: the position and texture
+ * coordinates as shorts from an origin, in steps (16 bytes) */
+typedef struct {
+	short		xyz[3];
+	unsigned char	unused[2];
+	short		st[2];
+	unsigned char	rgba[4];
+} pvrglPackedVert_t;
+/* on the first index of each strip */
+#define PVRGL_STRIP_START	0x8000
+/* Draws triangle strips of packed vertexes (pvrglPackedVert_t) with the
+ * texture, state and matrices as set: xyz = origin + step * v, st =
+ * stOrigin + stStep * v, the colour's alpha 1. strips: the vertex indexes,
+ * PVRGL_STRIP_START on each strip's first (as glDrawElements of
+ * GL_TRIANGLE_STRIPs with a restart). */
+void pvrglPackedBegin( void );
+void pvrglPackedEnd( void );
+void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
+							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes );
+
 void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count );
 void APIENTRY pvrglUnlockArraysEXT( void );
 

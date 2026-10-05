@@ -131,6 +131,7 @@ static struct {
 	int			mvDepth, projDepth;
 	float		mvp[16];
 	int			mvpDirty;
+	int			xfDirty;		/* xf.m and the viewport's edges are to be made again */
 
 	/* viewport, in GL window coordinates (y up) */
 	int			vpX, vpY, vpW, vpH;
@@ -188,6 +189,8 @@ static struct {
 	uint32_t	fogColor;		/* this frame's vertex fog colour, RGBA bytes */
 	int			fogSet;
 	uint32_t	fogWritten;		/* the colour in the PVR's register, + 1 */
+	int			packedOpen;		/* pvrglPackedBegin's batch: its list, -1 none */
+	int			packedList;
 } gl;
 
 /* each vertex's position as the PVR takes it, made for all of a draw's
@@ -225,6 +228,9 @@ static struct {
 	float		st0[2];
 	uint32_t	col0;
 	int			fogOn;			/* the draw's header has vertex fog */
+	/* pvrglDrawPackedStrips's vertexes while it draws, else NULL */
+	const pvrglPackedVert_t	*packed;
+	float		pStOrigin[2], pStStep;
 } xf;
 
 /* ===================================================================== */
@@ -251,7 +257,7 @@ static void Mat_Mul( float *out, const float *a, const float *b ) {
 }
 
 static float *CurrentMatrix( void ) {
-	gl.mvpDirty = 1;
+	gl.mvpDirty = gl.xfDirty = 1;
 	if ( gl.matrixMode == GL_PROJECTION ) {
 		return gl.projection[gl.projDepth];
 	}
@@ -301,7 +307,7 @@ void APIENTRY pvrglPopMatrix( void ) {
 			gl.mvDepth--;
 		}
 	}
-	gl.mvpDirty = 1;
+	gl.mvpDirty = gl.xfDirty = 1;
 }
 
 static void MultCurrent( const float *m ) {
@@ -343,6 +349,7 @@ void APIENTRY pvrglFrustum( GLdouble l, GLdouble r, GLdouble b, GLdouble t, GLdo
 
 void APIENTRY pvrglViewport( GLint x, GLint y, GLsizei w, GLsizei h ) {
 	gl.vpX = x; gl.vpY = y; gl.vpW = w; gl.vpH = h;
+	gl.xfDirty = 1;
 }
 
 void APIENTRY pvrglDepthRange( GLclampd n, GLclampd f ) {
@@ -1455,9 +1462,54 @@ static void GrowCache( int count ) {
 	lock.made = 0;
 }
 
+/* x y z through the transform (m, or on the SH4 its matrix register, loaded
+   by the caller) to a vertex's vpos and vcode; the invariants come as
+   arguments so they stay in registers */
+static inline __attribute__((always_inline)) void ProjectVert( posVert_t *o, uint8_t *code, const float *m,
+		float x, float y, float z, float xLo, float xHi, float yLo, float yHi, float ds ) {
+	float cx, cy, cz, cw, d;
+	int c;
+
+#ifdef USE_SH4ZAM
+	{
+		shz_vec4_t t = shz_xmtrx_transform_vec4( shz_vec4_init( x, y, z, 1.0f ) );
+		cx = t.x; cy = t.y; cz = t.z; cw = t.w;
+	}
+	(void)m;
+#else
+	cx = m[0] * x + m[4] * y + m[8] * z + m[12];
+	cy = m[1] * x + m[5] * y + m[9] * z + m[13];
+	cz = m[2] * x + m[6] * y + m[10] * z + m[14];
+	cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+#endif
+	d = cz + cw;
+	c = d < 0.0f;
+	c |= ( cx < xLo * cw ) << 1;
+	c |= ( cx > xHi * cw ) << 2;
+	c |= ( cy < yLo * cw ) << 3;
+	c |= ( cy > yHi * cw ) << 4;
+	*code = c;
+	o->d = d;
+	if ( c & 1 ) {
+		o->sx = cx;
+		o->sy = cy;
+		o->sz = cw;
+	} else {
+#ifdef USE_SH4ZAM
+		float invw = shz_invf_fsrra( cw );
+#else
+		float invw = 1.0f / cw;
+#endif
+		o->sx = cx * invw;
+		o->sy = cy * invw;
+		o->sz = invw * ds;
+	}
+}
+
 /* vpos and vcode for vertexes first to end - 1 */
 static void __attribute__((noinline)) TransformVerts( int first, int end ) {
 	const float xLo = xf.xLo, xHi = xf.xHi, yLo = xf.yLo, yHi = xf.yHi, ds = xf.depthScale;
+	const float *const m = xf.m;
 	const int fast = xf.pos && gl.vertexArray.size > 2;
 	const uint8_t *src = xf.pos + first * xf.posStride;
 	const int stride = xf.posStride;
@@ -1467,8 +1519,7 @@ static void __attribute__((noinline)) TransformVerts( int first, int end ) {
 
 	PROF_COUNT( STAT_VERTS, end - first );
 	for ( i = first; i < end; i++, src += stride, o++ ) {
-		float x, y, z, cx, cy, cz, cw, d;
-		int code;
+		float x, y, z;
 
 		if ( fast ) {
 			const float *p = (const float *)src;
@@ -1487,41 +1538,29 @@ static void __attribute__((noinline)) TransformVerts( int first, int end ) {
 		if ( !( i & 1 ) ) {
 			shz_dcache_alloc_line( o );	/* two to a cache line, all written, so no read from RAM */
 		}
-		{
-			shz_vec4_t t = shz_xmtrx_transform_vec4( shz_vec4_init( x, y, z, 1.0f ) );
-			cx = t.x; cy = t.y; cz = t.z; cw = t.w;
-		}
-#else
-		{
-			const float *m = xf.m;
-			cx = m[0] * x + m[4] * y + m[8] * z + m[12];
-			cy = m[1] * x + m[5] * y + m[9] * z + m[13];
-			cz = m[2] * x + m[6] * y + m[10] * z + m[14];
-			cw = m[3] * x + m[7] * y + m[11] * z + m[15];
-		}
 #endif
-		d = cz + cw;
-		code = d < 0.0f;
-		code |= ( cx < xLo * cw ) << 1;
-		code |= ( cx > xHi * cw ) << 2;
-		code |= ( cy < yLo * cw ) << 3;
-		code |= ( cy > yHi * cw ) << 4;
-		codes[i] = code;
-		o->d = d;
-		if ( code & 1 ) {
-			o->sx = cx;
-			o->sy = cy;
-			o->sz = cw;
-		} else {
+		ProjectVert( o, codes + i, m, x, y, z, xLo, xHi, yLo, yHi, ds );
+	}
+}
+
+/* vpos and vcode for n packed vertexes through m (the origin and step
+   folded in; on the SH4 loaded into the matrix register by the caller):
+   the shorts straight to the float unit */
+static void __attribute__((noinline)) TransformPacked( const pvrglPackedVert_t *v, int n, const float *m ) {
+	const float xLo = xf.xLo, xHi = xf.xHi, yLo = xf.yLo, yHi = xf.yHi, ds = xf.depthScale;
+	posVert_t *o = vpos;
+	uint8_t *codes = vcode;
+	int i;
+
+	PROF_COUNT( STAT_VERTS, n );
+	for ( i = 0; i < n; i++, v++, o++ ) {
 #ifdef USE_SH4ZAM
-			float invw = shz_invf_fsrra( cw );
-#else
-			float invw = 1.0f / cw;
-#endif
-			o->sx = cx * invw;
-			o->sy = cy * invw;
-			o->sz = invw * ds;
+		SHZ_PREFETCH( v + 4 );
+		if ( !( i & 1 ) ) {
+			shz_dcache_alloc_line( o );
 		}
+#endif
+		ProjectVert( o, codes + i, m, v->xyz[0], v->xyz[1], v->xyz[2], xLo, xHi, yLo, yHi, ds );
 	}
 }
 
@@ -1530,6 +1569,7 @@ static void SetAttribs( int lo, int hi ) {
 	const glArray_t *t = &gl.texCoordArray[0], *c = &gl.colorArray;
 	int i;
 
+	xf.packed = NULL;
 	if ( !t->enabled ) {
 		xf.st0[0] = gl.texCoord[0];
 		xf.st0[1] = gl.texCoord[1];
@@ -1575,17 +1615,27 @@ static void SetAttribs( int lo, int hi ) {
 /* vertex i whole, for EmitTriangle */
 static void FullVert( clipVert_t *c, int i ) {
 	const posVert_t *p = &vpos[i];
-	const float *st = (const float *)( xf.st + i * xf.stStride );
 
 	c->sx = p->sx;
 	c->sy = p->sy;
 	c->sz = p->sz;
 	c->d = p->d;
 	c->code = vcode[i];
-	c->u = st[0];
-	c->v = st[1];
-	c->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
-	c->oargb = (uint32_t)xf.fog[i * xf.fogStride] << 24;
+	if ( xf.packed ) {
+		const pvrglPackedVert_t *v = &xf.packed[i];
+
+		c->u = xf.pStOrigin[0] + xf.pStStep * v->st[0];
+		c->v = xf.pStOrigin[1] + xf.pStStep * v->st[1];
+		c->argb = Argb( *(const uint32_t *)v->rgba ) | 0xff000000;
+		c->oargb = 0;
+	} else {
+		const float *st = (const float *)( xf.st + i * xf.stStride );
+
+		c->u = st[0];
+		c->v = st[1];
+		c->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
+		c->oargb = (uint32_t)xf.fog[i * xf.fogStride] << 24;
+	}
 }
 
 /* a triangle on its own: clipped, culled or as it is */
@@ -1753,6 +1803,33 @@ static void __attribute__((noinline)) DrawTrianglesAny( listBuffer_t *l, int cou
 }
 
 /* vertexes lo to hi, the most it might use; locked, glLockArraysEXT's */
+/* xf.m and the viewport's edges from the matrices and the viewport, when
+   they've changed since (a world surface a draw: most draws find them as
+   they were) */
+static void SetTransform( void ) {
+	/* the viewport after the mvp: x' = x * xScale + w * xOfs, y' the same */
+	float xScale = gl.vpW * 0.5f, xOfs = gl.vpX + gl.vpW * 0.5f;
+	float yScale = gl.vpH * -0.5f, yOfs = PVRGL_HEIGHT - ( gl.vpY + gl.vpH * 0.5f );
+	int i;
+
+	if ( !gl.xfDirty ) {
+		return;
+	}
+	gl.xfDirty = 0;
+	UpdateMVP();
+	for ( i = 0; i < 16; i += 4 ) {
+		xf.m[i] = gl.mvp[i] * xScale + gl.mvp[i + 3] * xOfs;
+		xf.m[i + 1] = gl.mvp[i + 1] * yScale + gl.mvp[i + 3] * yOfs;
+		xf.m[i + 2] = gl.mvp[i + 2];
+		xf.m[i + 3] = gl.mvp[i + 3];
+	}
+	/* x < -w, x > w, y > w, y < -w */
+	xf.xLo = xOfs - xScale;
+	xf.xHi = xOfs + xScale;
+	xf.yLo = yOfs + yScale;
+	xf.yHi = yOfs - yScale;
+}
+
 static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
 	listBuffer_t *l;
 	int list, i;
@@ -1771,24 +1848,7 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	}
 	l = &gl.lists[list];
 
-	UpdateMVP();
-	{
-		/* the viewport after the mvp: x' = x * xScale + w * xOfs, y' the same */
-		float xScale = gl.vpW * 0.5f, xOfs = gl.vpX + gl.vpW * 0.5f;
-		float yScale = gl.vpH * -0.5f, yOfs = PVRGL_HEIGHT - ( gl.vpY + gl.vpH * 0.5f );
-
-		for ( i = 0; i < 16; i += 4 ) {
-			xf.m[i] = gl.mvp[i] * xScale + gl.mvp[i + 3] * xOfs;
-			xf.m[i + 1] = gl.mvp[i + 1] * yScale + gl.mvp[i + 3] * yOfs;
-			xf.m[i + 2] = gl.mvp[i + 2];
-			xf.m[i + 3] = gl.mvp[i + 3];
-		}
-		/* x < -w, x > w, y > w, y < -w */
-		xf.xLo = xOfs - xScale;
-		xf.xHi = xOfs + xScale;
-		xf.yLo = yOfs + yScale;
-		xf.yHi = yOfs - yScale;
-	}
+	SetTransform();
 #ifdef USE_SH4ZAM
 	shz_xmtrx_load_unaligned_4x4( xf.m );
 #endif
@@ -1893,6 +1953,199 @@ void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const 
 		return;
 	}
 	DrawPrimitives( mode, count, f, indices, minIndex, maxIndex, 0 );
+}
+
+/* The packed vertexes' strips to the list, as DrawTriangles sends
+   triangles: a strip goes on till a triangle is culled or clipped (that one
+   on its own, through the clipper). The screen positions from vpos as
+   words, the texture coordinates from the shorts (an fmac each), the
+   colour's alpha 1. */
+static void __attribute__((noinline)) DrawStripsPacked( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes ) {
+	uint8_t *cur = l->cur, *end = l->end;
+	const uint32_t *const pos = (const uint32_t *)vpos;		/* sx sy sz d, as words */
+	const uint8_t *const codes = vcode;
+	const float s0 = xf.pStOrigin[0], t0 = xf.pStOrigin[1], ss = xf.pStStep;
+	const int cpuCull = gl.cullFace && !pvrgl_hwCull;
+	const int used0 = l->used;
+	const unsigned short *ip = strips, *const ipEnd = strips + numIndexes;
+	/* the counts of the rare ways: not in registers, which the loop is short of */
+	static int culled, clipped, clipBytes, numStrips;
+	int tris;
+
+	culled = clipped = clipBytes = numStrips = 0;
+
+#define EMIT( n ) \
+	do { \
+		uint32_t *w; \
+		if ( cur == end ) { \
+			/* the next block (NULL once the buffer is full) */ \
+			ListSync( l, cur ); \
+			w = ListAllocBlock( l ); \
+			cur = l->cur; \
+			end = l->end; \
+			if ( !w ) { \
+				break; \
+			} \
+		} else { \
+			w = (uint32_t *)cur; \
+			cur += 32; \
+			SHZ_ALLOC_LINE( w ); \
+		} \
+		{ \
+			const int e_n = ( n ); \
+			const uint32_t *e_p = pos + e_n * 4; \
+			const pvrglPackedVert_t *e_v = verts + e_n; \
+			float *e_f = (float *)w; \
+			w[0] = PVR_CMD_VERTEX; \
+			w[1] = e_p[0]; \
+			w[2] = e_p[1]; \
+			w[3] = e_p[2]; \
+			e_f[4] = s0 + ss * e_v->st[0]; \
+			e_f[5] = t0 + ss * e_v->st[1]; \
+			w[6] = Argb( *(const uint32_t *)e_v->rgba ) | 0xff000000; \
+			w[7] = 0; \
+		} \
+	} while ( 0 )
+
+	/* the strip so far gets its end */
+#define END_STRIP() \
+	do { \
+		if ( cur ) { \
+			*(uint32_t *)( cur - 32 ) = PVR_CMD_VERTEX_EOL; \
+			ListSync( l, cur ); \
+			l->whole = l->used; \
+		} \
+		open = 0; \
+	} while ( 0 )
+
+	while ( ip + 2 < ipEnd ) {
+		/* a strip: a b, then one more a triangle, to the next's start */
+		int a = ip[0] & ~PVRGL_STRIP_START, b = ip[1];
+		int odd = 0, open = 0;
+
+		ip += 2;
+		numStrips++;
+		do {
+			const int c = *ip++;
+			const int ca = codes[a], cb = codes[b], cc = codes[c];
+			/* the triangle as wound: every other one the other way round */
+			const int wa = odd ? b : a, wb = odd ? a : b;
+
+			if ( ca & cb & cc ) {
+				/* all off one edge */
+				culled++;
+				if ( open ) {
+					END_STRIP();
+				}
+			} else if ( ( ca | cb | cc ) & 1
+						|| ( cpuCull && Culled( (const float *)( pos + wa * 4 ), (const float *)( pos + wb * 4 ), (const float *)( pos + c * 4 ) ) ) ) {
+				int used;
+
+				if ( open ) {
+					END_STRIP();
+				}
+				/* on its own, through the list (it counts itself) */
+				ListSync( l, cur );
+				used = l->used;
+				EmitTriangleIdx( l, wa, wb, c );
+				clipBytes += l->used - used;
+				clipped++;
+				cur = l->cur;
+				end = l->end;
+			} else if ( !open && odd ) {
+				/* its strip can't start here the way it faces (the
+				   PVR turns every other one), so on its own; the next,
+				   even, starts the strip. No flat triangle to turn it:
+				   the PVR divides by the area */
+				EMIT( wa );
+				EMIT( wb );
+				EMIT( c );
+				END_STRIP();
+			} else {
+				if ( !open ) {
+					EMIT( a );
+					EMIT( b );
+					open = 1;
+				}
+				EMIT( c );
+			}
+			a = b;
+			b = c;
+			odd ^= 1;
+		} while ( ip < ipEnd && !( *ip & PVRGL_STRIP_START ) );
+		if ( open ) {
+			END_STRIP();
+		}
+	}
+	ListSync( l, cur );
+	tris = numIndexes - 2 * numStrips;	/* a strip's triangles: its indexes but the first two */
+	PROF_COUNT( STAT_TRIS, tris - clipped );
+	PROF_COUNT( STAT_CULLED, culled );
+	tris = ( l->used - used0 - clipBytes ) / 32;
+	if ( tris > 0 ) {
+		PROF_COUNT( STAT_EMITTED, tris );
+	}
+#undef EMIT
+#undef END_STRIP
+}
+
+/* a batch of pvrglDrawPackedStrips draws with the GL state as it is: the
+   PVR header, the depth scale and the transform once for all of them */
+void pvrglPackedBegin( void ) {
+	PROF_BEGIN( PROF_PVR );
+	PROF_COUNT( STAT_DRAWS, 1 );
+	gl.packedList = BeginPrimitives();
+	if ( gl.packedList >= 0 ) {
+		SetTransform();
+		xf.depthScale = DepthScale();
+	}
+	gl.packedOpen = 1;
+	PROF_END( PROF_PVR );
+}
+
+void pvrglPackedEnd( void ) {
+	gl.packedOpen = 0;
+}
+
+void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
+							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes ) {
+	const pvrglPackedVert_t *v = verts;
+	const int alone = !gl.packedOpen;
+	float m[16];
+	int i;
+
+	if ( alone ) {
+		pvrglPackedBegin();
+	}
+	PROF_BEGIN( PROF_PVR );
+	if ( gl.packedList >= 0 && numIndexes >= 3 && numVerts > 0 ) {
+		/* origin + step * xyz through the transform: the step into the
+		   columns, the origin into the translation */
+		for ( i = 0; i < 4; i++ ) {
+			m[12 + i] = xf.m[12 + i] + xf.m[i] * origin[0] + xf.m[4 + i] * origin[1] + xf.m[8 + i] * origin[2];
+			m[i] = xf.m[i] * step;
+			m[4 + i] = xf.m[4 + i] * step;
+			m[8 + i] = xf.m[8 + i] * step;
+		}
+#ifdef USE_SH4ZAM
+		shz_xmtrx_load_unaligned_4x4( m );
+#endif
+		if ( numVerts > vposSize ) {
+			GrowCache( numVerts );
+		}
+		lock.made = 0;		/* vpos is these now */
+		TransformPacked( v, numVerts, m );
+		xf.packed = v;
+		xf.pStOrigin[0] = stOrigin[0];
+		xf.pStOrigin[1] = stOrigin[1];
+		xf.pStStep = stStep;
+		DrawStripsPacked( &gl.lists[gl.packedList], v, strips, numIndexes );
+		xf.packed = NULL;
+	}
+	PROF_END( PROF_PVR );
+	if ( alone ) {
+		pvrglPackedEnd();
+	}
 }
 
 /* per vertex fog amounts (0 none, 255 all fog colour) for the draws till
@@ -2158,13 +2411,18 @@ int pvrgl_Init( void ) {
 	if ( pvr_init( &params ) ) {
 		return -1;
 	}
+	/* the background plane's depth, which a polygon has to be in front of
+	   (1/w, bigger nearer). KOS's 1e-4 is in front of the sky, drawn at
+	   DEPTH_SCALE_SKY/w: 2e-5 to 4e-5 on escape1, so the chip dropped it
+	   all, box and clouds, and showed the clear colour */
+	pvr_set_zclip( 1e-7f );
 
 	memset( &gl, 0, sizeof( gl ) );	/* the list blocks are made as they get used (ListWrite) */
 
 	gl.matrixMode = GL_MODELVIEW;
 	Mat_Identity( gl.modelview[0] );
 	Mat_Identity( gl.projection[0] );
-	gl.mvpDirty = 1;
+	gl.mvpDirty = gl.xfDirty = 1;
 	gl.vpW = PVRGL_WIDTH;
 	gl.vpH = PVRGL_HEIGHT;
 	gl.depthNear = 0.0f;

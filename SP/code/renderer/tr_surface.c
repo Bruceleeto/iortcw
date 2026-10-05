@@ -1236,12 +1236,92 @@ qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] 
 	return qfalse;
 }
 
+#ifdef USE_PVR
+/*
+==============
+RB_WorldDirect
+
+A world surface drawn by pvr_gl from its vertexes as they are (packed:
+pvrglPackedVert_t is a wldVert_t), with no stop in tess, when nothing
+would be done to them there: one stage with the vertex colours and
+texture coordinates as they are, no deform, no dynamic light or fog on it,
+opaque and not blended (so the PVR puts it in its place whatever the
+order). The colour's alpha comes out 1 (as AGEN_IDENTITY has it; AGEN_SKIP
+would keep the vertex's, which the converter has as 255). Says whether it
+was drawn.
+==============
+*/
+typedef int wldVertIsPacked[sizeof( wldVert_t ) == 16 && offsetof( wldVert_t, st ) == 8 && offsetof( wldVert_t, color ) == 12 ? 1 : -1];
+
+static qboolean worldDirectOpen;	// the batch's state is set and pvrglPackedBegin called
+
+void RB_WorldDirectEnd( void ) {
+	if ( worldDirectOpen ) {
+		worldDirectOpen = qfalse;
+		pvrglPackedEnd();
+	}
+}
+
+static qboolean RB_WorldDirect( const srfWorld_t *srf ) {
+	const shader_t *shader = tess.shader;
+	const refEntity_t *e = &backEnd.currentEntity->e;
+	shaderStage_t *stage;
+
+	if ( worldDirectOpen ) {
+		// the batch (one shader, fog, dlit or not, entity) was found fit by its first
+		pvrglDrawPackedStrips( srf->verts, srf->numVerts, srf->origin, srf->xyzStep, srf->stOrigin, srf->stStep,
+							   srf->indexes, srf->numStripIndexes );
+		return qtrue;
+	}
+	if ( !r_worldDirect->integer || srf->dlightBits || tess.fogNum || tess.numPasses != 1
+		 || shader->optimalStageIteratorFunc != RB_StageIteratorGeneric
+		 || shader->numDeforms || shader->polygonOffset || shader->sort != SS_OPAQUE
+		 || ( ( backEnd.refdef.rdflags & RDF_SKYBOXPORTAL ) && !drawskyboxportal )	// the portal sky's pass: sky only (RB_EndSurface)
+		 || r_debugSort->integer
+		 || e->fadeStartTime || ( e->reFlags & ( REFLAG_ZOMBIEFX | REFLAG_ZOMBIEFX2 ) ) ) {
+		return qfalse;
+	}
+	stage = shader->stages[0];
+	if ( stage->bundle[0].tcGen != TCGEN_TEXTURE || stage->bundle[0].numTexMods || stage->bundle[0].isVideoMap
+		 || ( stage->rgbGen != CGEN_EXACT_VERTEX && !( stage->rgbGen == CGEN_VERTEX && tr.identityLight == 1 ) )
+		 || ( stage->alphaGen != AGEN_SKIP && stage->alphaGen != AGEN_IDENTITY )
+		 || ( stage->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ) ) ) {
+		return qfalse;
+	}
+
+	// the state RB_IterateStagesGeneric sets for the stage
+	GL_Cull( shader->cullType );
+	R_BindAnimatedImage( &stage->bundle[0] );
+	if ( shader->noFog && stage->isFogged ) {
+		R_FogOn();
+	} else if ( shader->noFog ) {
+		R_FogOff();
+	} else if ( backEnd.projection2D ) {
+		R_FogOff();
+	} else {
+		R_FogOn();
+	}
+	GL_State( stage->stateBits );
+
+	pvrglPackedBegin();
+	worldDirectOpen = qtrue;
+	pvrglDrawPackedStrips( srf->verts, srf->numVerts, srf->origin, srf->xyzStep, srf->stOrigin, srf->stStep,
+						   srf->indexes, srf->numStripIndexes );
+	return qtrue;
+}
+#endif
+
 static void RB_SurfaceWorld( srfWorld_t *srf ) {
 	int i, j, first;
 	const wldVert_t *v;
 	glIndex_t *tessIndexes;
 	int dlightBits;
 
+#ifdef USE_PVR
+	if ( RB_WorldDirect( srf ) ) {
+		return;
+	}
+#endif
 	RB_CHECKOVERFLOW( srf->numVerts, srf->numIndexes );
 
 	dlightBits = srf->dlightBits;

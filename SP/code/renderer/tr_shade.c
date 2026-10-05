@@ -388,6 +388,10 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 
 	shader_t *state = ( shader->remappedShader ) ? shader->remappedShader : shader;
 
+#ifdef USE_PVR
+	RB_WorldDirectEnd();	// the batch before, if its end was never reached (an error's longjmp)
+#endif
+
 	tess.ATI_tess = qfalse;     //----(SA)	added
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
@@ -1728,6 +1732,9 @@ void RB_EndSurface( void ) {
 
 	input = &tess;
 
+#ifdef USE_PVR
+	RB_WorldDirectEnd();	// the batch's world surfaces drawn as they came; nothing of them in tess
+#endif
 	if ( input->numIndexes == 0 ) {
 		return;
 	}

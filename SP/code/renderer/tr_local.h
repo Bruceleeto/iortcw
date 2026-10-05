@@ -1291,6 +1291,11 @@ extern cvar_t   *r_pvrCull;
 extern int      pvrgl_hwCull;
 void pvrglFogArray( const unsigned char *amounts );
 int  pvrgl_FogColor( unsigned int rgba );
+void pvrglPackedBegin( void );
+void pvrglPackedEnd( void );
+void RB_WorldDirectEnd( void );
+void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
+							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes );
 #endif
 extern cvar_t   *r_ext_compressed_textures;     // these control use of specific extensions
 extern cvar_t   *r_ext_multitexture;
@@ -1370,6 +1375,7 @@ extern cvar_t  *r_simpleMipMaps;
 
 extern cvar_t  *r_showImages;
 extern cvar_t  *r_debugSort;
+extern cvar_t  *r_worldDirect;			// USE_PVR: world surfaces drawn from the .wld, not through tess
 
 extern cvar_t  *r_printShaders;
 extern cvar_t  *r_saveFontData;

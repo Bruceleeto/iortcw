@@ -254,6 +254,12 @@ static int R_DlightWorldSurf( srfWorld_t *srf, int dlightBits ) {
 	int i;
 	dlight_t    *dl;
 
+	// the leaf gives every bit (RF's hack in R_RecursiveWorldNode): only the
+	// lights there are can stay, or a surface no light reaches is still
+	// marked lit by bits 18-31
+	if ( tr.refdef.num_dlights < 32 ) {
+		dlightBits &= ( 1 << tr.refdef.num_dlights ) - 1;
+	}
 	for ( i = 0 ; i < tr.refdef.num_dlights ; i++ ) {
 		if ( !( dlightBits & ( 1 << i ) ) ) {
 			continue;

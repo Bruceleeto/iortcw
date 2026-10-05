@@ -281,6 +281,15 @@ extern "C" void pvr_set_bg_color(float r, float g, float b)
 	bg_color = ((int)(255 * r) << 16) | ((int)(255 * g) << 8) | (int)(255 * b);
 }
 
+/* the background plane's depth (ISP_BACKGND_D): a polygon no deeper than
+   it fails the depth test. KOS starts it at 1e-4, as here, so a sky the
+   chip refuses is refused here too */
+static float zclip = 1e-4f;
+extern "C" void pvr_set_zclip(float zc)
+{
+	zclip = zc;
+}
+
 extern "C" void vid_set_dithering(bool enable)
 {
 	dither = enable;
@@ -429,7 +438,7 @@ static void render_now(void)
 	reg(R::PARAM_BASE, ISP_BASE);
 	reg(R::REGION_BASE, L_REGION_BASE);
 	reg(R::ISP_BACKGND_T, 0x01000000u | ((BG_OFFSET >> 2) << 3));
-	reg(R::ISP_BACKGND_D, f2u(1e-7f));
+	reg(R::ISP_BACKGND_D, f2u(zclip));
 	reg(R::FB_W_CTRL, 1 | (dither ? 8 : 0));            /* RGB565 */
 
 	if (to_texture) {

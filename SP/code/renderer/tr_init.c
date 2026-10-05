@@ -190,6 +190,7 @@ cvar_t  *r_ambientScale;
 cvar_t  *r_directedScale;
 cvar_t  *r_debugLight;
 cvar_t  *r_debugSort;
+cvar_t  *r_worldDirect;
 cvar_t  *r_printShaders;
 cvar_t  *r_saveFontData;
 
@@ -1256,6 +1257,7 @@ void R_Register( void ) {
 
 	r_debugLight = ri.Cvar_Get( "r_debuglight", "0", CVAR_TEMP );
 	r_debugSort = ri.Cvar_Get( "r_debugSort", "0", CVAR_CHEAT );
+	r_worldDirect = ri.Cvar_Get( "r_worldDirect", "1", 0 );
 	r_printShaders = ri.Cvar_Get( "r_printShaders", "0", 0 );
 	r_saveFontData = ri.Cvar_Get( "r_saveFontData", "0", 0 );
 
