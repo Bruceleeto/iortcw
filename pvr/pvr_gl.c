@@ -200,7 +200,7 @@ typedef struct {
 
 static posVert_t	*vpos;
 static uint8_t		*vcode;			/* 1 behind the near plane, 2 4 8 16 off the viewport's edges */
-static float		*vst;			/* the texture coordinates and colours, when not as EmitVertex reads them */
+static float		*vst;			/* the texture coordinates and colours, when not as DrawTriangles reads them */
 static uint32_t		*vcol;
 static int			vposSize;
 
@@ -215,7 +215,7 @@ static struct {
 
 /* per draw call: the mvp with the viewport in it (x y as PVR screen
    space times w), the viewport's edges, and the arrays
-   EmitVertex reads (a stride of 0 for a value all the vertexes have):
+   DrawTriangles reads (a stride of 0 for a value all the vertexes have):
    texture coordinates as 2 floats, colours as RGBA bytes */
 static struct {
 	float		m[16];
@@ -1079,6 +1079,13 @@ static uint32_t * __attribute__((noinline)) ListAllocBlock( listBuffer_t *l ) {
 	return d;
 }
 
+/* a 32 byte line to be written whole: taken without a read from RAM */
+#ifdef USE_SH4ZAM
+#define SHZ_ALLOC_LINE( p )	shz_dcache_alloc_line( p )
+#else
+#define SHZ_ALLOC_LINE( p )	( (void)0 )
+#endif
+
 /* room for 32 bytes at the list's end, or NULL when it's full; its cache
    line taken without a read from RAM, so all 32 are to be written */
 static inline uint32_t *ListAlloc( listBuffer_t *l ) {
@@ -1393,14 +1400,6 @@ static void __attribute__((noinline)) EmitTriangle( listBuffer_t *l, const clipV
 	}
 }
 
-/* a strip being sent (its vertexes so far not ended): its last made the end */
-static void EndStrip( listBuffer_t *l ) {
-	if ( !l->overflowed && l->used > l->whole ) {
-		*(uint32_t *)( l->blocks[( l->used - 32 ) / LIST_BLOCK] + ( l->used - 32 ) % LIST_BLOCK ) = PVR_CMD_VERTEX_EOL;
-		l->whole = l->used;
-	}
-}
-
 /* ===================================================================== */
 /* vertex fetch                                                          */
 /* ===================================================================== */
@@ -1526,7 +1525,7 @@ static void __attribute__((noinline)) TransformVerts( int first, int end ) {
 	}
 }
 
-/* the texture coordinates and colours EmitVertex reads, for vertexes lo to hi */
+/* the texture coordinates and colours DrawTriangles reads, for vertexes lo to hi */
 static void SetAttribs( int lo, int hi ) {
 	const glArray_t *t = &gl.texCoordArray[0], *c = &gl.colorArray;
 	int i;
@@ -1573,28 +1572,6 @@ static void SetAttribs( int lo, int hi ) {
 	}
 }
 
-static inline void EmitVertex( listBuffer_t *l, int i, uint32_t flags ) {
-	pvr_vertex_t *v = (pvr_vertex_t *)ListAlloc( l );
-	const posVert_t *p = &vpos[i];
-	const float *st = (const float *)( xf.st + i * xf.stStride );
-
-	if ( !v ) {
-		return;
-	}
-	PROF_COUNT( STAT_EMITTED, 1 );
-	v->flags = flags;
-	v->x = p->sx;
-	v->y = p->sy;
-	v->z = p->sz;
-	v->u = st[0];
-	v->v = st[1];
-	v->argb = Argb( *(const uint32_t *)( xf.col + i * xf.colStride ) );
-	v->oargb = (uint32_t)xf.fog[i * xf.fogStride] << 24;
-	if ( flags != PVR_CMD_VERTEX ) {
-		l->whole = l->used;
-	}
-}
-
 /* vertex i whole, for EmitTriangle */
 static void FullVert( clipVert_t *c, int i ) {
 	const posVert_t *p = &vpos[i];
@@ -1628,60 +1605,151 @@ static int IndexUInt( const void *p, int i ) { return ( (const GLuint *)p )[i]; 
 static int IndexUShort( const void *p, int i ) { return ( (const GLushort *)p )[i]; }
 static int IndexUByte( const void *p, int i ) { return ( (const GLubyte *)p )[i]; }
 
+/* DrawTriangles keeps the list's cursor in a register; the list learns of
+   what was written here (ListAllocBlock and the other emitters read
+   l->used and l->cur) */
+static inline void ListSync( listBuffer_t *l, uint8_t *cur ) {
+	if ( cur ) {
+		l->used += cur - l->cur;
+		l->cur = cur;
+	}
+}
+
 /* a triangle that goes on from the one before as in a strip (the converter
    puts them so) is sent as one more vertex of a PVR strip, unless it's to be
-   culled or clipped, which ends the strip */
-static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l, int count, indexFunc_t idx, const void *indices ) {
-	int last0 = -1, last1 = -1, last2 = -1, odd = 0, open = 0;
+   culled or clipped, which ends the strip.
+
+   The hot loop: all a vertex needs is in a register for the whole draw (the
+   list's cursor, the arrays, the strides), and a vertex is a copy of words
+   (no float needs working out, so the integer unit does it: a load and a
+   store with a displacement each), no branch, no count (the counts come from
+   what was written). fixed: the renderer's arrays, 2 floats and 4 bytes a
+   vertex, so the addresses are shifts (a constant, so the other way folds
+   away). */
+static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l, int count, indexFunc_t idx, const void *indices, int fixed ) {
+	uint8_t *cur = l->cur, *end = l->end;
+	const uint32_t *const pos = (const uint32_t *)vpos;		/* sx sy sz d, as words */
+	const uint8_t *const codes = vcode;
+	const uint8_t *const st = xf.st, *const col = xf.col;
+	const uint8_t *const fog = xf.fogStride ? xf.fog : NULL;
+	const int stStride = xf.stStride, colStride = xf.colStride;
 	const int cpuCull = gl.cullFace && !pvrgl_hwCull;
+	const int used0 = l->used;
+	const GLushort *ip = indices;		/* fixed: the indexes, 16 bit */
+	int x0 = -1, x1 = -1, odd = 0, open = 0;	/* x0 x1: the next triangle's first two, to go on with the strip */
+	/* the counts of the rare ways: not in registers, which the loop is short of */
+	static int culled, clipped, clipBytes;
 	int i;
 
-	for ( i = 0; i + 2 < count; i += 3 ) {
-		int a = idx( indices, i ), b = idx( indices, i + 1 ), c = idx( indices, i + 2 );
-		int ca = vcode[a], cb = vcode[b], cc = vcode[c];
-		int on = odd ? a == last0 && b == last2 : a == last2 && b == last1;
+	culled = clipped = clipBytes = 0;
+
+#define EMIT( n, cmd ) \
+	do { \
+		uint32_t *w; \
+		if ( cur == end ) { \
+			/* the next block (NULL once the buffer is full) */ \
+			ListSync( l, cur ); \
+			w = ListAllocBlock( l ); \
+			cur = l->cur; \
+			end = l->end; \
+			if ( !w ) { \
+				break; \
+			} \
+		} else { \
+			w = (uint32_t *)cur; \
+			cur += 32; \
+			SHZ_ALLOC_LINE( w ); \
+		} \
+		{ \
+			const int e_n = ( n ); \
+			const uint32_t *e_p = pos + e_n * 4; \
+			const uint32_t *e_s = (const uint32_t *)( st + ( fixed ? e_n << 3 : e_n * stStride ) ); \
+			w[0] = cmd; \
+			w[1] = e_p[0]; \
+			w[2] = e_p[1]; \
+			w[3] = e_p[2]; \
+			w[4] = e_s[0]; \
+			w[5] = e_s[1]; \
+			w[6] = Argb( *(const uint32_t *)( col + ( fixed ? e_n << 2 : e_n * colStride ) ) ); \
+			w[7] = fog ? (uint32_t)fog[e_n] << 24 : 0; \
+		} \
+	} while ( 0 )
+
+	/* the strip so far gets its end */
+#define END_STRIP() \
+	do { \
+		if ( cur ) { \
+			*(uint32_t *)( cur - 32 ) = PVR_CMD_VERTEX_EOL; \
+			ListSync( l, cur ); \
+			l->whole = l->used; \
+		} \
+		open = 0; \
+	} while ( 0 )
+
+	for ( i = 0; i + 2 < count; i += 3, ip += 3 ) {
+		int a = fixed ? ip[0] : idx( indices, i ), b = fixed ? ip[1] : idx( indices, i + 1 ), c = fixed ? ip[2] : idx( indices, i + 2 );
+		int ca = codes[a], cb = codes[b], cc = codes[c];
+		int on = a == x0 && b == x1;
 
 		odd = on ? !odd : 0;
-		last0 = a; last1 = b; last2 = c;
+		/* after a b c the strip goes on with a c x when odd, c b x when not */
+		x0 = odd ? a : c;
+		x1 = odd ? c : b;
 		if ( ca & cb & cc ) {
 			/* all off one edge */
-			PROF_COUNT( STAT_TRIS, 1 );
-			PROF_COUNT( STAT_CULLED, 1 );
+			culled++;
 			if ( open ) {
-				EndStrip( l );
-				open = 0;
+				END_STRIP();
 			}
 			continue;
 		}
-		if ( ( ca | cb | cc ) & 1 || ( cpuCull && Culled( &vpos[a].sx, &vpos[b].sx, &vpos[c].sx ) ) ) {
+		if ( ( ca | cb | cc ) & 1 || ( cpuCull && Culled( (const float *)( pos + a * 4 ), (const float *)( pos + b * 4 ), (const float *)( pos + c * 4 ) ) ) ) {
+			int used;
+
 			if ( open ) {
-				EndStrip( l );
-				open = 0;
+				END_STRIP();
 			}
+			/* on its own, through the list (it counts itself) */
+			ListSync( l, cur );
+			used = l->used;
 			EmitTriangleIdx( l, a, b, c );
+			clipBytes += l->used - used;
+			clipped++;
+			cur = l->cur;
+			end = l->end;
 			continue;
 		}
 		if ( !( on && open ) ) {
 			if ( open ) {
-				EndStrip( l );
+				END_STRIP();
 			}
 			/* as it is, so it faces the way it should for the PVR's
 			   culling: the first of its strip */
-			EmitVertex( l, a, PVR_CMD_VERTEX );
-			EmitVertex( l, b, PVR_CMD_VERTEX );
+			EMIT( a, PVR_CMD_VERTEX );
+			EMIT( b, PVR_CMD_VERTEX );
 			open = 1;
 			odd = 0;
+			x0 = c;
+			x1 = b;
 		}
-		PROF_COUNT( STAT_TRIS, 1 );
-		EmitVertex( l, c, PVR_CMD_VERTEX );
+		EMIT( c, PVR_CMD_VERTEX );
 	}
 	if ( open ) {
-		EndStrip( l );
+		END_STRIP();
 	}
+	ListSync( l, cur );
+	PROF_COUNT( STAT_TRIS, count / 3 - clipped );
+	PROF_COUNT( STAT_CULLED, culled );
+	i = ( l->used - used0 - clipBytes ) / 32;
+	if ( i > 0 ) {
+		PROF_COUNT( STAT_EMITTED, i );
+	}
+#undef EMIT
+#undef END_STRIP
 }
 
 static void __attribute__((noinline)) DrawTrianglesAny( listBuffer_t *l, int count, indexFunc_t idx, const void *indices ) {
-	DrawTriangles( l, count, idx, indices );
+	DrawTriangles( l, count, idx, indices, 0 );
 }
 
 /* vertexes lo to hi, the most it might use; locked, glLockArraysEXT's */
@@ -1747,8 +1815,8 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	case GL_TRIANGLES:
 		/* the renderer's index type inlined; the others out of the way,
 		   to keep the loop in the instruction cache */
-		if ( idx == IndexUShort ) {
-			DrawTriangles( l, count, IndexUShort, indices );
+		if ( idx == IndexUShort && xf.stStride == 8 && xf.colStride == 4 ) {
+			DrawTriangles( l, count, IndexUShort, indices, 1 );
 		} else {
 			DrawTrianglesAny( l, count, idx, indices );
 		}

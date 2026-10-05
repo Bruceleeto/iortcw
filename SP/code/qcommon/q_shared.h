@@ -772,6 +772,7 @@ float   Q_crandom( int *seed );
 #define random()    ( ( rand() & 0x7fff ) / ( (float)0x7fff ) )
 #define crandom()   ( 2.0f * ( random() - 0.5f ) )
 
+float Q_atan2f( float y, float x );     // atan2f, fast; not both 0
 void vectoangles( const vec3_t value1, vec3_t angles );
 float vectoyaw( const vec3_t vec );
 void AnglesToAxis( const vec3_t angles, vec3_t axis[3] );

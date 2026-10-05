@@ -4697,6 +4697,31 @@ static void CG_Player_( centity_t *cent ) {
 	}
 	cent->pe->lastTime = cg.time;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// a player behind the eye or behind the world (a trace to the waist
+	// and one to the head, both into a wall) isn't drawn: the snapshot has
+	// every one in the PVS, and each would cost its tags here and its
+	// skeleton in the renderer, culled only after that
+	if ( cent->currentState.number != cg.snap->ps.clientNum ) {
+		vec3_t to;
+		trace_t tr;
+
+		VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, to );
+		if ( DotProduct( to, cg.refdef.viewaxis[0] ) < -48 ) {
+			return;
+		}
+		trap_CM_BoxTrace( &tr, cg.refdef.vieworg, cent->lerpOrigin, NULL, NULL, 0, CONTENTS_SOLID );
+		if ( tr.fraction < 1.0f ) {
+			VectorCopy( cent->lerpOrigin, to );
+			to[2] += 40;
+			trap_CM_BoxTrace( &tr, cg.refdef.vieworg, to, NULL, NULL, 0, CONTENTS_SOLID );
+			if ( tr.fraction < 1.0f ) {
+				return;
+			}
+		}
+	}
+#endif
+
 	memset( &legs, 0, sizeof( legs ) );
 	memset( &torso, 0, sizeof( torso ) );
 	memset( &head, 0, sizeof( head ) );

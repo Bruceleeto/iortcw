@@ -376,6 +376,37 @@ void RotateAroundDirection( vec3_t axis[3], float yaw ) {
 
 
 
+/*
+=================
+Q_atan2f
+
+atan2f in a few dozen cycles instead of the C library's few hundred: the
+quotient's arctangent from an odd polynomial on [0, 1] (worst error 1e-5
+radians, 0.0001 degrees), the other octants by symmetry. vectoangles is
+called for every AI move and every particle. Not both 0.
+=================
+*/
+float Q_atan2f( float y, float x ) {
+	float ax = fabsf( x ), ay = fabsf( y );
+	float num = ay < ax ? ay : ax, den = ay < ax ? ax : ay;
+	float t, t2, r;
+
+#ifdef USE_SH4ZAM
+	t = num * shz_invf_fsrra( den );
+#else
+	t = num / den;
+#endif
+	t2 = t * t;
+	r = t * ( 0.99997726f + t2 * ( -0.33262347f + t2 * ( 0.19354346f + t2 * ( -0.11643287f + t2 * ( 0.05265332f - 0.01172120f * t2 ) ) ) ) );
+	if ( ay > ax ) {
+		r = 1.57079633f - r;
+	}
+	if ( x < 0 ) {
+		r = 3.14159265f - r;
+	}
+	return y < 0 ? -r : r;
+}
+
 void vectoangles( const vec3_t value1, vec3_t angles ) {
 	float forward;
 	float yaw, pitch;
@@ -389,7 +420,7 @@ void vectoangles( const vec3_t value1, vec3_t angles ) {
 		}
 	} else {
 		if ( value1[0] ) {
-			yaw = ( atan2( value1[1], value1[0] ) * 180 / M_PI );
+			yaw = Q_atan2f( value1[1], value1[0] ) * ( 180 / M_PI );
 		} else if ( value1[1] > 0 )   {
 			yaw = 90;
 		} else {
@@ -400,7 +431,7 @@ void vectoangles( const vec3_t value1, vec3_t angles ) {
 		}
 
 		forward = sqrtf( value1[0] * value1[0] + value1[1] * value1[1] );
-		pitch = ( atan2( value1[2], forward ) * 180 / M_PI );
+		pitch = Q_atan2f( value1[2], forward ) * ( 180 / M_PI );
 		if ( pitch < 0 ) {
 			pitch += 360;
 		}
@@ -1081,7 +1112,7 @@ float vectoyaw( const vec3_t vec ) {
 		yaw = 0;
 	} else {
 		if ( vec[PITCH] ) {
-			yaw = ( atan2( vec[YAW], vec[PITCH] ) * 180 / M_PI );
+			yaw = Q_atan2f( vec[YAW], vec[PITCH] ) * ( 180 / M_PI );
 		} else if ( vec[YAW] > 0 ) {
 			yaw = 90;
 		} else {
