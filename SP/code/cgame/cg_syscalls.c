@@ -546,3 +546,19 @@ void *trap_Alloc( int size ) {
 qboolean trap_R_inPVS( const vec3_t p1, const vec3_t p2 ) {
 	return syscall( CG_R_INPVS, p1, p2 );
 }
+
+int trap_CM_PVSKey( const vec3_t p, int *area ) {
+	return syscall( CG_CM_PVSKEY, p, area );
+}
+
+qboolean trap_CM_PVSTest( const vec3_t view, int cluster, int area ) {
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// linked in with the engine: straight to it, not through the syscall
+	// (each static entity and mark, each frame)
+	extern qboolean CL_PVSTest( const vec3_t p1, int cluster, int area );
+
+	return CL_PVSTest( view, cluster, area );
+#else
+	return syscall( CG_CM_PVSTEST, view, cluster, area );
+#endif
+}

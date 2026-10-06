@@ -258,7 +258,7 @@ typedef struct {
 	int lightningTimes[MAX_LOPER_LIGHTNING_POINTS];
 	int lightningSoundTime;
 
-	qboolean forceLOD;
+	int hiddenCheck;                    // DC: CG_Player's last look behind the walls: the frame << 1 | hidden
 
 } playerEntity_t;
 
@@ -359,7 +359,8 @@ typedef struct markPoly_s {
 	qhandle_t markShader;
 	qboolean alphaFade;         // fade alpha instead of rgb
 	float color[4];
-	poly_t poly;
+	int numVerts;
+	short cluster, area;        // where it is (trap_CM_PVSKey), for the PVS test each frame
 	polyVert_t verts[MAX_VERTS_ON_POLY];
 
 	int duration;           // Ridah
@@ -2037,6 +2038,7 @@ void CG_RailTrail( clientInfo_t *ci, vec3_t start, vec3_t end, int type );   //-
 void CG_GrappleTrail( centity_t *ent, const weaponInfo_t *wi );
 void CG_AddViewWeapon( playerState_t *ps );
 void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent );
+void CG_AddPlayerWeaponSounds( centity_t *cent );
 void CG_DrawWeaponSelect( void );
 void CG_DrawHoldableSelect( void );
 
@@ -2383,6 +2385,8 @@ void        trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int         trap_R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex );
 void        trap_R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );
 qboolean    trap_R_inPVS( const vec3_t p1, const vec3_t p2 );
+int         trap_CM_PVSKey( const vec3_t p, int *area );            // trap_R_inPVS for a thing that never moves: its
+qboolean    trap_CM_PVSTest( const vec3_t view, int cluster, int area );  // cluster and area once, then tested each frame
 
 //----(SA)
 void    trap_R_SetFog( int fogvar, int var1, int var2, float r, float g, float b, float density );

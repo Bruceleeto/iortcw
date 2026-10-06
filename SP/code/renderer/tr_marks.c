@@ -149,7 +149,7 @@ void R_BoxSurfaces_r( mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **l
 	unsigned short *mark;
 
 	// RF, if this node hasn't been rendered recently, ignore it
-	if ( node->visframe < tr.visCount - 2 ) { // allow us to be a few frames behind
+	if ( ( node->visframe & VIS_MAIN ) < tr.visCounts[0] - 2 ) { // allow us to be a few frames behind
 		return;
 	}
 

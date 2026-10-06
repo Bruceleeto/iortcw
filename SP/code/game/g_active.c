@@ -848,6 +848,14 @@ void ClientThink_real( gentity_t *ent ) {
 	if ( msec > 200 ) {
 		msec = 200;
 	}
+	// a cast AI that hasn't moved for a while (idle out of the player's PVS
+	// it's visited every 300 ms, a body not at all) would catch up to a
+	// second of 66 ms pmove steps in one go, a dozen traces each: a frame
+	// spike. It gets 100 ms (two steps) and loses the rest; its clock
+	// matters to no one while it's unseen and still
+	if ( ( ent->r.svFlags & SVF_CASTAI ) && ucmd->serverTime - client->ps.commandTime > 100 ) {
+		client->ps.commandTime = ucmd->serverTime - 100;
+	}
 
 	if ( pmove_msec.integer < 8 ) {
 		trap_Cvar_Set( "pmove_msec", "8" );

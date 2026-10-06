@@ -34,6 +34,7 @@ If you have questions concerning this license or the applicable additional terms
 cvar_t      *cvar_vars = NULL;
 cvar_t      *cvar_cheats;
 int cvar_modifiedFlags;
+int cvar_changeCount;		// every modificationCount change (cgame's and game's update loops, on the Dreamcast)
 
 #define MAX_CVARS   768     // escape1 has 587
 cvar_t cvar_indexes[MAX_CVARS];
@@ -445,6 +446,7 @@ cvar_t *Cvar_Get( const char *var_name, const char *var_value, int flags ) {
 	var->string = CopyString( var_value );
 	var->modified = qtrue;
 	var->modificationCount = 1;
+	cvar_changeCount++;
 	var->value = atof( var->string );
 	var->integer = atoi( var->string );
 	var->resetString = CopyString( var_value );
@@ -594,6 +596,7 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 			var->latchedString = CopyString( value );
 			var->modified = qtrue;
 			var->modificationCount++;
+			cvar_changeCount++;
 			return var;
 		}
 
@@ -611,6 +614,7 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 	}
 	var->modified = qtrue;
 	var->modificationCount++;
+	cvar_changeCount++;
 
 	Z_Free( var->string );   // free the old value string
 

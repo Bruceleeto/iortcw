@@ -2411,6 +2411,46 @@ sound should only be done on the world model case.
 */
 static qboolean debuggingweapon = qfalse;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+/*
+==============
+CG_AddPlayerWeaponSounds
+
+  The third-person weapon's loop sounds (the ready hum, the firing hiss)
+  as CG_AddPlayerWeapon adds them, for the frames the player's own unseen
+  body isn't built: the same tests, so they neither drop out nor double
+==============
+*/
+void CG_AddPlayerWeaponSounds( centity_t *cent ) {
+	weapon_t weaponNum = cent->currentState.weapon;
+	weapon_t weapSelect = cg.weaponSelect;
+	weaponInfo_t *weapon;
+
+	if ( cent->currentState.eFlags & ( EF_ZOOMING | EF_MG42_ACTIVE ) ) {
+		return;
+	}
+	if ( weaponNum == WP_SNOOPERSCOPE || weaponNum == WP_SNIPERRIFLE || weaponNum == WP_FG42SCOPE ||
+		 weapSelect == WP_SNOOPERSCOPE || weapSelect == WP_SNIPERRIFLE || weapSelect == WP_FG42SCOPE ) {
+		return;
+	}
+	CG_RegisterWeapon( weaponNum );
+	weapon = &cg_weapons[weaponNum];
+	if ( !weapon->weaponModel[W_TP_MODEL] && !weapon->weaponModel[W_SKTP_MODEL] ) {
+		return;
+	}
+	if ( weaponNum == WP_GAUNTLET || ( cg.snap->ps.pm_flags & PMF_LADDER ) ) {
+		return;
+	}
+	cent->pe->lightningFiring = qfalse;
+	if ( ( cent->currentState.eFlags & EF_FIRING ) && weapon->firingSound ) {
+		CG_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, weapon->firingSound, 255 );
+		cent->pe->lightningFiring = qtrue;
+	} else if ( weapon->readySound ) {
+		CG_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, weapon->readySound, 255 );
+	}
+}
+#endif
+
 void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent ) {
 
 	refEntity_t gun;
@@ -2860,7 +2900,16 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 			CG_PlayerTeslaCoilFire( cent, flash.origin );
 
 			// make a dlight for the flash
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+			// DC: not for the local player's own gun: a 200-unit light at the
+			// camera is always the biggest on screen and relights every surface
+			// in the room each shot, dropping them off the direct path (small
+			// on the hardware: the torches are the dlight cost); the flash
+			// sprite itself stays
+			if ( !ps && ( weapon->flashDlightColor[0] || weapon->flashDlightColor[1] || weapon->flashDlightColor[2] ) ) {
+#else
 			if ( weapon->flashDlightColor[0] || weapon->flashDlightColor[1] || weapon->flashDlightColor[2] ) {
+#endif
 				trap_R_AddLightToScene( flash.origin, 200 + ( rand() & 31 ), weapon->flashDlightColor[0],
 										weapon->flashDlightColor[1], weapon->flashDlightColor[2], 0 );
 			}

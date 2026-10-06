@@ -130,7 +130,7 @@ void R_Fog( glfog_t *curfog ) {
 }
 
 // Ridah, allow disabling fog temporarily
-void R_FogOff( void ) {
+DC_HOT( "30" ) void R_FogOff( void ) {
 	if ( !fogIsOn ) {
 		return;
 	}
@@ -138,7 +138,7 @@ void R_FogOff( void ) {
 	fogIsOn = qfalse;
 }
 
-void R_FogOn( void ) {
+DC_HOT( "30" ) void R_FogOn( void ) {
 	if ( fogIsOn ) {
 		return;
 	}
@@ -291,7 +291,37 @@ R_CullLocalBox
 Returns CULL_IN, CULL_CLIP, or CULL_OUT
 =================
 */
-int R_CullLocalBox( vec3_t bounds[2] ) {
+/*
+=================
+R_CullWorldBox
+
+A box in world space against the view frustum's side planes in planeBits
+(15: all four): out when its corner furthest along a plane's normal is
+behind the plane
+=================
+*/
+DC_HOT( "50" ) qboolean R_CullWorldBox( const vec3_t mins, const vec3_t maxs, int planeBits ) {
+	const cplane_t *f = tr.viewParms.frustum;
+	int i;
+
+	for ( i = 0 ; i < 4 ; i++, f++ ) {
+		float d;
+
+		if ( !( planeBits & ( 1 << i ) ) ) {
+			continue;
+		}
+		d = f->normal[0] * ( f->normal[0] >= 0 ? maxs[0] : mins[0] )
+				  + f->normal[1] * ( f->normal[1] >= 0 ? maxs[1] : mins[1] )
+				  + f->normal[2] * ( f->normal[2] >= 0 ? maxs[2] : mins[2] );
+
+		if ( d < f->dist ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+DC_HOT( "50" ) int R_CullLocalBox( vec3_t bounds[2] ) {
 	int i, j;
 	vec3_t transformed[8];
 	float dists[8];
@@ -361,7 +391,7 @@ int R_CullLocalPointAndRadius( vec3_t pt, float radius ) {
 /*
 ** R_CullPointAndRadius
 */
-int R_CullPointAndRadius( vec3_t pt, float radius ) {
+DC_HOT( "50" ) int R_CullPointAndRadius( vec3_t pt, float radius ) {
 	int i;
 	float dist;
 	cplane_t    *frust;
@@ -1453,7 +1483,7 @@ static void R_RadixSort( drawSurf_t *source, int size )
 R_AddDrawSurf
 =================
 */
-void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader,
+DC_HOT( "50" ) void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader,
 					int fogIndex, int dlightMap, int atiTess ) {
 	int index;
 
@@ -1667,7 +1697,9 @@ void R_GenerateDrawSurfs( void ) {
 	// we know the size of the clipping volume. Now set the rest of the projection matrix.
 	R_SetupProjectionZ (&tr.viewParms);
 
+	PROF_BEGIN( PROF_SC_ENTS );
 	R_AddEntitySurfaces();
+	PROF_END( PROF_SC_ENTS );
 }
 
 /*
@@ -1783,7 +1815,9 @@ void R_RenderView( viewParms_t *parms ) {
 		numDrawSurfs = MAX_DRAWSURFS;
 	}
 
+	PROF_BEGIN( PROF_SC_SORT );
 	R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf, numDrawSurfs - firstDrawSurf );
+	PROF_END( PROF_SC_SORT );
 
 	// draw main system development information (surface outlines, etc)
 	R_FogOff();

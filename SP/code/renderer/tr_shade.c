@@ -176,7 +176,7 @@ instead of using the single glDrawElements call that may be inefficient
 without compiled vertex arrays.
 ==================
 */
-void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
+DC_HOT( "30" ) void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 #ifdef USE_OPENGLES
 	qglDrawElements( GL_TRIANGLES, 
 						numIndexes,
@@ -243,7 +243,7 @@ R_BindAnimatedImage
 
 =================
 */
-void R_BindAnimatedImage( textureBundle_t *bundle ) {
+DC_HOT( "30" ) void R_BindAnimatedImage( textureBundle_t *bundle ) {
 	int index;
 
 	if ( bundle->isVideoMap ) {
@@ -384,12 +384,13 @@ because a surface may be forced to perform a RB_End due
 to overflow.
 ==============
 */
-void RB_BeginSurface( shader_t *shader, int fogNum ) {
+DC_HOT( "10e" ) void RB_BeginSurface( shader_t *shader, int fogNum ) {
 
 	shader_t *state = ( shader->remappedShader ) ? shader->remappedShader : shader;
 
 #ifdef USE_PVR
 	RB_WorldDirectEnd();	// the batch before, if its end was never reached (an error's longjmp)
+	rb_dlitDirect = qfalse;
 #endif
 
 	tess.ATI_tess = qfalse;     //----(SA)	added
@@ -659,7 +660,7 @@ static void ProjectDlightTexture_scalar( void ) {
 				{
 					shaderStage_t *stage = dls->stages[i];
 					R_BindAnimatedImage( &dls->stages[i]->bundle[0] );
-					GL_State( stage->stateBits | GLS_DEPTHFUNC_EQUAL );
+					GL_State( stage->stateBits | ( rb_dlitDirect ? 0 : GLS_DEPTHFUNC_EQUAL ) );
 					R_DrawElements( numIndexes, hitIndexes );
 					backEnd.pc.c_totalIndexes += numIndexes;
 					backEnd.pc.c_dlightIndexes += numIndexes;
@@ -672,7 +673,7 @@ static void ProjectDlightTexture_scalar( void ) {
 				GL_Bind( tr.dlightImage );
 				// include GLS_DEPTHFUNC_EQUAL so alpha tested surfaces don't add light
 				// where they aren't rendered
-				GL_State( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );
+				GL_State( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE | ( rb_dlitDirect ? 0 : GLS_DEPTHFUNC_EQUAL ) );
 				R_DrawElements( numIndexes, hitIndexes );
 				backEnd.pc.c_totalIndexes += numIndexes;
 				backEnd.pc.c_dlightIndexes += numIndexes;
@@ -699,6 +700,16 @@ static void ProjectDlightTexture( void ) {
 	if (com_altivec->integer) {
 		// must be in a separate translation unit or G3 systems will crash.
 		ProjectDlightTexture_altivec();
+	} else
+#endif
+#ifdef USE_PVR
+	if ( rb_dlitDirect ) {
+		// the base went down the asm path and its depth rounds differently
+		// from tess's, so the glow's "depth equal" test fails pixel by pixel
+		// (speckles). The decal trick instead: a hair nearer, nearer-or-equal
+		qglEnable( GL_POLYGON_OFFSET_FILL );
+		ProjectDlightTexture_scalar();
+		qglDisable( GL_POLYGON_OFFSET_FILL );
 	} else
 #endif
 	ProjectDlightTexture_scalar();
@@ -753,7 +764,7 @@ static void RB_FogPass( void ) {
 ComputeColors
 ===============
 */
-static void ComputeColors( shaderStage_t *pStage ) {
+static DC_HOT( "30" ) void ComputeColors( shaderStage_t *pStage ) {
 	int i;
 
 	//
@@ -1035,7 +1046,7 @@ static void ComputeColors( shaderStage_t *pStage ) {
 ComputeTexCoords
 ===============
 */
-static void ComputeTexCoords( shaderStage_t *pStage ) {
+static DC_HOT( "30" ) void ComputeTexCoords( shaderStage_t *pStage ) {
 	int i;
 	int b;
 
@@ -1185,7 +1196,7 @@ void SetIteratorFog( void ) {
 /*
 ** RB_IterateStagesGeneric
 */
-static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
+static DC_HOT( "30" ) void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 	int stage;
 
 	for ( stage = 0; stage < MAX_SHADER_STAGES; stage++ )
@@ -1335,7 +1346,7 @@ static qboolean RB_VertexFog( void ) {
 }
 #endif
 
-void RB_StageIteratorGeneric( void ) {
+DC_HOT( "30" ) void RB_StageIteratorGeneric( void ) {
 	shaderCommands_t *input;
 	shader_t		*shader;
 	qboolean vertexFog = qfalse;
@@ -1429,13 +1440,18 @@ void RB_StageIteratorGeneric( void ) {
 	// call shader function
 	//
 #ifdef USE_PVR
-	vertexFog = RB_VertexFog();
-#endif
-	RB_IterateStagesGeneric( input );
-#ifdef USE_PVR
-	if ( vertexFog ) {
-		pvrglFogArray( NULL );
+	if ( rb_dlitDirect ) {
+		// the world batch's base went direct (RB_SurfaceWorld): the lights' pass alone
+		vertexFog = qtrue;	// (not fogged here either: a dlit batch in a fog never goes direct)
+	} else {
+		vertexFog = RB_VertexFog();
+		RB_IterateStagesGeneric( input );
+		if ( vertexFog ) {
+			pvrglFogArray( NULL );
+		}
 	}
+#else
+	RB_IterateStagesGeneric( input );
 #endif
 
 	//
@@ -1727,7 +1743,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 /*
 ** RB_EndSurface
 */
-void RB_EndSurface( void ) {
+DC_HOT( "10e" ) void RB_EndSurface( void ) {
 	shaderCommands_t *input;
 
 	input = &tess;

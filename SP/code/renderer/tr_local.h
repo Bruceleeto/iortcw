@@ -850,6 +850,13 @@ typedef struct msurface_s {
 
 
 #define CONTENTS_NODE       -1
+/* a node's visframe holds two marks: the main scene's in the low half, the
+   skybox portal scene's (RDF_SKYBOXPORTAL) in the high; a map's second
+   scene a frame is from another cluster, and one mark would be redone
+   every frame */
+#define VIS_MAIN    0x0000ffff
+#define VIS_SKY     0xffff0000
+
 typedef struct mnode_s {
 	// common with leaf and node
 	short contents;             // -1 for nodes, to differentiate from leafs
@@ -1109,7 +1116,11 @@ typedef struct {
 typedef struct {
 	qboolean registered;                    // cleared at shutdown, set at beginRegistration
 
-	int visCount;                           // incremented every time a new vis cluster is entered
+	int visCount;                           // this scene's leaf mark, in its half of each node's visframe
+	int visMask;                            // and that half (VIS_MAIN or VIS_SKY): the main scene and the
+	int visCounts[2];                       // skybox portal scene each keep their marks, so neither remarks
+	int viewClusters[2];                    // the leaves unless its own cluster changes
+	byte areamasks[2][MAX_MAP_AREA_BYTES];  // each one's last areamask (the skybox scene's is all open)
 	int frameCount;                         // incremented every frame
 	int sceneCount;                         // incremented every scene
 	int viewCount;                          // incremented every view (twice a scene if portaled)
@@ -1160,7 +1171,7 @@ typedef struct {
 
 	trRefdef_t refdef;
 
-	int viewCluster;
+	int viewCluster;                        // the scene's now
 
 	vec3_t sunLight;                            // from the sky shader for this level
 	vec3_t sunDirection;
@@ -1288,14 +1299,37 @@ extern cvar_t	*r_displayRefresh;		// optional display refresh option
 extern cvar_t   *r_allowExtensions;             // global enable/disable of OpenGL extensions
 #ifdef USE_PVR
 extern cvar_t   *r_pvrCull;
+extern cvar_t   *r_dlightMax;       // dynamic lights a scene, the biggest on screen (DC)
+extern cvar_t   *r_dlightMinSize;   // a dynamic light's radius over its distance, below which it's dropped (DC)
 extern int      pvrgl_hwCull;
 void pvrglFogArray( const unsigned char *amounts );
+/* A fog for a packed batch's fast draws (pvrglPackedFog before
+ * pvrglPackedBegin, till pvrglPackedEnd): the PVR blends pvrgl_FogColor's
+ * colour in by vertex, the amount table[depth * invDepth] (256 amounts
+ * 0..1 by the view depth, the last beyond) for a vertex in the fog:
+ * dot(xyz, plane) >= plane[3] if hasPlane, as the game's R_FogFactor.
+ * eyeT: the eye's dot - plane[3]; under 0 it's outside and the depth is
+ * cut at the plane. A draw not on the fast path (pvrglPackedFast) has
+ * no fog. */
+#ifndef PVRGL_PACKED_FOG_T
+#define PVRGL_PACKED_FOG_T
+typedef struct {
+	float		plane[4];
+	int			hasPlane;
+	float		eyeT;
+	float		invDepth;
+	const float	*table;
+} pvrglPackedFog_t;
+void pvrglPackedFog( const pvrglPackedFog_t *fog );
+int  pvrglPackedFast( const float *mins, const float *maxs );
+#endif
 int  pvrgl_FogColor( unsigned int rgba );
 void pvrglPackedBegin( void );
 void pvrglPackedEnd( void );
 void RB_WorldDirectEnd( void );
 void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
-							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes );
+							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes,
+							const float *mins, const float *maxs );
 #endif
 extern cvar_t   *r_ext_compressed_textures;     // these control use of specific extensions
 extern cvar_t   *r_ext_multitexture;
@@ -1429,6 +1463,7 @@ void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader, int fogIndex, int 
 void R_LocalNormalToWorld( vec3_t local, vec3_t world );
 void R_LocalPointToWorld( vec3_t local, vec3_t world );
 int R_CullLocalBox( vec3_t bounds[2] );
+qboolean R_CullWorldBox( const vec3_t mins, const vec3_t maxs, int planeBits );
 int R_CullPointAndRadius( vec3_t origin, float radius );
 int R_CullLocalPointAndRadius( vec3_t origin, float radius );
 
@@ -1625,6 +1660,7 @@ void RB_SetGL2D (void);
 #endif
 void RB_BeginSurface( shader_t *shader, int fogNum );
 void RB_EndSurface( void );
+extern qboolean rb_dlitDirect;	// pvr: the batch's base is drawn, tess has it for the dlight pass only
 void RB_CheckOverflow( int verts, int indexes );
 #define RB_CHECKOVERFLOW( v,i ) if ( tess.numVertexes + ( v ) >= SHADER_MAX_VERTEXES || tess.numIndexes + ( i ) >= SHADER_MAX_INDEXES ) {RB_CheckOverflow( v,i );}
 

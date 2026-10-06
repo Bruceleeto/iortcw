@@ -677,7 +677,7 @@ BoxOnPlaneSide
 Returns 1, 2, or 1 + 2
 ==================
 */
-int BoxOnPlaneSide(vec3_t emins, vec3_t emaxs, struct cplane_s *p)
+DC_HOT( "50" ) int BoxOnPlaneSide(vec3_t emins, vec3_t emaxs, struct cplane_s *p)
 {
 	float	dist0, dist1;
 	int		sides;

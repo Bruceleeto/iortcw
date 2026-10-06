@@ -106,6 +106,8 @@ cvar_t  *r_allowExtensions;
 cvar_t  *r_ext_compressed_textures;
 #ifdef USE_PVR
 cvar_t  *r_pvrCull;
+cvar_t  *r_dlightMax;
+cvar_t  *r_dlightMinSize;
 #endif
 cvar_t  *r_ext_multitexture;
 cvar_t  *r_ext_compiled_vertex_array;
@@ -1220,6 +1222,10 @@ void R_Register( void ) {
 	r_inGameVideo = ri.Cvar_Get( "r_inGameVideo", "1", CVAR_ARCHIVE );
 	r_drawSun = ri.Cvar_Get( "r_drawSun", "1", CVAR_ARCHIVE );
 	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE );
+#ifdef USE_PVR
+	r_dlightMax = ri.Cvar_Get( "r_dlightMax", "2", CVAR_ARCHIVE );
+	r_dlightMinSize = ri.Cvar_Get( "r_dlightMinSize", "0.3", CVAR_ARCHIVE );
+#endif
 	r_dlightScale = ri.Cvar_Get( "r_dlightScale", "1.0", CVAR_ARCHIVE );   //----(SA)	added
 	r_dlightBacks = ri.Cvar_Get( "r_dlightBacks", "1", CVAR_ARCHIVE );
 	r_finish = ri.Cvar_Get( "r_finish", "0", CVAR_ARCHIVE );

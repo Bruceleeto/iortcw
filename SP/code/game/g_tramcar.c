@@ -635,11 +635,13 @@ void TramCarUse( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 void Blocked_Tramcar( gentity_t *ent, gentity_t *other ) {
 	// remove anything other than a client
 	if ( !other->client ) {
+#ifndef G_NO_TEAMPLAY
 		// except CTF flags!!!!
 		if ( other->s.eType == ET_ITEM && other->item->giType == IT_TEAM ) {
 			Team_DroppedFlagThink( other );
 			return;
 		}
+#endif
 		G_TempEntity( other->s.origin, EV_ITEM_POP );
 		G_FreeEntity( other );
 		return;

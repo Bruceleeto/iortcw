@@ -82,11 +82,13 @@ void Use_target_remove_powerups( gentity_t *ent, gentity_t *other, gentity_t *ac
 		return;
 	}
 
+#ifndef G_NO_TEAMPLAY
 	if ( activator->client->ps.powerups[PW_REDFLAG] ) {
 		Team_ReturnFlag( TEAM_RED );
 	} else if ( activator->client->ps.powerups[PW_BLUEFLAG] ) {
 		Team_ReturnFlag( TEAM_BLUE );
 	}
+#endif
 
 	memset( activator->client->ps.powerups, 0, sizeof( activator->client->ps.powerups ) );
 }

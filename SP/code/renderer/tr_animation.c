@@ -1134,7 +1134,7 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 RB_SurfaceAnim
 ==============
 */
-void RB_SurfaceAnim( mdsSurface_t *surface ) {
+DC_HOT( "60" ) void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	int j, k;
 	refEntity_t *refent;
 	int             *boneList;

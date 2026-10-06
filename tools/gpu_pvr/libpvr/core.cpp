@@ -1160,8 +1160,11 @@ Pixel CORE::apply_color_clamp(const Pixel& color) const {
 // ============================================================================
 
 float CORE::fog_table_lookup(float z_value) const {
-    // Read FOG_DENSITY as float
-    float fog_density = bits_to_float(regs_->read(RegisterName::FOG_DENSITY));
+    // FOG_DENSITY: a 16 bit float, bits 14-8 the mantissa's top 7 bits
+    // (1.mmmmmmm), 7-0 the exponent (two's complement); KOS sets bit 15
+    // (pvr_fog_far_depth writes the depth negated) and it means nothing here
+    uint32_t dreg = regs_->read(RegisterName::FOG_DENSITY);
+    float fog_density = std::ldexp(1.0f + ((dreg >> 8) & 0x7f) / 128.0f, static_cast<int8_t>(dreg & 0xff));
 
     // Compute lookup value
     float val = std::abs(z_value) * fog_density;

@@ -652,12 +652,16 @@ void SV_Trace( trace_t *results, const vec3_t start, const vec3_t mins, const ve
 	// we can limit it to the part of the move not
 	// already clipped off by the world, which can be
 	// a significant savings for line of sight and shot traces
+	// (DC: done, with the world's end point: an entity past it can't
+	// have a smaller fraction, and one before it is in this box. The
+	// entities are still traced start to end, so their fractions are
+	// on the same scale)
 	for ( i = 0 ; i < 3 ; i++ ) {
-		if ( end[i] > start[i] ) {
+		if ( clip.trace.endpos[i] > start[i] ) {
 			clip.boxmins[i] = clip.start[i] + clip.mins[i] - 1;
-			clip.boxmaxs[i] = clip.end[i] + clip.maxs[i] + 1;
+			clip.boxmaxs[i] = clip.trace.endpos[i] + clip.maxs[i] + 1;
 		} else {
-			clip.boxmins[i] = clip.end[i] + clip.mins[i] - 1;
+			clip.boxmins[i] = clip.trace.endpos[i] + clip.mins[i] - 1;
 			clip.boxmaxs[i] = clip.start[i] + clip.maxs[i] + 1;
 		}
 	}

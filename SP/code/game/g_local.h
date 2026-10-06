@@ -39,6 +39,13 @@ If you have questions concerning this license or the applicable additional terms
 // the "gameversion" client command will print this plus compile date
 //----(SA) Wolfenstein
 #define GAMEVERSION BASEGAME
+
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+// single player only: none of the multiplayer's CTF flags, team spawns,
+// checkpoints, objectives, team or vote commands (no map on the disc has
+// their entities), so the linker can leave them out
+#define G_NO_TEAMPLAY
+#endif
 // done.
 
 #define BODY_QUEUE_SIZE     8

@@ -1787,11 +1787,13 @@ void Blocked_Door( gentity_t *ent, gentity_t *other ) {
 	// remove anything other than a client
 	if ( other ) {
 		if ( !other->client ) {
+#ifndef G_NO_TEAMPLAY
 			// except CTF flags!!!!
 			if ( other->s.eType == ET_ITEM && other->item->giType == IT_TEAM ) {
 				Team_DroppedFlagThink( other );
 				return;
 			}
+#endif
 //			G_TempEntity( other->s.origin, EV_ITEM_POP );
 			if ( other->s.eType == ET_MOVER ) {
 				if ( strstr( other->classname, "chair" ) ) {

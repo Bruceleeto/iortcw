@@ -1570,6 +1570,9 @@ static void CG_AddCorona( const vec3_t origin, int dli, int density, int id, int
 	float dot, dist;
 	vec3_t dir;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	return;		// DC: none is ever drawn (the renderer's flares, tr_flares.c)
+#endif
 	if ( cg_coronas.integer == 0 ) {   // if set to '0' no coronas
 		return;
 	}
@@ -2632,8 +2635,10 @@ typedef struct {
 	int range;              // speaker: as its entity's dmgFlags, frame and clientNum
 	int wait, random;
 	int nextTime;
-	qboolean loop;          // LOOPED_ON
-	qboolean always;        // GLOBAL or NO_PVS: heard out of the PVS
+	byte loop;              // LOOPED_ON
+	byte always;            // GLOBAL or NO_PVS: heard out of the PVS
+	short area;             // where it is (trap_CM_PVSKey), for the PVS test each frame
+	int cluster;
 } staticEnt_t;
 
 static staticEnt_t *cg_staticEnts;
@@ -2779,6 +2784,13 @@ void CG_ParseStaticEntities( void ) {
 				CG_Error( "CG_ParseStaticEntities: found %s when expecting {", token );
 			}
 			if ( CG_ParseStaticEntity( cg_staticEnts ? &cg_staticEnts[cg_numStaticEnts] : NULL ) ) {
+				if ( cg_staticEnts ) {
+					staticEnt_t *se = &cg_staticEnts[cg_numStaticEnts];
+					int area;
+
+					se->cluster = trap_CM_PVSKey( se->origin, &area );
+					se->area = area;
+				}
 				cg_numStaticEnts++;
 			}
 		}
@@ -2801,7 +2813,7 @@ void CG_AddStaticEntities( void ) {
 	int i, loops = 0;
 
 	for ( i = 0, se = cg_staticEnts; i < cg_numStaticEnts; i++, se++ ) {
-		if ( !se->always && !trap_R_inPVS( cg.refdef.vieworg, se->origin ) ) {
+		if ( !se->always && !trap_CM_PVSTest( cg.refdef.vieworg, se->cluster, se->area ) ) {
 			continue;
 		}
 		if ( se->model ) {
@@ -2895,7 +2907,6 @@ void CG_AddPacketEntities( void ) {
 	// RF, count the number of players in the scene, so we can force low LOD's for dead bodies
 	for ( num = 0, clcount = 0 ; num < cg.snap->numEntities ; num++ ) {
 		cent = &cg_entities[ cg.snap->entities[ num ].number ];
-		cent->pe->forceLOD = qfalse;
 		if ( cent->currentState.number < MAX_CLIENTS ) {
 			clcount++;
 		}

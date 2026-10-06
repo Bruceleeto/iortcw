@@ -46,7 +46,7 @@ static float s_flipMatrix[16] = {
 /*
 ** GL_Bind
 */
-void GL_Bind( image_t *image ) {
+DC_HOT( "30" ) void GL_Bind( image_t *image ) {
 	int texnum;
 
 	if ( !image ) {
@@ -126,7 +126,7 @@ void GL_BindMultitexture( image_t *image0, GLuint env0, image_t *image1, GLuint 
 /*
 ** GL_Cull
 */
-void GL_Cull( int cullType ) {
+DC_HOT( "30" ) void GL_Cull( int cullType ) {
 	if ( glState.faceCulling == cullType ) {
 		return;
 	}
@@ -189,7 +189,7 @@ void GL_TexEnv( int env ) {
 ** This routine is responsible for setting the most commonly changed state
 ** in Q3.
 */
-void GL_State( unsigned long stateBits ) {
+DC_HOT( "30" ) void GL_State( unsigned long stateBits ) {
 	unsigned long diff = stateBits ^ glState.glStateBits;
 
 	if ( !diff ) {
@@ -870,7 +870,7 @@ void RB_ZombieFXAddNewHit( int entityNum, const vec3_t hitPos, const vec3_t hitD
 RB_RenderDrawSurfList
 ==================
 */
-void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
+DC_HOT( "10e" ) void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	shader_t        *shader, *oldShader;
 	int fogNum, oldFogNum;
 	int entityNum, oldEntityNum;

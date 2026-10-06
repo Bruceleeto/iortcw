@@ -50,12 +50,33 @@ typedef struct {
 void pvrglPackedBegin( void );
 void pvrglPackedEnd( void );
 void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
-							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes );
+							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes,
+							const float *mins, const float *maxs );
 
 void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count );
 void APIENTRY pvrglUnlockArraysEXT( void );
 
 void pvrglFogArray( const unsigned char *amounts );
+/* A fog for a packed batch's fast draws (pvrglPackedFog before
+ * pvrglPackedBegin, till pvrglPackedEnd): the PVR blends pvrgl_FogColor's
+ * colour in by vertex, the amount table[depth * invDepth] (256 amounts
+ * 0..1 by the view depth, the last beyond) for a vertex in the fog:
+ * dot(xyz, plane) >= plane[3] if hasPlane, as the game's R_FogFactor.
+ * eyeT: the eye's dot - plane[3]; under 0 it's outside and the depth is
+ * cut at the plane. A draw not on the fast path (pvrglPackedFast) has
+ * no fog. */
+#ifndef PVRGL_PACKED_FOG_T
+#define PVRGL_PACKED_FOG_T
+typedef struct {
+	float		plane[4];
+	int			hasPlane;
+	float		eyeT;
+	float		invDepth;
+	const float	*table;
+} pvrglPackedFog_t;
+void pvrglPackedFog( const pvrglPackedFog_t *fog );
+int  pvrglPackedFast( const float *mins, const float *maxs );
+#endif
 int  pvrgl_FogColor( unsigned int rgba );
 
 /* one entry per GL function the renderer can call, as pvrgl<Name> */

@@ -111,6 +111,20 @@ void R_AddPolygonSurfaces( void ) {
 	tr.shiftedEntityNum = tr.currentEntityNum << QSORT_REFENTITYNUM_SHIFT;
 
 	for ( i = 0, poly = tr.refdef.polys; i < tr.refdef.numPolys ; i++, poly++ ) {
+		// off screen: nothing to draw (marks and particles come from all over the map)
+		if ( !r_nocull->integer ) {
+			vec3_t mins, maxs;
+			int j;
+
+			VectorCopy( poly->verts[0].xyz, mins );
+			VectorCopy( poly->verts[0].xyz, maxs );
+			for ( j = 1 ; j < poly->numVerts ; j++ ) {
+				AddPointToBounds( poly->verts[j].xyz, mins, maxs );
+			}
+			if ( R_CullWorldBox( mins, maxs, 15 ) ) {
+				continue;
+			}
+		}
 		sh = R_GetShaderByHandle( poly->hShader );
 // GR - not tessellated
 		R_AddDrawSurf( ( void * )poly, sh, poly->fogIndex, qfalse, ATI_TESS_NONE );
@@ -377,6 +391,9 @@ RE_AddCoronaToScene
 void RE_AddCoronaToScene( const vec3_t org, float r, float g, float b, float scale, int id, int flags ) {
 	corona_t    *cor;
 
+#ifdef USE_PVR
+	return;		// none is ever drawn (tr_flares.c)
+#endif
 	if ( !tr.registered ) {
 		return;
 	}
@@ -455,13 +472,16 @@ void RE_RenderScene( const refdef_t *fd ) {
 	// will force a reset of the visible leafs even if the view hasn't moved
 	tr.refdef.areamaskModified = qfalse;
 	if ( !( tr.refdef.rdflags & RDF_NOWORLDMODEL ) ) {
+		// against this scene's last: the skybox portal scene's mask differs from the main's
+		int *last = (int *)tr.areamasks[( fd->rdflags & RDF_SKYBOXPORTAL ) ? 1 : 0];
 		int areaDiff;
 		int i;
 
 		// compare the area bits
 		areaDiff = 0;
 		for ( i = 0 ; i < MAX_MAP_AREA_BYTES / 4 ; i++ ) {
-			areaDiff |= ( (int *)tr.refdef.areamask )[i] ^ ( (int *)fd->areamask )[i];
+			areaDiff |= last[i] ^ ( (int *)fd->areamask )[i];
+			last[i] = ( (int *)fd->areamask )[i];
 			( (int *)tr.refdef.areamask )[i] = ( (int *)fd->areamask )[i];
 		}
 
@@ -487,6 +507,38 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	tr.refdef.num_coronas = r_numcoronas - r_firstSceneCorona;
 	tr.refdef.coronas = &backEndData->coronas[r_firstSceneCorona];
+
+#ifdef USE_PVR
+	// DC: a light is a pass over every surface in its reach, the dearest
+	// thing in a torch-lit room; only the ones that show keep: by their size
+	// on screen (radius over distance), the biggest r_dlightMax of those over
+	// r_dlightMinSize (a forced one always keeps). The flame itself is still
+	// drawn, which is what's seen of a far torch.
+	if ( tr.refdef.num_dlights > 0 ) {
+		dlight_t *dl = tr.refdef.dlights;
+		float size[MAX_DLIGHTS];
+		int i, j, n = tr.refdef.num_dlights, max = r_dlightMax->integer;
+
+		for ( i = 0; i < n; i++ ) {
+			size[i] = dl[i].forced ? 1e30f : dl[i].radius / ( Distance( dl[i].origin, fd->vieworg ) + 1.0f );
+		}
+		// the biggest to the front, in order
+		for ( i = 1; i < n; i++ ) {
+			dlight_t t = dl[i];
+			float s = size[i];
+
+			for ( j = i; j > 0 && size[j - 1] < s; j-- ) {
+				dl[j] = dl[j - 1];
+				size[j] = size[j - 1];
+			}
+			dl[j] = t;
+			size[j] = s;
+		}
+		for ( i = 0; i < n && i < max && size[i] >= r_dlightMinSize->value; i++ ) {
+		}
+		tr.refdef.num_dlights = i;
+	}
+#endif
 
 	tr.refdef.numPolys = r_numpolys - r_firstScenePoly;
 	tr.refdef.polys = &backEndData->polys[r_firstScenePoly];

@@ -268,13 +268,19 @@ void CG_ImpactMark( qhandle_t markShader, const vec3_t origin, const vec3_t dir,
 		mark->time = cg.time;
 		mark->alphaFade = alphaFade;
 		mark->markShader = markShader;
-		mark->poly.numVerts = mf->numPoints;
+		mark->numVerts = mf->numPoints;
 		mark->color[0] = red;
 		mark->color[1] = green;
 		mark->color[2] = blue;
 		mark->color[3] = alpha;
 		mark->duration = duration;
 		memcpy( mark->verts, verts, mf->numPoints * sizeof( verts[0] ) );
+		{
+			int area;
+
+			mark->cluster = trap_CM_PVSKey( verts[0].xyz, &area );
+			mark->area = area;
+		}
 	}
 }
 
@@ -307,6 +313,12 @@ void CG_AddMarks( void ) {
 			continue;
 		}
 
+		// out of the view's PVS: nothing to fade or draw (the fades below are
+		// from the time, so skipping them loses nothing)
+		if ( !trap_CM_PVSTest( cg.refdef.vieworg, mp->cluster, mp->area ) ) {
+			continue;
+		}
+
 		// fade out the energy bursts
 		if ( mp->markShader == cgs.media.energyMarkShader ) {
 
@@ -316,7 +328,7 @@ void CG_AddMarks( void ) {
 					fade = 0;
 				}
 				if ( mp->verts[0].modulate[0] != 0 ) {
-					for ( j = 0 ; j < mp->poly.numVerts ; j++ ) {
+					for ( j = 0 ; j < mp->numVerts ; j++ ) {
 						mp->verts[j].modulate[0] = mp->color[0] * fade;
 						mp->verts[j].modulate[1] = mp->color[1] * fade;
 						mp->verts[j].modulate[2] = mp->color[2] * fade;
@@ -334,7 +346,7 @@ void CG_AddMarks( void ) {
 					fade = 0;
 				}
 				if ( mp->verts[0].modulate[0] != 0 ) {
-					for ( j = 0 ; j < mp->poly.numVerts ; j++ ) {
+					for ( j = 0 ; j < mp->numVerts ; j++ ) {
 						mp->verts[j].modulate[0] = mp->color[0] * fade;
 						mp->verts[j].modulate[1] = mp->color[1] * fade;
 						mp->verts[j].modulate[2] = mp->color[2] * fade;
@@ -348,11 +360,11 @@ void CG_AddMarks( void ) {
 		if ( t < (float)mp->duration / 2.0 ) {
 			fade = (int)( 255.0 * (float)t / ( (float)mp->duration / 2.0 ) );
 			if ( mp->alphaFade ) {
-				for ( j = 0 ; j < mp->poly.numVerts ; j++ ) {
+				for ( j = 0 ; j < mp->numVerts ; j++ ) {
 					mp->verts[j].modulate[3] = fade;
 				}
 			} else {
-				for ( j = 0 ; j < mp->poly.numVerts ; j++ ) {
+				for ( j = 0 ; j < mp->numVerts ; j++ ) {
 					mp->verts[j].modulate[0] = mp->color[0] * fade;
 					mp->verts[j].modulate[1] = mp->color[1] * fade;
 					mp->verts[j].modulate[2] = mp->color[2] * fade;
@@ -360,7 +372,7 @@ void CG_AddMarks( void ) {
 			}
 		}
 
-		trap_R_AddPolyToScene( mp->markShader, mp->poly.numVerts, mp->verts );
+		trap_R_AddPolyToScene( mp->markShader, mp->numVerts, mp->verts );
 	}
 }
 

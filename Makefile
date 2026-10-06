@@ -115,6 +115,13 @@ ifeq ($(PLATFORM),dc)
   MODULE_LD = $(KOS_CC_BASE)/bin/$(KOS_CC_PREFIX)-gcc -ml $(KOS_SH4_PRECISION) -r -nostdlib
   # SH ELF C symbols carry a leading underscore
   SYM_PREFIX = _
+  # kos-cc links with $(KOS_LDFLAGS) from the environment: KOS's script with
+  # the hot code (DC_HOT, dc_prof.h) first and together (tools/dc/shlelf.xc);
+  # DC_HOTLAYOUT=0 links with KOS's own script (rm the .elf to relink)
+  DC_HOTLAYOUT ?= 1
+  ifeq ($(DC_HOTLAYOUT),1)
+    export KOS_LDFLAGS := $(patsubst -T%/utils/ldscripts/shlelf.xc,-T$(CURDIR)/tools/dc/shlelf.xc,$(KOS_LDFLAGS))
+  endif
 endif
 
 ifeq ($(V),1)
@@ -574,6 +581,8 @@ ifeq ($(RENDERER),pvr)
   BOTLIB_CFLAGS += -DAAS_COMPACT
   PVR_OBJ = $(B)/pvr/pvr_gl.c.o $(B)/pvr/pvr_glimp.c.o
   ifeq ($(PLATFORM),dc)
+    # the fast strip path straight into the TA, in SH4
+    PVR_OBJ += $(B)/pvr/pvr_strips_sh4.S.o
     RENDERER_LIBS =
   else
     RENDERER_LIBS = $(GPU_PVR_LIB) -lstdc++
@@ -654,6 +663,11 @@ $(B)/dc/%.c.o: dc/%.c
 	$(echo_cmd) "DC_CC $<"
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(CLIENT_CFLAGS) $(SIZE_OPT) -I$(CODE)/client -I$(CODE)/qcommon -c $< -o $@
+
+$(B)/pvr/%.S.o: pvr/%.S
+	$(echo_cmd) "AS $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(BASE_CFLAGS) -x assembler-with-cpp -c $< -o $@
 
 # Combine a module's objects, make every hidden symbol local so modules
 # can't collide with each other or the engine, then rename the entry points.

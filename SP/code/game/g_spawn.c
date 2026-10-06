@@ -561,6 +561,7 @@ spawn_t spawns[] = {
 	{"sniper_brush", SP_sniper_brush},
 	// done
 
+#ifndef G_NO_TEAMPLAY
 	{"team_CTF_redplayer", SP_team_CTF_redplayer},
 	{"team_CTF_blueplayer", SP_team_CTF_blueplayer},
 
@@ -572,6 +573,7 @@ spawn_t spawns[] = {
 // jpw
 
 	{"team_WOLF_checkpoint", SP_team_WOLF_checkpoint},       // DHM - Nerve
+#endif
 
 	// Ridah
 	{"ai_soldier", SP_ai_soldier},

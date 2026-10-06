@@ -68,6 +68,13 @@ int botDeveloper;
 //qtrue if the library is setup
 int botlibsetup = qfalse;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+// the single player's cast AI uses the AAS, the elementary actions and
+// the movement only: the Q3 bots' characters, chat, goals, item and weapon
+// weights and genetics are left out (their entries in the export NULL)
+#define BOTLIB_MOVE_ONLY
+#endif
+
 //===========================================================================
 //
 // several functions used by the exported functions
@@ -213,12 +220,14 @@ int Export_BotLibShutdown( void ) {
 	}
 	recursive = 1;
 	// shutdown all AI subsystems
-	BotShutdownChatAI();        //be_ai_chat.c
 	BotShutdownMoveAI();        //be_ai_move.c
+#ifndef BOTLIB_MOVE_ONLY
+	BotShutdownChatAI();        //be_ai_chat.c
 	BotShutdownGoalAI();        //be_ai_goal.c
 	BotShutdownWeaponAI();      //be_ai_weap.c
 	BotShutdownWeights();       //be_ai_weight.c
 	BotShutdownCharacters();    //be_ai_char.c
+#endif
 	// shutdown AAS
 	AAS_Shutdown();
 	// shutdown bot elemantary actions
@@ -304,7 +313,9 @@ int Export_BotLibLoadMap( const char *mapname ) {
 	}
 	LOAD_STEP( "AAS load" );
 	//initialize the items in the level
+#ifndef BOTLIB_MOVE_ONLY
 	BotInitLevelItems();        //be_ai_goal.h
+#endif
 	BotSetBrushModelTypes();    //be_ai_move.h
 	LOAD_STEP( "bot items" );
 	// the map's entities are read only above
@@ -808,6 +819,7 @@ Init_AI_Export
 ============
 */
 static void Init_AI_Export( ai_export_t *ai ) {
+#ifndef BOTLIB_MOVE_ONLY
 	//-----------------------------------
 	// be_ai_char.h
 	//-----------------------------------
@@ -872,6 +884,7 @@ static void Init_AI_Export( ai_export_t *ai ) {
 	ai->BotMutateGoalFuzzyLogic = BotMutateGoalFuzzyLogic;
 	ai->BotAllocGoalState = BotAllocGoalState;
 	ai->BotFreeGoalState = BotFreeGoalState;
+#endif
 	//-----------------------------------
 	// be_ai_move.h
 	//-----------------------------------
@@ -889,6 +902,7 @@ static void Init_AI_Export( ai_export_t *ai ) {
 	// Ridah
 	ai->BotInitAvoidReach = BotInitAvoidReach;
 	// done.
+#ifndef BOTLIB_MOVE_ONLY
 	//-----------------------------------
 	// be_ai_weap.h
 	//-----------------------------------
@@ -902,6 +916,7 @@ static void Init_AI_Export( ai_export_t *ai ) {
 	// be_ai_gen.h
 	//-----------------------------------
 	ai->GeneticParentsAndChildSelection = GeneticParentsAndChildSelection;
+#endif
 }
 
 

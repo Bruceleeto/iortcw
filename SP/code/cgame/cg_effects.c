@@ -653,6 +653,13 @@ void CG_GibPlayer( centity_t *cent, vec3_t playerOrigin, vec3_t gdir ) {
 	// BloodCloud
 	qboolean newjunction[MAXJUNCTIONS];
 	vec3_t junctionOrigin[MAXJUNCTIONS];
+
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// DC: no gibs: a dozen bouncing models for seconds, a collision trace
+	// each per frame, 1 ms of cg_localents plus the traces in a fight; the
+	// gib sound still plays (cg_event.c) and the server removes the body
+	return;
+#endif
 	int junction;
 	int j;
 	float size = 0.0;

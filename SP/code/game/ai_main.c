@@ -514,6 +514,10 @@ BotAIRegularUpdate
 ==============
 */
 void BotAIRegularUpdate( void ) {
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// the botlib's goal (item) code isn't in (BOTLIB_MOVE_ONLY, be_interface.c)
+	return;
+#endif
 	if ( regularupdate_time < trap_AAS_Time() ) {
 		trap_BotUpdateEntityItems();
 		regularupdate_time = trap_AAS_Time() + 1;
@@ -627,6 +631,11 @@ int BotAISetupClient( int client, struct bot_settings_s *settings ) {
 	char filename[144], name[144], gender[144];
 	bot_state_t *bs;
 	int errnum;
+
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// no Q3 bots: the botlib has no characters or chat (be_interface.c)
+	return qfalse;
+#endif
 
 #ifdef NO_DM_BOTS
 	// AI casts are set up by AICast_SetupClient; these are addbot's

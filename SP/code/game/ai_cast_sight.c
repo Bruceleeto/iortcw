@@ -157,6 +157,11 @@ qboolean AICast_VisibleFromPos( vec3_t srcpos, int srcnum,
 			//if the point is not in potential visible sight
 			if ( i < 3 ) {    // don't do PVS check for left/right checks
 				if ( !trap_InPVS( eye, middle ) ) {
+					// DC: continue leaves eye and middle where they are, so the
+					// next two checks were this one again, then the break below
+					if ( !inPVS ) {
+						break;
+					}
 					continue;
 				} else {
 					inPVS = qtrue;

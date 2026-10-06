@@ -1023,6 +1023,20 @@ void G_UpdateCvars( void ) {
 	cvarTable_t *cv;
 	qboolean remapped = qfalse;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// linked in with the engine: its count of cvar changes; none since
+	// last time, nothing to update (a trap_Cvar_Update a cvar a frame)
+	{
+		extern int cvar_changeCount;
+		static int lastChangeCount = -1;
+
+		if ( cvar_changeCount == lastChangeCount ) {
+			return;
+		}
+		lastChangeCount = cvar_changeCount;
+	}
+#endif
+
 	for ( i = 0, cv = gameCvarTable ; i < gameCvarTableSize ; i++, cv++ ) {
 		if ( cv->vmCvar ) {
 			trap_Cvar_Update( cv->vmCvar );
@@ -2653,11 +2667,13 @@ void G_RunFrame( int levelTime ) {
 	// see if it is time to end the level
 	CheckExitRules();
 
+#ifndef G_NO_TEAMPLAY
 	// update to team status?
 	CheckTeamStatus();
 
 	// cancel vote if timed out
 	CheckVote();
+#endif
 
 	// check team votes
 //	CheckTeamVote( TEAM_RED );

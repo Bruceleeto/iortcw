@@ -409,6 +409,51 @@ static qboolean CL_inPVS( const vec3_t p1, const vec3_t p2 ) {
 	return areaOk && clusterOk;
 }
 
+/*
+====================
+CL_PVSKey / CL_PVSTest
+
+The same, split for things that never move (cgame's static entities, its
+marks): placed once by CL_PVSKey, as CL_inPVS's p2 (its cluster, and area
+through areaOut; -1 for none), then each frame CL_PVSTest, as its p1
+====================
+*/
+static int CL_PVSKey( const vec3_t p, int *areaOut ) {
+	int leafs[16], num, lastLeaf, i, cluster = -1, area = -1;
+	vec3_t mins, maxs;
+
+	VectorSet( mins, p[0] - 1, p[1] - 1, p[2] - 1 );
+	VectorSet( maxs, p[0] + 1, p[1] + 1, p[2] + 1 );
+	num = CM_BoxLeafnums( mins, maxs, leafs, ARRAY_LEN( leafs ), &lastLeaf );
+	for ( i = 0; i < num; i++ ) {
+		if ( cluster == -1 ) {
+			cluster = CM_LeafCluster( leafs[i] );
+		}
+		if ( area == -1 ) {
+			area = CM_LeafArea( leafs[i] );
+		}
+	}
+	*areaOut = area;
+	return cluster;
+}
+
+qboolean CL_PVSTest( const vec3_t p1, int cluster, int area ) {
+	byte *mask;
+
+	if ( cluster < 0 || area < 0 ) {
+		return qfalse;
+	}
+	if ( inPVSLeaf < 0 || !VectorCompare( p1, inPVSPoint ) ) {
+		inPVSLeaf = CM_PointLeafnum( p1 );
+		VectorCopy( p1, inPVSPoint );
+	}
+	if ( !CM_AreasConnected( CM_LeafArea( inPVSLeaf ), area ) ) {
+		return qfalse;
+	}
+	mask = CM_ClusterPVS( CM_LeafCluster( inPVSLeaf ) );
+	return !mask || ( mask[cluster >> 3] & ( 1 << ( cluster & 7 ) ) );
+}
+
 intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	switch ( args[0] ) {
 	case CG_PRINT:
@@ -835,6 +880,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return VM_Alloc( args[1] );
 	case CG_R_INPVS:
 		return CL_inPVS( VMA( 1 ), VMA( 2 ) );
+	case CG_CM_PVSKEY:
+		return CL_PVSKey( VMA( 1 ), VMA( 2 ) );
+	case CG_CM_PVSTEST:
+		return CL_PVSTest( VMA( 1 ), args[2], args[3] );
 
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );

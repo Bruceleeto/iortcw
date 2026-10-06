@@ -36,6 +36,7 @@
 #include <string.h>
 
 #include <dc/pvr.h>
+#include <dc/sq.h>
 #ifdef USE_SH4ZAM
 #include <sh4zam/shz_sh4zam.h>
 #endif
@@ -186,11 +187,22 @@ static struct {
 	int			drawnSinceClear;
 	GLenum		error;
 	const uint8_t	*fogArray;	/* pvrglFogArray's */
+	const pvrglPackedFog_t *packedFog;	/* pvrglPackedFog's, for the packed batch */
 	uint32_t	fogColor;		/* this frame's vertex fog colour, RGBA bytes */
 	int			fogSet;
 	uint32_t	fogWritten;		/* the colour in the PVR's register, + 1 */
 	int			packedOpen;		/* pvrglPackedBegin's batch: its list, -1 none */
 	int			packedList;
+	/* the opaque list is open on the TA from the frame's start (BeginScene),
+	   and a packed batch's fast draws go straight to it through the store
+	   queues: no list in RAM, nothing to copy at the end. The rest of the
+	   opaque draws are still listed and sent at the end, after; the chip
+	   sorts opaque by depth so the order is nothing. Each stream has its
+	   own headers: the direct one's last is here */
+	int			sceneOpen;
+	int			packedDirect;	/* the batch's fast draws go direct */
+	pvr_poly_hdr_t	directLast;
+	int			directHasLast;
 } gl;
 
 /* each vertex's position as the PVR takes it, made for all of a draw's
@@ -264,14 +276,14 @@ static float *CurrentMatrix( void ) {
 	return gl.modelview[gl.mvDepth];
 }
 
-static void UpdateMVP( void ) {
+static DC_HOT( "40" ) void UpdateMVP( void ) {
 	if ( gl.mvpDirty ) {
 		Mat_Mul( gl.mvp, gl.projection[gl.projDepth], gl.modelview[gl.mvDepth] );
 		gl.mvpDirty = 0;
 	}
 }
 
-void APIENTRY pvrglMatrixMode( GLenum mode ) {
+DC_HOT( "40" ) void APIENTRY pvrglMatrixMode( GLenum mode ) {
 	gl.matrixMode = mode;
 }
 
@@ -279,11 +291,11 @@ void APIENTRY pvrglLoadIdentity( void ) {
 	Mat_Identity( CurrentMatrix() );
 }
 
-void APIENTRY pvrglLoadMatrixf( const GLfloat *m ) {
+DC_HOT( "40" ) void APIENTRY pvrglLoadMatrixf( const GLfloat *m ) {
 	memcpy( CurrentMatrix(), m, 16 * sizeof( float ) );
 }
 
-void APIENTRY pvrglPushMatrix( void ) {
+DC_HOT( "40" ) void APIENTRY pvrglPushMatrix( void ) {
 	if ( gl.matrixMode == GL_PROJECTION ) {
 		if ( gl.projDepth < MAX_MATRIX_DEPTH - 1 ) {
 			memcpy( gl.projection[gl.projDepth + 1], gl.projection[gl.projDepth], 16 * sizeof( float ) );
@@ -297,7 +309,7 @@ void APIENTRY pvrglPushMatrix( void ) {
 	}
 }
 
-void APIENTRY pvrglPopMatrix( void ) {
+DC_HOT( "40" ) void APIENTRY pvrglPopMatrix( void ) {
 	if ( gl.matrixMode == GL_PROJECTION ) {
 		if ( gl.projDepth > 0 ) {
 			gl.projDepth--;
@@ -352,7 +364,7 @@ void APIENTRY pvrglViewport( GLint x, GLint y, GLsizei w, GLsizei h ) {
 	gl.xfDirty = 1;
 }
 
-void APIENTRY pvrglDepthRange( GLclampd n, GLclampd f ) {
+DC_HOT( "40" ) void APIENTRY pvrglDepthRange( GLclampd n, GLclampd f ) {
 	gl.depthNear = n;
 	gl.depthFar = f;
 }
@@ -387,14 +399,14 @@ static glArray_t *ClientArray( GLenum cap ) {
 	}
 }
 
-void APIENTRY pvrglEnable( GLenum cap ) {
+DC_HOT( "40" ) void APIENTRY pvrglEnable( GLenum cap ) {
 	int *f = CapFlag( cap );
 	if ( f ) {
 		*f = 1;
 	}
 }
 
-void APIENTRY pvrglDisable( GLenum cap ) {
+DC_HOT( "40" ) void APIENTRY pvrglDisable( GLenum cap ) {
 	int *f = CapFlag( cap );
 	if ( f ) {
 		*f = 0;
@@ -412,14 +424,14 @@ GLboolean APIENTRY pvrglIsEnabled( GLenum cap ) {
 	return a && a->enabled ? GL_TRUE : GL_FALSE;
 }
 
-void APIENTRY pvrglEnableClientState( GLenum cap ) {
+DC_HOT( "40" ) void APIENTRY pvrglEnableClientState( GLenum cap ) {
 	glArray_t *a = ClientArray( cap );
 	if ( a ) {
 		a->enabled = 1;
 	}
 }
 
-void APIENTRY pvrglDisableClientState( GLenum cap ) {
+DC_HOT( "40" ) void APIENTRY pvrglDisableClientState( GLenum cap ) {
 	glArray_t *a = ClientArray( cap );
 	if ( a ) {
 		a->enabled = 0;
@@ -433,15 +445,15 @@ static void SetArray( glArray_t *a, GLint size, GLenum type, GLsizei stride, con
 	a->ptr = ptr;
 }
 
-void APIENTRY pvrglVertexPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
+DC_HOT( "40" ) void APIENTRY pvrglVertexPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
 	SetArray( &gl.vertexArray, size, type, stride, ptr );
 }
 
-void APIENTRY pvrglColorPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
+DC_HOT( "40" ) void APIENTRY pvrglColorPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
 	SetArray( &gl.colorArray, size, type, stride, ptr );
 }
 
-void APIENTRY pvrglTexCoordPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
+DC_HOT( "40" ) void APIENTRY pvrglTexCoordPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
 	SetArray( &gl.texCoordArray[gl.clientUnit], size, type, stride, ptr );
 }
 
@@ -449,34 +461,34 @@ void APIENTRY pvrglNormalPointer( GLenum type, GLsizei stride, const GLvoid *ptr
 	SetArray( &gl.normalArray, 3, type, stride, ptr );
 }
 
-void APIENTRY pvrglBlendFunc( GLenum s, GLenum d ) {
+DC_HOT( "40" ) void APIENTRY pvrglBlendFunc( GLenum s, GLenum d ) {
 	gl.blendSrc = s;
 	gl.blendDst = d;
 }
 
-void APIENTRY pvrglAlphaFunc( GLenum func, GLclampf ref ) {
+DC_HOT( "40" ) void APIENTRY pvrglAlphaFunc( GLenum func, GLclampf ref ) {
 	gl.alphaFunc = func;
 	gl.alphaRef = ref;
 }
 
-void APIENTRY pvrglDepthFunc( GLenum func ) {
+DC_HOT( "40" ) void APIENTRY pvrglDepthFunc( GLenum func ) {
 	gl.depthFunc = func;
 }
 
-void APIENTRY pvrglDepthMask( GLboolean flag ) {
+DC_HOT( "40" ) void APIENTRY pvrglDepthMask( GLboolean flag ) {
 	gl.depthMask = flag != 0;
 }
 
-void APIENTRY pvrglColorMask( GLboolean r, GLboolean g, GLboolean b, GLboolean a ) {
+DC_HOT( "40" ) void APIENTRY pvrglColorMask( GLboolean r, GLboolean g, GLboolean b, GLboolean a ) {
 	(void)a;	/* the frame buffer has no alpha */
 	gl.colorMask = r || g || b;
 }
 
-void APIENTRY pvrglCullFace( GLenum mode ) {
+DC_HOT( "40" ) void APIENTRY pvrglCullFace( GLenum mode ) {
 	gl.cullMode = mode;
 }
 
-void APIENTRY pvrglTexEnvf( GLenum target, GLenum pname, GLfloat param ) {
+DC_HOT( "40" ) void APIENTRY pvrglTexEnvf( GLenum target, GLenum pname, GLfloat param ) {
 	if ( target == GL_TEXTURE_ENV && pname == GL_TEXTURE_ENV_MODE ) {
 		gl.texEnv = (GLenum)param;
 	}
@@ -517,7 +529,7 @@ static uint32_t PackColor( float r, float g, float b, float a ) {
 	return ( (uint32_t)ia << 24 ) | ( ir << 16 ) | ( ig << 8 ) | ib;
 }
 
-void APIENTRY pvrglColor4f( GLfloat r, GLfloat g, GLfloat b, GLfloat a ) {
+DC_HOT( "40" ) void APIENTRY pvrglColor4f( GLfloat r, GLfloat g, GLfloat b, GLfloat a ) {
 	gl.color = PackColor( r, g, b, a );
 }
 
@@ -533,7 +545,7 @@ void APIENTRY pvrglColor4ub( GLubyte r, GLubyte g, GLubyte b, GLubyte a ) {
 	gl.color = ( (uint32_t)a << 24 ) | ( r << 16 ) | ( g << 8 ) | b;
 }
 
-void APIENTRY pvrglColor4ubv( const GLubyte *v ) {
+DC_HOT( "40" ) void APIENTRY pvrglColor4ubv( const GLubyte *v ) {
 	pvrglColor4ub( v[0], v[1], v[2], v[3] );
 }
 
@@ -758,7 +770,7 @@ static void WriteTexels( pvrTexture_t *t, int dx, int dy, int sw, int sh,
 	}
 }
 
-static pvrTexture_t *BoundTexture( int create ) {
+static DC_HOT( "40" ) pvrTexture_t *BoundTexture( int create ) {
 	pvrTexture_t *t;
 
 	if ( gl.bound >= MAX_TEXTURES ) {
@@ -834,7 +846,7 @@ void APIENTRY pvrglGenTextures( GLsizei n, GLuint *textures ) {
 	}
 }
 
-void APIENTRY pvrglBindTexture( GLenum target, GLuint texture ) {
+DC_HOT( "40" ) void APIENTRY pvrglBindTexture( GLenum target, GLuint texture ) {
 	(void)target;
 	gl.bound = texture;
 }
@@ -1053,7 +1065,7 @@ void APIENTRY pvrglTexParameteri( GLenum target, GLenum pname, GLint param ) {
 /* ===================================================================== */
 
 /* ListAlloc's way when the last block is full */
-static uint32_t * __attribute__((noinline)) ListAllocBlock( listBuffer_t *l ) {
+static DC_HOT( "30" ) uint32_t * __attribute__((noinline)) ListAllocBlock( listBuffer_t *l ) {
 	uint32_t *d;
 
 	if ( l->overflowed ) {
@@ -1109,7 +1121,7 @@ static inline uint32_t *ListAlloc( listBuffer_t *l ) {
 	return d;
 }
 
-static void ListWrite( listBuffer_t *l, const void *data ) {
+static DC_HOT( "40" ) void ListWrite( listBuffer_t *l, const void *data ) {
 	const uint32_t *s = data;
 	uint32_t *d = ListAlloc( l );
 
@@ -1122,7 +1134,7 @@ static void ListWrite( listBuffer_t *l, const void *data ) {
 	}
 }
 
-static int BlendFactor( GLenum f, int isDst ) {
+static DC_HOT( "40" ) int BlendFactor( GLenum f, int isDst ) {
 	switch ( f ) {
 	case GL_ZERO:					return PVR_BLEND_ZERO;
 	case GL_ONE:					return PVR_BLEND_ONE;
@@ -1141,7 +1153,7 @@ static int BlendFactor( GLenum f, int isDst ) {
 	}
 }
 
-static int DepthCompare( void ) {
+static DC_HOT( "40" ) int DepthCompare( void ) {
 	if ( !gl.depthTest ) {
 		return PVR_DEPTHCMP_ALWAYS;
 	}
@@ -1160,12 +1172,29 @@ static int DepthCompare( void ) {
 }
 
 /* Pick the list and write the poly header for the current state.
- * Returns the list, or -1 if nothing should be drawn. */
-static int BeginPrimitives( void ) {
+ * Returns the list, or -1 if nothing should be drawn. forPacked: a packed
+ * batch's (pvrglPackedBegin), which may go direct */
+/* the state a poly header is compiled from: the same again, the header too */
+typedef struct {
+	int list;
+	const pvrTexture_t *t;
+	pvr_ptr_t data, base;
+	uint32_t txrFormat;
+	int width, height, mipmap, alpha, clampS, clampT, linear;
+	GLenum texEnv;
+	int fogOn, cull, depthTest, depthMask;
+	GLenum shadeModel, depthFunc, blendSrc, blendDst;
+} hdrKey_t;
+static hdrKey_t hdrKey;
+static pvr_poly_hdr_t hdrLast;
+static int hdrValid;
+
+static DC_HOT( "40" ) int BeginPrimitives( int forPacked ) {
 	pvr_poly_cxt_t cxt;
 	pvr_poly_hdr_t hdr;
 	pvrTexture_t *t = NULL;
 	listBuffer_t *l;
+	hdrKey_t key;
 	int list, blended;
 
 	if ( !gl.colorMask ) {
@@ -1188,6 +1217,37 @@ static int BeginPrimitives( void ) {
 		}
 	}
 
+	memset( &key, 0, sizeof( key ) );
+	key.list = list;
+	if ( t ) {
+		key.t = t;
+		key.data = t->data;
+		key.base = t->base;
+		key.txrFormat = t->txrFormat;
+		key.width = t->width;
+		key.height = t->height;
+		key.mipmap = t->mipmap;
+		key.alpha = t->alpha;
+		key.clampS = t->clampS;
+		key.clampT = t->clampT;
+		key.linear = t->linear;
+		key.texEnv = gl.texEnv;
+		key.fogOn = gl.fogArray != NULL || gl.packedFog != NULL;
+	}
+	key.cull = pvrgl_hwCull && gl.cullFace ? (int)gl.cullMode : 0;
+	key.shadeModel = gl.shadeModel;
+	key.depthTest = gl.depthTest;
+	key.depthFunc = gl.depthFunc;
+	key.depthMask = gl.depthMask;
+	if ( list == PVR_LIST_TR_POLY ) {
+		key.blendSrc = gl.blendSrc;
+		key.blendDst = gl.blendDst;
+	}
+	if ( hdrValid && !memcmp( &key, &hdrKey, sizeof( key ) ) ) {
+		hdr = hdrLast;
+		goto compiled;
+	}
+
 	if ( t ) {
 		pvr_poly_cxt_txr( &cxt, list, t->txrFormat, t->width, t->height, t->base,
 						  t->linear ? PVR_FILTER_BILINEAR : PVR_FILTER_NEAREST );
@@ -1202,6 +1262,10 @@ static int BeginPrimitives( void ) {
 		cxt.txr.alpha = t->alpha ? PVR_TXRALPHA_ENABLE : PVR_TXRALPHA_DISABLE;
 		if ( gl.fogArray ) {
 			/* the fog amount in the offset colour's alpha */
+			cxt.gen.fog_type = PVR_FOG_VERTEX;
+			cxt.gen.specular = PVR_SPECULAR_ENABLE;
+		} else if ( gl.packedFog ) {
+			/* the same, worked out by the packed draw's fast path */
 			cxt.gen.fog_type = PVR_FOG_VERTEX;
 			cxt.gen.specular = PVR_SPECULAR_ENABLE;
 		}
@@ -1232,19 +1296,39 @@ static int BeginPrimitives( void ) {
 	}
 
 	pvr_poly_compile( &hdr, &cxt );
+	hdrKey = key;
+	hdrLast = hdr;
+	hdrValid = 1;
 
+compiled:
 	l = &gl.lists[list];
 	if ( !l->hasLast || memcmp( &l->last, &hdr, sizeof( hdr ) ) ) {
 		ListWrite( l, &hdr );
 		l->last = hdr;
 		l->hasLast = 1;
 	}
+	gl.packedDirect = 0;
+	if ( forPacked && list == PVR_LIST_OP_POLY && gl.sceneOpen ) {
+		/* the batch's fast draws go straight to the TA: their header too
+		   (and in the list, above, for the batch's clipped draws) */
+		if ( !gl.directHasLast || memcmp( &gl.directLast, &hdr, sizeof( hdr ) ) ) {
+			const uint32_t *s = (const uint32_t *)&hdr;
+			uint32_t *d = pvr_dr_target();
+
+			d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
+			d[4] = s[4]; d[5] = s[5]; d[6] = s[6]; d[7] = s[7];
+			pvr_dr_commit( d );
+			gl.directLast = hdr;
+			gl.directHasLast = 1;
+		}
+		gl.packedDirect = 1;
+	}
 	gl.drawnSinceClear = 1;
 	xf.fogOn = t && gl.fogArray;
 	return list;
 }
 
-static float DepthScale( void ) {
+static DC_HOT( "40" ) float DepthScale( void ) {
 	float s;
 	int i;
 
@@ -1507,7 +1591,7 @@ static inline __attribute__((always_inline)) void ProjectVert( posVert_t *o, uin
 }
 
 /* vpos and vcode for vertexes first to end - 1 */
-static void __attribute__((noinline)) TransformVerts( int first, int end ) {
+static DC_HOT( "30" ) void __attribute__((noinline)) TransformVerts( int first, int end ) {
 	const float xLo = xf.xLo, xHi = xf.xHi, yLo = xf.yLo, yHi = xf.yHi, ds = xf.depthScale;
 	const float *const m = xf.m;
 	const int fast = xf.pos && gl.vertexArray.size > 2;
@@ -1546,7 +1630,7 @@ static void __attribute__((noinline)) TransformVerts( int first, int end ) {
 /* vpos and vcode for n packed vertexes through m (the origin and step
    folded in; on the SH4 loaded into the matrix register by the caller):
    the shorts straight to the float unit */
-static void __attribute__((noinline)) TransformPacked( const pvrglPackedVert_t *v, int n, const float *m ) {
+static DC_HOT( "10c" ) void __attribute__((noinline)) TransformPacked( const pvrglPackedVert_t *v, int n, const float *m ) {
 	const float xLo = xf.xLo, xHi = xf.xHi, yLo = xf.yLo, yHi = xf.yHi, ds = xf.depthScale;
 	posVert_t *o = vpos;
 	uint8_t *codes = vcode;
@@ -1565,7 +1649,7 @@ static void __attribute__((noinline)) TransformPacked( const pvrglPackedVert_t *
 }
 
 /* the texture coordinates and colours DrawTriangles reads, for vertexes lo to hi */
-static void SetAttribs( int lo, int hi ) {
+static DC_HOT( "30" ) void SetAttribs( int lo, int hi ) {
 	const glArray_t *t = &gl.texCoordArray[0], *c = &gl.colorArray;
 	int i;
 
@@ -1806,7 +1890,7 @@ static void __attribute__((noinline)) DrawTrianglesAny( listBuffer_t *l, int cou
 /* xf.m and the viewport's edges from the matrices and the viewport, when
    they've changed since (a world surface a draw: most draws find them as
    they were) */
-static void SetTransform( void ) {
+static DC_HOT( "40" ) void SetTransform( void ) {
 	/* the viewport after the mvp: x' = x * xScale + w * xOfs, y' the same */
 	float xScale = gl.vpW * 0.5f, xOfs = gl.vpX + gl.vpW * 0.5f;
 	float yScale = gl.vpH * -0.5f, yOfs = PVRGL_HEIGHT - ( gl.vpY + gl.vpH * 0.5f );
@@ -1830,7 +1914,7 @@ static void SetTransform( void ) {
 	xf.yHi = yOfs - yScale;
 }
 
-static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
+static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
 	listBuffer_t *l;
 	int list, i;
 
@@ -1842,8 +1926,10 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 		return;		/* TODO: lines and points */
 	}
 
-	list = BeginPrimitives();
+	PROF_BEGIN( PROF_PVR_SETUP );
+	list = BeginPrimitives( 0 );
 	if ( list < 0 ) {
+		PROF_END( PROF_PVR_SETUP );
 		return;
 	}
 	l = &gl.lists[list];
@@ -1853,6 +1939,7 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	shz_xmtrx_load_unaligned_4x4( xf.m );
 #endif
 	xf.depthScale = DepthScale();
+	PROF_END( PROF_PVR_SETUP );
 	xf.pos = gl.vertexArray.type == GL_FLOAT && !( ( (uintptr_t)gl.vertexArray.ptr | gl.vertexArray.stride ) & 3 ) ? gl.vertexArray.ptr : NULL;
 	xf.posStride = gl.vertexArray.stride ? gl.vertexArray.stride : gl.vertexArray.size * 4;
 	GrowCache( hi + 1 );
@@ -1860,7 +1947,9 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	/* locked: made once, while the array and the transform are the same */
 	if ( !( locked && lock.made && !memcmp( &lock.array, &gl.vertexArray, sizeof( lock.array ) )
 			&& !memcmp( lock.m, xf.m, sizeof( lock.m ) ) && lock.depthScale == xf.depthScale ) ) {
+		PROF_BEGIN( PROF_PVR_XFORM );
 		TransformVerts( lo, hi + 1 );
+		PROF_END( PROF_PVR_XFORM );
 		lock.made = locked;
 		if ( locked ) {
 			memcpy( lock.m, xf.m, sizeof( lock.m ) );
@@ -1875,11 +1964,13 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 	case GL_TRIANGLES:
 		/* the renderer's index type inlined; the others out of the way,
 		   to keep the loop in the instruction cache */
+		PROF_BEGIN( PROF_PVR_TRIS );
 		if ( idx == IndexUShort && xf.stStride == 8 && xf.colStride == 4 ) {
 			DrawTriangles( l, count, IndexUShort, indices, 1 );
 		} else {
 			DrawTrianglesAny( l, count, idx, indices );
 		}
+		PROF_END( PROF_PVR_TRIS );
 		break;
 	case GL_TRIANGLE_STRIP:
 		for ( i = 0; i + 2 < count; i++ ) {
@@ -1913,18 +2004,18 @@ static void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_t idx, const vo
 }
 
 /* DC_PROF: its time as pvr */
-static void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
+static DC_HOT( "30" ) void DrawPrimitives( GLenum mode, int count, indexFunc_t idx, const void *indices, int lo, int hi, int locked ) {
 	PROF_BEGIN( PROF_PVR );
 	PROF_COUNT( STAT_DRAWS, 1 );
 	DrawPrimitivesPVR( mode, count, idx, indices, lo, hi, locked );
 	PROF_END( PROF_PVR );
 }
 
-void APIENTRY pvrglDrawArrays( GLenum mode, GLint first, GLsizei count ) {
+DC_HOT( "30" ) void APIENTRY pvrglDrawArrays( GLenum mode, GLint first, GLsizei count ) {
 	DrawPrimitives( mode, count, IndexDirect, (const void *)(intptr_t)first, first, first + count - 1, 0 );
 }
 
-void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const GLvoid *indices ) {
+DC_HOT( "30" ) void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const GLvoid *indices ) {
 	indexFunc_t f;
 	int i, minIndex, maxIndex = 0;
 
@@ -1960,7 +2051,7 @@ void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const 
    on its own, through the clipper). The screen positions from vpos as
    words, the texture coordinates from the shorts (an fmac each), the
    colour's alpha 1. */
-static void __attribute__((noinline)) DrawStripsPacked( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes ) {
+static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsPacked( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes ) {
 	uint8_t *cur = l->cur, *end = l->end;
 	const uint32_t *const pos = (const uint32_t *)vpos;		/* sx sy sz d, as words */
 	const uint8_t *const codes = vcode;
@@ -2089,26 +2180,275 @@ static void __attribute__((noinline)) DrawStripsPacked( listBuffer_t *l, const p
 #undef END_STRIP
 }
 
+/* The strips with nothing to test, in one pass: the surface's bounds are
+   clear of the near plane (BoundsClearOfNear), so every vertex has a
+   screen position and w is at least the near distance; the PVR clips to
+   the screen and culls back faces itself. Each index's vertex goes
+   through the matrix register (the caller loaded it) and straight into
+   the list: no vpos, no clip codes, no test a triangle (as DMS draws a
+   mesh whose sphere is clear of the near plane). */
+#ifdef USE_SH4ZAM
+#define XFORM_FAST( v, sx, sy, sz, sw ) \
+	do { \
+		shz_vec4_t x_t = shz_xmtrx_transform_vec4( shz_vec4_init( (v)->xyz[0], (v)->xyz[1], (v)->xyz[2], 1.0f ) ); \
+		float x_invw = shz_invf_fsrra( x_t.w ); \
+		sx = x_t.x * x_invw; \
+		sy = x_t.y * x_invw; \
+		sz = x_invw * ds; \
+		sw = x_t.w; \
+	} while ( 0 )
+#else
+#define XFORM_FAST( v, sx, sy, sz, sw ) \
+	do { \
+		float x_x = (v)->xyz[0], x_y = (v)->xyz[1], x_z = (v)->xyz[2]; \
+		float x_invw; \
+		sw = m[3] * x_x + m[7] * x_y + m[11] * x_z + m[15]; \
+		x_invw = 1.0f / sw; \
+		sx = ( m[0] * x_x + m[4] * x_y + m[8] * x_z + m[12] ) * x_invw; \
+		sy = ( m[1] * x_x + m[5] * x_y + m[9] * x_z + m[13] ) * x_invw; \
+		sz = x_invw * ds; \
+	} while ( 0 )
+#endif
+
+/* pvrglPackedFog's fog in the packed vertexes' units: in the fog where
+   dot(xyz, n) + d >= 0 */
+typedef struct {
+	float		n[3], d;
+	int			hasPlane, eyeOut;
+	float		eyeT, invDepth;
+	const float	*table;
+} packedFogLocal_t;
+
+/* a vertex's fog amount as its offset colour (alpha): the game's
+   R_FogFactor of RB_CalcFogTexCoords's s and t, by the depth w */
+static inline uint32_t FogWord( const packedFogLocal_t *pf, const pvrglPackedVert_t *v, float w ) {
+	float s = w * pf->invDepth;
+
+	if ( pf->hasPlane ) {
+		float t = pf->n[0] * v->xyz[0] + pf->n[1] * v->xyz[1] + pf->n[2] * v->xyz[2] + pf->d;
+
+		if ( pf->eyeOut ) {
+			/* the depth cut at the fog's top: none within a unit of it */
+			if ( t < 1.0f ) {
+				return 0;
+			}
+			s *= t / ( t - pf->eyeT );
+		} else if ( t < 0.0f ) {
+			return 0;		/* above the fog */
+		}
+	}
+	if ( s > 1.0f ) {
+		s = 1.0f;
+	}
+	return (uint32_t)( pf->table[(int)( s * 255.0f )] * 255.0f ) << 24;
+}
+
+/* pf: the fog, NULL none; inlined into each so the test is of a constant */
+static inline __attribute__((always_inline)) void DrawStripsFastInline( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes, const packedFogLocal_t *pf ) {
+	uint8_t *cur = l->cur, *end = l->end;
+	const float s0 = xf.pStOrigin[0], t0 = xf.pStOrigin[1], ss = xf.pStStep, ds = xf.depthScale;
+	const int used0 = l->used;
+	const unsigned short *ip = strips, *const ipEnd = strips + numIndexes;
+	int numStrips = 0, emitted;
+#ifndef USE_SH4ZAM
+	const float *const m = xf.m;
+#endif
+
+#define EMIT_FAST( n ) \
+	do { \
+		uint32_t *w; \
+		float *f; \
+		const pvrglPackedVert_t *e_v = verts + ( n ); \
+		float sx, sy, sz, sw; \
+		if ( cur == end ) { \
+			/* the next block (NULL once the buffer is full) */ \
+			ListSync( l, cur ); \
+			w = ListAllocBlock( l ); \
+			cur = l->cur; \
+			end = l->end; \
+			if ( !w ) { \
+				break; \
+			} \
+		} else { \
+			w = (uint32_t *)cur; \
+			cur += 32; \
+			SHZ_ALLOC_LINE( w ); \
+		} \
+		XFORM_FAST( e_v, sx, sy, sz, sw ); \
+		f = (float *)w; \
+		w[0] = PVR_CMD_VERTEX; \
+		f[1] = sx; \
+		f[2] = sy; \
+		f[3] = sz; \
+		f[4] = s0 + ss * e_v->st[0]; \
+		f[5] = t0 + ss * e_v->st[1]; \
+		w[6] = Argb( *(const uint32_t *)e_v->rgba ) | 0xff000000; \
+		w[7] = pf ? FogWord( pf, e_v, sw ) : 0; \
+	} while ( 0 )
+
+	while ( ip + 2 < ipEnd ) {
+		/* a strip, whole: its first two, then one more a triangle */
+		EMIT_FAST( ip[0] & ~PVRGL_STRIP_START );
+		EMIT_FAST( ip[1] );
+		ip += 2;
+		do {
+			EMIT_FAST( *ip++ );
+		} while ( ip < ipEnd && !( *ip & PVRGL_STRIP_START ) );
+		if ( cur ) {
+			*(uint32_t *)( cur - 32 ) = PVR_CMD_VERTEX_EOL;
+			ListSync( l, cur );
+			l->whole = l->used;
+		}
+		numStrips++;
+	}
+#undef EMIT_FAST
+	ListSync( l, cur );
+	emitted = ( l->used - used0 ) / 32;
+	PROF_COUNT( STAT_VERTS, numIndexes );
+	PROF_COUNT( STAT_TRIS, numIndexes - 2 * numStrips );
+	PROF_COUNT( STAT_EMITTED, emitted );
+}
+
+static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsPackedFast( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes ) {
+	DrawStripsFastInline( l, verts, strips, numIndexes, NULL );
+}
+
+/* The same straight to the TA: each vertex into a store queue and flushed
+   (pvr_dr_target / pvr_dr_commit, the opaque list open since BeginScene).
+   A strip's last vertex is known as it's emitted, since nothing can be
+   patched after */
+static inline __attribute__((always_inline)) void DrawStripsDirectInline( const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes, const packedFogLocal_t *pf ) {
+	const float s0 = xf.pStOrigin[0], t0 = xf.pStOrigin[1], ss = xf.pStStep, ds = xf.depthScale;
+	const unsigned short *ip = strips, *const ipEnd = strips + numIndexes;
+	int numStrips = 0;
+#ifndef USE_SH4ZAM
+	const float *const m = xf.m;
+#endif
+
+#define EMIT_DIRECT( n, cmd ) \
+	do { \
+		uint32_t *w = pvr_dr_target(); \
+		float *f = (float *)w; \
+		const pvrglPackedVert_t *e_v = verts + ( n ); \
+		float sx, sy, sz, sw; \
+		XFORM_FAST( e_v, sx, sy, sz, sw ); \
+		w[0] = cmd; \
+		f[1] = sx; \
+		f[2] = sy; \
+		f[3] = sz; \
+		f[4] = s0 + ss * e_v->st[0]; \
+		f[5] = t0 + ss * e_v->st[1]; \
+		w[6] = Argb( *(const uint32_t *)e_v->rgba ) | 0xff000000; \
+		w[7] = pf ? FogWord( pf, e_v, sw ) : 0; \
+		pvr_dr_commit( w ); \
+	} while ( 0 )
+
+	while ( ip + 2 < ipEnd ) {
+		EMIT_DIRECT( ip[0] & ~PVRGL_STRIP_START, PVR_CMD_VERTEX );
+		EMIT_DIRECT( ip[1], PVR_CMD_VERTEX );
+		ip += 2;
+		do {
+			unsigned short n = *ip++;
+			int last = ip >= ipEnd || ( *ip & PVRGL_STRIP_START );
+
+			EMIT_DIRECT( n, last ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX );
+		} while ( ip < ipEnd && !( *ip & PVRGL_STRIP_START ) );
+		numStrips++;
+	}
+#undef EMIT_DIRECT
+	PROF_COUNT( STAT_VERTS, numIndexes );
+	PROF_COUNT( STAT_TRIS, numIndexes - 2 * numStrips );
+	PROF_COUNT( STAT_EMITTED, numIndexes );
+}
+
+#ifdef _arch_dreamcast
+/* the same in SH4 (pvr_strips_sh4.S): the draw's matrix and st scale, two
+   vertexes in flight; returns the strips */
+typedef struct {
+	float m[16];
+	float s0, t0, ss, ds;
+} pvrglStripXform_t;
+int pvrgl_DrawStripsDirectSH4( const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes, const pvrglStripXform_t *p );
+#else
+static void __attribute__((noinline)) DrawStripsDirect( const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes ) {
+	DrawStripsDirectInline( verts, strips, numIndexes, NULL );
+}
+#endif
+
+static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsDirectFog( const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes, const packedFogLocal_t *pf ) {
+	DrawStripsDirectInline( verts, strips, numIndexes, pf );
+}
+
+/* the same with the fog: the plane into the packed units (xyz = origin + step * v) */
+static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsPackedFastFog( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes, const float origin[3], float step ) {
+	const pvrglPackedFog_t *fog = gl.packedFog;
+	packedFogLocal_t pf;
+
+	pf.hasPlane = fog->hasPlane;
+	pf.eyeOut = fog->hasPlane && fog->eyeT < 0.0f;
+	pf.eyeT = fog->eyeT;
+	pf.n[0] = fog->plane[0] * step;
+	pf.n[1] = fog->plane[1] * step;
+	pf.n[2] = fog->plane[2] * step;
+	pf.d = fog->plane[0] * origin[0] + fog->plane[1] * origin[1] + fog->plane[2] * origin[2] - fog->plane[3];
+	pf.invDepth = fog->invDepth;
+	pf.table = fog->table;
+	if ( gl.packedDirect ) {
+		DrawStripsDirectFog( verts, strips, numIndexes, &pf );
+	} else {
+		DrawStripsFastInline( l, verts, strips, numIndexes, &pf );
+	}
+}
+
+/* the box (world units) all in front of the near plane: d = cz + cw > 0
+   at its nearest corner, with the transform's rows 2 and 3 (the viewport
+   is only in rows 0 and 1) */
+static DC_HOT( "10c" ) int BoundsClearOfNear( const float *mins, const float *maxs ) {
+	const float nx = xf.m[2] + xf.m[3], ny = xf.m[6] + xf.m[7], nz = xf.m[10] + xf.m[11];
+	float d = xf.m[14] + xf.m[15];
+
+	d += nx > 0.0f ? nx * mins[0] : nx * maxs[0];
+	d += ny > 0.0f ? ny * mins[1] : ny * maxs[1];
+	d += nz > 0.0f ? nz * mins[2] : nz * maxs[2];
+	return d > 0.0f;
+}
+
 /* a batch of pvrglDrawPackedStrips draws with the GL state as it is: the
    PVR header, the depth scale and the transform once for all of them */
-void pvrglPackedBegin( void ) {
+DC_HOT( "20" ) void pvrglPackedBegin( void ) {
 	PROF_BEGIN( PROF_PVR );
 	PROF_COUNT( STAT_DRAWS, 1 );
-	gl.packedList = BeginPrimitives();
+	PROF_BEGIN( PROF_PVR_SETUP );
+	gl.packedList = BeginPrimitives( 1 );
 	if ( gl.packedList >= 0 ) {
 		SetTransform();
 		xf.depthScale = DepthScale();
 	}
+	PROF_END( PROF_PVR_SETUP );
 	gl.packedOpen = 1;
 	PROF_END( PROF_PVR );
 }
 
-void pvrglPackedEnd( void ) {
+DC_HOT( "20" ) void pvrglPackedEnd( void ) {
 	gl.packedOpen = 0;
+	gl.packedDirect = 0;
+	gl.packedFog = NULL;
 }
 
-void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
-							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes ) {
+/* the batch's fog (before pvrglPackedBegin): its fast draws have it */
+void pvrglPackedFog( const pvrglPackedFog_t *fog ) {
+	gl.packedFog = fog;
+}
+
+/* whether the next pvrglDrawPackedStrips of a box takes the fast path
+   (after pvrglPackedBegin, whose transform it tests with) */
+DC_HOT( "10c" ) int pvrglPackedFast( const float *mins, const float *maxs ) {
+	return mins && !( gl.cullFace && !pvrgl_hwCull ) && BoundsClearOfNear( mins, maxs );
+}
+
+DC_HOT( "10c" ) void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
+							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes,
+							const float *mins, const float *maxs ) {
 	const pvrglPackedVert_t *v = verts;
 	const int alone = !gl.packedOpen;
 	float m[16];
@@ -2116,8 +2456,11 @@ void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[
 
 	if ( alone ) {
 		pvrglPackedBegin();
+		PROF_BEGIN( PROF_PVR );
 	}
-	PROF_BEGIN( PROF_PVR );
+	/* in a batch the surface is all pvr_world, the fold and the near test
+	   too: one pair of profiler switches a surface, not three */
+	PROF_BEGIN( PROF_PVR_WORLD );
 	if ( gl.packedList >= 0 && numIndexes >= 3 && numVerts > 0 ) {
 		/* origin + step * xyz through the transform: the step into the
 		   columns, the origin into the translation */
@@ -2130,20 +2473,50 @@ void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[
 #ifdef USE_SH4ZAM
 		shz_xmtrx_load_unaligned_4x4( m );
 #endif
-		if ( numVerts > vposSize ) {
-			GrowCache( numVerts );
-		}
-		lock.made = 0;		/* vpos is these now */
-		TransformPacked( v, numVerts, m );
-		xf.packed = v;
 		xf.pStOrigin[0] = stOrigin[0];
 		xf.pStOrigin[1] = stOrigin[1];
 		xf.pStStep = stStep;
-		DrawStripsPacked( &gl.lists[gl.packedList], v, strips, numIndexes );
-		xf.packed = NULL;
+		if ( pvrglPackedFast( mins, maxs ) ) {
+			/* clear of the near plane: nothing to test (its transform is in pvr_world) */
+			if ( gl.packedFog ) {
+				DrawStripsPackedFastFog( &gl.lists[gl.packedList], v, strips, numIndexes, origin, step );
+			} else if ( gl.packedDirect ) {
+#ifdef _arch_dreamcast
+				pvrglStripXform_t p;
+				int numStrips;
+
+				memcpy( p.m, m, sizeof( p.m ) );
+				p.s0 = stOrigin[0];
+				p.t0 = stOrigin[1];
+				p.ss = stStep;
+				p.ds = xf.depthScale;
+				numStrips = pvrgl_DrawStripsDirectSH4( v, strips, numIndexes, &p );
+				PROF_COUNT( STAT_VERTS, numIndexes );
+				PROF_COUNT( STAT_TRIS, numIndexes - 2 * numStrips );
+				PROF_COUNT( STAT_EMITTED, numIndexes );
+				(void)numStrips;
+#else
+				DrawStripsDirect( v, strips, numIndexes );
+#endif
+			} else {
+				DrawStripsPackedFast( &gl.lists[gl.packedList], v, strips, numIndexes );
+			}
+		} else {
+			if ( numVerts > vposSize ) {
+				GrowCache( numVerts );
+			}
+			lock.made = 0;		/* vpos is these now */
+			PROF_BEGIN( PROF_PVR_XFORM );
+			TransformPacked( v, numVerts, m );
+			PROF_END( PROF_PVR_XFORM );
+			xf.packed = v;
+			DrawStripsPacked( &gl.lists[gl.packedList], v, strips, numIndexes );
+			xf.packed = NULL;
+		}
 	}
-	PROF_END( PROF_PVR );
+	PROF_END( PROF_PVR_WORLD );
 	if ( alone ) {
+		PROF_END( PROF_PVR );
 		pvrglPackedEnd();
 	}
 }
@@ -2168,14 +2541,14 @@ int pvrgl_FogColor( unsigned int rgba ) {
 
 /* the renderer's promise that vertexes first to first + count - 1 don't
    move till the unlock: their positions made once for all its draws */
-void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count ) {
+DC_HOT( "40" ) void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count ) {
 	lock.locked = count > 0;
 	lock.first = first;
 	lock.count = count;
 	lock.made = 0;
 }
 
-void APIENTRY pvrglUnlockArraysEXT( void ) {
+DC_HOT( "40" ) void APIENTRY pvrglUnlockArraysEXT( void ) {
 	lock.locked = 0;
 	lock.made = 0;
 }
@@ -2340,6 +2713,44 @@ static void SubmitCoverQuad( void ) {
 	}
 }
 
+#ifdef _arch_dreamcast
+/* a list block to the TA: pvr_prim's store queue copy with the source
+   fetched three lines ahead, not one. The lists are bigger than the data
+   cache, so by now every line comes from RAM, and one line's worth of
+   notice (sq_cpy's) is less than the RAM's latency: the counters had the
+   submit mostly waiting on it */
+static void DC_HOT( "70" ) SubmitBlock( const void *data, int bytes ) {
+	const uint32_t *s = data;
+	uint32_t *d = sq_lock( (void *)PVR_TA_INPUT );
+	int n = bytes >> 5;
+
+	while ( n-- > 0 ) {
+		__builtin_prefetch( s + 24 );
+		d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
+		d[4] = s[4]; d[5] = s[5]; d[6] = s[6]; d[7] = s[7];
+		sq_flush( d );
+		d += 8;
+		s += 8;
+	}
+	sq_unlock();
+}
+#else
+#define SubmitBlock( data, bytes )	pvr_prim( (void *)( data ), bytes )
+#endif
+
+/* the next frame's scene, with its opaque list open on the TA for the
+   direct draws (its cover quad first, in the clear colour as it is now) */
+static void BeginScene( void ) {
+	PROF_BEGIN( PROF_GPU );
+	pvr_wait_ready();
+	PROF_END( PROF_GPU );
+	pvr_scene_begin();
+	pvr_list_begin( PVR_LIST_OP_POLY );
+	SubmitCoverQuad();
+	gl.sceneOpen = 1;
+	gl.directHasLast = 0;
+}
+
 void pvrgl_EndFrame( void ) {
 	static const int order[3] = { PVR_LIST_OP_POLY, PVR_LIST_PT_POLY, PVR_LIST_TR_POLY };
 	int i;
@@ -2348,9 +2759,6 @@ void pvrgl_EndFrame( void ) {
 		return;
 	}
 
-	PROF_BEGIN( PROF_GPU );
-	pvr_wait_ready();
-	PROF_END( PROF_GPU );
 	pvr_set_bg_color( gl.clearColor[0], gl.clearColor[1], gl.clearColor[2] );
 	PVR_SET( PVR_PT_ALPHA_REF, 0x80 );
 	if ( gl.fogSet && gl.fogWritten != gl.fogColor + 1 ) {
@@ -2361,37 +2769,44 @@ void pvrgl_EndFrame( void ) {
 	gl.fogSet = 0;
 	PROF_COUNT( STAT_TR, gl.lists[PVR_LIST_TR_POLY].used / 32 );
 	PROF_BEGIN( PROF_SUBMIT );
-	pvr_scene_begin();
+	if ( !gl.sceneOpen ) {
+		BeginScene();
+	}
+#ifndef _arch_dreamcast
 	if ( getenv( "PVRGL_STATS" ) ) {
 		static int n;
 		fprintf( stderr, "pvrgl frame %d: op %d pt %d tr %d KB, textures %d KB\n", n++, gl.lists[0].used / 1024,
 				 gl.lists[PVR_LIST_PT_POLY].used / 1024, gl.lists[PVR_LIST_TR_POLY].used / 1024, gl.textureBytes / 1024 );
 	}
+#endif
 	for ( i = 0; i < 3; i++ ) {
 		listBuffer_t *l = &gl.lists[order[i]];
 		int b;
 		if ( !l->used && order[i] != PVR_LIST_OP_POLY ) {
 			continue;
 		}
+#ifndef _arch_dreamcast
 		if ( getenv( "PVRGL_SKIP" ) && strchr( getenv( "PVRGL_SKIP" ), '0' + order[i] ) ) {
 			continue;
 		}
+#endif
 		if ( l->overflowed ) {
 			fprintf( stderr, "pvr_gl: list %d overflowed: the lists have %d KB between them\n", order[i], VERTEX_BUFFER / 1024 );
 		}
-		pvr_list_begin( order[i] );
-		if ( order[i] == PVR_LIST_OP_POLY ) {
-			SubmitCoverQuad();
+		if ( order[i] != PVR_LIST_OP_POLY ) {
+			pvr_list_begin( order[i] );		/* the opaque one's open since BeginScene */
 		}
 		for ( b = 0; b * LIST_BLOCK < l->used; b++ ) {
-			pvr_prim( l->blocks[b], l->used - b * LIST_BLOCK < LIST_BLOCK ? l->used - b * LIST_BLOCK : LIST_BLOCK );
+			SubmitBlock( l->blocks[b], l->used - b * LIST_BLOCK < LIST_BLOCK ? l->used - b * LIST_BLOCK : LIST_BLOCK );
 		}
 		pvr_list_finish();
 	}
 	pvr_scene_finish();
+	gl.sceneOpen = 0;
 	PROF_END( PROF_SUBMIT );
 
 	ResetLists();
+	BeginScene();
 }
 
 int pvrgl_Init( void ) {
@@ -2438,6 +2853,7 @@ int pvrgl_Init( void ) {
 	gl.shadeModel = GL_SMOOTH;
 	gl.color = 0xffffffff;
 	pvr_set_pal_format( PVR_PAL_ARGB8888 );
+	BeginScene();
 	gl.inited = 1;
 	return 0;
 }
@@ -2453,6 +2869,11 @@ void pvrgl_Shutdown( void ) {
 			FreeTextureData( gl.textures[i] );
 			free( gl.textures[i] );
 		}
+	}
+	if ( gl.sceneOpen ) {
+		pvr_list_finish();
+		pvr_scene_finish();
+		gl.sceneOpen = 0;
 	}
 	ResetLists();
 	for ( i = 0; i < gl.numFreeBlocks; i++ ) {

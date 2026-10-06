@@ -301,6 +301,32 @@ void VM_LoadSymbols( vm_t *vm ) {
 	FS_FreeFile( mapfile.v );
 }
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+/*
+============
+VM_DllSyscallFixed
+
+VM_DllSyscall for the static modules without its va_arg copy (15 of them a
+call, the 8 float argument registers saved first: about 300 cycles on the
+SH4, a thousand calls a frame). The modules call it as their syscall( arg,
+... ): GCC passes those as it would these, in r4-r7 then on the stack (x86:
+all on the stack), so these are the arguments as they were passed; past the
+last one, whatever is there, never read (each trap reads only its own).
+Every syscall argument is an int or a pointer (floats go as PASSFLOAT), as
+VM_DllSyscall's own va_arg( intptr_t ) has them.
+============
+*/
+static intptr_t QDECL VM_DllSyscallFixed( intptr_t a0, intptr_t a1, intptr_t a2, intptr_t a3,
+		intptr_t a4, intptr_t a5, intptr_t a6, intptr_t a7, intptr_t a8, intptr_t a9,
+		intptr_t a10, intptr_t a11, intptr_t a12, intptr_t a13, intptr_t a14, intptr_t a15 ) {
+	intptr_t args[MAX_VMSYSCALL_ARGS] = { a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15 };
+
+	return currentVM->systemCall( args );
+}
+#define STATIC_VM_SYSCALL	( (intptr_t (QDECL *)( intptr_t, ... ))VM_DllSyscallFixed )
+#else
+#define STATIC_VM_SYSCALL	VM_DllSyscall
+
 /*
 ============
 VM_DllSyscall
@@ -359,6 +385,7 @@ intptr_t QDECL VM_DllSyscall( intptr_t arg, ... ) {
 	return currentVM->systemCall( &arg );
 #endif
 }
+#endif
 
 
 /*
@@ -599,6 +626,7 @@ STATIC_VM_DECL( cgame )
 STATIC_VM_DECL( ui )
 #endif
 
+
 static const struct {
 	const char			*name;
 	staticDllEntry_t	dllEntry;
@@ -617,7 +645,7 @@ static qboolean VM_LoadStatic( vm_t *vm, const char *module ) {
 	for ( i = 0; i < ARRAY_LEN( staticVMs ); i++ ) {
 		if ( !Q_stricmp( staticVMs[i].name, module ) ) {
 			Com_DPrintf( "Using static %s module\n", module );
-			staticVMs[i].dllEntry( VM_DllSyscall );
+			staticVMs[i].dllEntry( STATIC_VM_SYSCALL );
 			vm->entryPoint = staticVMs[i].vmMain;
 			vm->dllHandle = STATIC_VM_HANDLE;
 			return qtrue;
@@ -687,7 +715,7 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 		{
 			Com_DPrintf("Try loading dll file %s\n", filename);
 
-			vm->dllHandle = Sys_LoadGameDll(filename, &vm->entryPoint, VM_DllSyscall);
+			vm->dllHandle = Sys_LoadGameDll(filename, &vm->entryPoint, STATIC_VM_SYSCALL);
 			
 			if(vm->dllHandle)
 			{

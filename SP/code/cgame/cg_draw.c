@@ -3966,12 +3966,14 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 		}
 	}
 
+#if !defined( _arch_dreamcast ) && !defined( DCSIM )	// single player: never a spectator
 	// optionally draw the tournement scoreboard instead
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR &&
 		 ( cg.snap->ps.pm_flags & PMF_SCOREBOARD ) ) {
 		CG_DrawTourneyScoreboard();
 		return;
 	}
+#endif
 
 	// clear around the rendered view if sized down
 	//CG_TileClear();	// (SA) moved down

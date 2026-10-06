@@ -52,7 +52,7 @@ use the shader system.
 RB_CheckOverflow
 ==============
 */
-void RB_CheckOverflow( int verts, int indexes ) {
+DC_HOT( "30" ) void RB_CheckOverflow( int verts, int indexes ) {
 	if ( tess.numVertexes + verts < SHADER_MAX_VERTEXES
 		 && tess.numIndexes + indexes < SHADER_MAX_INDEXES ) {
 		return;
@@ -767,7 +767,7 @@ static void LerpMeshVertexes(md3Surface_t *surf, float backlerp)
 RB_SurfaceMesh
 =============
 */
-static void RB_SurfaceMesh( md3Surface_t *surface ) {
+static DC_HOT( "60" ) void RB_SurfaceMesh( md3Surface_t *surface ) {
 	int j;
 	float backlerp;
 	float           *texCoords;
@@ -1253,27 +1253,70 @@ was drawn.
 */
 typedef int wldVertIsPacked[sizeof( wldVert_t ) == 16 && offsetof( wldVert_t, st ) == 8 && offsetof( wldVert_t, color ) == 12 ? 1 : -1];
 
-static qboolean worldDirectOpen;	// the batch's state is set and pvrglPackedBegin called
+static unsigned char worldDirectOpen;	// the batch's state is set and pvrglPackedBegin called
+static unsigned char worldDirectFog;	// and it has the table fog on
+qboolean rb_dlitDirect;		// a dlit surface's base was drawn direct: tess holds it for the lights' pass only
 
-void RB_WorldDirectEnd( void ) {
+DC_HOT( "20" ) void RB_WorldDirectEnd( void ) {
 	if ( worldDirectOpen ) {
 		worldDirectOpen = qfalse;
+		worldDirectFog = qfalse;
 		pvrglPackedEnd();
 	}
 }
 
-static qboolean RB_WorldDirect( const srfWorld_t *srf ) {
+/*
+==============
+RB_WorldDirectFog
+
+The batch's fog for pvr_gl's fast path to blend in by vertex, exactly as
+RB_VertexFog would through tess: the fog's top (if any), the eye's side of
+it, its depth and the game's curve. Only for the world's own surfaces: a
+brush model's are in its own space.
+==============
+*/
+static DC_HOT( "10b" ) qboolean RB_WorldDirectFog( void ) {
+	static pvrglPackedFog_t packedFog;
+	const fog_t *fog = tr.world->fogs + tess.fogNum;
+	float depth;
+
+	if ( backEnd.currentEntity != &tr.worldEntity ) {
+		return qfalse;
+	}
+	if ( !pvrgl_FogColor( fog->colorInt ) ) {
+		return qfalse;
+	}
+	packedFog.hasPlane = fog->hasSurface;
+	if ( fog->hasSurface ) {
+		Vector4Copy( fog->surface, packedFog.plane );
+		packedFog.eyeT = DotProduct( backEnd.or.viewOrigin, fog->surface ) - fog->surface[3];
+	} else {
+		packedFog.eyeT = 1;
+	}
+	depth = fog->parms.depthForOpaque < 1 ? 1 : fog->parms.depthForOpaque;
+	packedFog.invDepth = 1.0f / depth;
+	packedFog.table = tr.fogTable;
+	pvrglPackedFog( &packedFog );
+	return qtrue;
+}
+
+static DC_HOT( "10b" ) qboolean RB_WorldDirect( const srfWorld_t *srf ) {
 	const shader_t *shader = tess.shader;
 	const refEntity_t *e = &backEnd.currentEntity->e;
 	shaderStage_t *stage;
+	vec3_t bounds[2];
 
 	if ( worldDirectOpen ) {
 		// the batch (one shader, fog, dlit or not, entity) was found fit by its first
+		R_WorldSurfBounds( srf, bounds );
+		if ( worldDirectFog && !pvrglPackedFast( bounds[0], bounds[1] ) ) {
+			return qfalse;	// the fog's only on the fast path: tess fogs this one
+		}
 		pvrglDrawPackedStrips( srf->verts, srf->numVerts, srf->origin, srf->xyzStep, srf->stOrigin, srf->stStep,
-							   srf->indexes, srf->numStripIndexes );
+							   srf->indexes, srf->numStripIndexes, bounds[0], bounds[1] );
 		return qtrue;
 	}
-	if ( !r_worldDirect->integer || srf->dlightBits || tess.fogNum || tess.numPasses != 1
+	if ( !r_worldDirect->integer || tess.numPasses != 1
 		 || shader->optimalStageIteratorFunc != RB_StageIteratorGeneric
 		 || shader->numDeforms || shader->polygonOffset || shader->sort != SS_OPAQUE
 		 || ( ( backEnd.refdef.rdflags & RDF_SKYBOXPORTAL ) && !drawskyboxportal )	// the portal sky's pass: sky only (RB_EndSurface)
@@ -1286,6 +1329,13 @@ static qboolean RB_WorldDirect( const srfWorld_t *srf ) {
 		 || ( stage->rgbGen != CGEN_EXACT_VERTEX && !( stage->rgbGen == CGEN_VERTEX && tr.identityLight == 1 ) )
 		 || ( stage->alphaGen != AGEN_SKIP && stage->alphaGen != AGEN_IDENTITY )
 		 || ( stage->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ) ) ) {
+		return qfalse;
+	}
+	// in a fog: blended in by vertex on the fast path, or none if the shader isn't fogged anyway
+	worldDirectFog = tess.fogNum && shader->fogPass;
+	if ( worldDirectFog && ( srf->dlightBits || !RB_WorldDirectFog() ) ) {
+		// (a dlit batch in a fog stays whole in tess: a surface the fog
+		// sends back to tess would have no base drawn, see RB_SurfaceWorld)
 		return qfalse;
 	}
 
@@ -1305,24 +1355,41 @@ static qboolean RB_WorldDirect( const srfWorld_t *srf ) {
 
 	pvrglPackedBegin();
 	worldDirectOpen = qtrue;
+	R_WorldSurfBounds( srf, bounds );
+	if ( worldDirectFog && !pvrglPackedFast( bounds[0], bounds[1] ) ) {
+		return qfalse;		// the fog's only on the fast path: tess fogs this one
+	}
 	pvrglDrawPackedStrips( srf->verts, srf->numVerts, srf->origin, srf->xyzStep, srf->stOrigin, srf->stStep,
-						   srf->indexes, srf->numStripIndexes );
+						   srf->indexes, srf->numStripIndexes, bounds[0], bounds[1] );
 	return qtrue;
 }
 #endif
 
-static void RB_SurfaceWorld( srfWorld_t *srf ) {
+static DC_HOT( "10b" ) void RB_SurfaceWorld( srfWorld_t *srf ) {
 	int i, j, first;
 	const wldVert_t *v;
 	glIndex_t *tessIndexes;
 	int dlightBits;
+#ifdef USE_PVR
+	qboolean direct;
+#endif
 
 #ifdef USE_PVR
-	if ( RB_WorldDirect( srf ) ) {
+	// a torch on a surface drawn direct: the base is drawn, the surface goes
+	// into tess for the lights' pass alone (RB_StageIteratorGeneric skips the
+	// stages). Before, a dlit surface took the whole tess route, 100 of them
+	// in a torch room at 10 ms a frame
+	direct = RB_WorldDirect( srf );
+	if ( direct && !srf->dlightBits ) {
 		return;
 	}
 #endif
 	RB_CHECKOVERFLOW( srf->numVerts, srf->numIndexes );
+#ifdef USE_PVR
+	if ( direct ) {
+		rb_dlitDirect = qtrue;	// after the overflow check: its flush begins a batch, which clears it
+	}
+#endif
 
 	dlightBits = srf->dlightBits;
 	tess.dlightBits |= dlightBits;

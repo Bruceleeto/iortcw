@@ -486,7 +486,13 @@ cvarTable_t cvarTable[] = {
 	{ &cg_teamChatHeight, "cg_teamChatHeight", "8", CVAR_ARCHIVE  },
 	{ &cg_forceModel, "cg_forceModel", "0", CVAR_ARCHIVE  },
 	{ &cg_coronafardist, "cg_coronafardist", "1536", CVAR_ARCHIVE },
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// a corona's visibility is read back from the depth buffer (RB_TestFlare), which the
+	// PVR can't do, so none ever shows: off, and its sight traces with it
+	{ &cg_coronas, "cg_coronas", "0", CVAR_ARCHIVE },
+#else
 	{ &cg_coronas, "cg_coronas", "1", CVAR_ARCHIVE },
+#endif
 	{ &cg_predictItems, "cg_predictItems", "1", CVAR_ARCHIVE },
 	{ &cg_deferPlayers, "cg_deferPlayers", "1", CVAR_ARCHIVE },
 	{ &cg_drawTeamOverlay, "cg_drawTeamOverlay", "0", CVAR_ARCHIVE },
@@ -629,6 +635,20 @@ CG_UpdateCvars
 void CG_UpdateCvars( void ) {
 	int i;
 	cvarTable_t *cv;
+
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// linked in with the engine: its count of cvar changes; none since
+	// last time, nothing to update (a trap_Cvar_Update a cvar a frame)
+	{
+		extern int cvar_changeCount;
+		static int lastChangeCount = -1;
+
+		if ( cvar_changeCount == lastChangeCount ) {
+			return;
+		}
+		lastChangeCount = cvar_changeCount;
+	}
+#endif
 
 	for ( i = 0, cv = cvarTable ; i < cvarTableSize ; i++, cv++ ) {
 		trap_Cvar_Update( cv->vmCvar );

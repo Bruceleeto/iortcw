@@ -16,7 +16,7 @@ typedef enum {
 	PROF_GAME,          // the game module (qagame)
 	PROF_AI,            // its AI: AICast_StartFrame / AICast_StartServerFrame
 	PROF_PATHING,       // the botlib (AAS routing), from the game
-	PROF_COLLISION,     // traces (CM_BoxTrace, CM_TransformedBoxTrace)
+	PROF_COLLISION,     // traces (CM_BoxTrace, CM_TransformedBoxTrace); also split by caller (COLL)
 	PROF_CGAME,         // the client game module: what the ones below don't have
 	PROF_CG_SNAPS,      //   CG_ProcessSnapshots: entity events (shots, impacts, sounds)
 	PROF_CG_PREDICT,    //   CG_PredictPlayerState
@@ -31,11 +31,15 @@ typedef enum {
 	PROF_CG_TRAILS,     //   CG_AddFlameChunks, CG_AddTrails
 	PROF_CG_2D,         //   CG_DrawActive, less its scene
 	PROF_UI,            // the menus
-	PROF_SCENE,         // the renderer's front end: RE_RenderScene
+	PROF_SCENE,         // the renderer's front end: RE_RenderScene, less the ones below
+	PROF_SC_LEAVES,     //   R_MarkLeaves: the PVS to the leaves
+	PROF_SC_NODES,      //   R_RecursiveWorldNode: the tree walk, frustum cull, surfaces added
+	PROF_SC_ENTS,       //   R_AddEntitySurfaces: entities culled and their surfaces added
+	PROF_SC_SORT,       //   R_SortDrawSurfs
 	PROF_DRAW,          // its back end: the render commands, to the PVR's lists;
 						// what the ones below don't have (2D, sorting, state)
 	PROF_WORLD,         //   the world's surfaces into tess (rb_surfaceTable)
-	PROF_MODELS,        //   entities' surfaces into tess: model lerp, MDS skinning
+	PROF_MODELS,        //   entities' surfaces into tess (md3/mdc lerp, sprites, polys, MDS bones and skinning)
 	PROF_SHADE,         //   a shader's stages: what the ones below don't have (state, binds, draws' setup)
 	PROF_DEFORM,        //     deformVertexes (RB_DeformTessGeometry)
 	PROF_COLORS,        //     rgbGen / alphaGen (ComputeColors)
@@ -45,7 +49,11 @@ typedef enum {
 	PROF_FOG,           //     fog passes (RB_FogPass), less their pvr
 	PROF_SKY,           //   the sky's (RB_StageIteratorSky) and the sun
 	PROF_FLARES,        //   RB_RenderFlares
-	PROF_PVR,           //   pvr_gl: transform, clip, PVR vertices into the lists
+	PROF_PVR,           //   pvr_gl: a draw's leftover (array setup, strips/fans)
+	PROF_PVR_SETUP,     //     BeginPrimitives + SetTransform: the PVR header, state, matrices
+	PROF_PVR_XFORM,     //     TransformVerts / TransformPacked: vertexes through the matrix
+	PROF_PVR_WORLD,     //     DrawStripsPacked: the .wld strips into the list
+	PROF_PVR_TRIS,      //     DrawTriangles: tess triangles culled, clipped, into the list
 	PROF_SUBMIT,        //   pvr_gl: the lists to the PVR at the end of the frame
 	PROF_GPU,           // waiting for the PVR to finish the frame before
 	PROF_SOUND,         // S_Update
@@ -74,6 +82,27 @@ extern int profStats[STAT_NUM];
 #define PROF_COUNT( stat, n )   ( profStats[stat] += ( n ) )
 #else
 #define PROF_COUNT( stat, n )
+#endif
+
+/*
+ * DC_HOT( order ): a function on the frame's hot path. On the Dreamcast it
+ * goes into the hot text region (tools/dc/shlelf.xc puts .text.hot.* first
+ * in .text, sorted by name, so these are together and in the order given),
+ * where the 8 KB direct mapped instruction cache can hold a loop whole;
+ * spread over 1.6 MB of text as the linker leaves them, a surface's draw
+ * walks a dozen functions whose cache lines collide by chance (the counters
+ * showed half the renderer's per-draw time to be instruction fetch stalls).
+ * order: two digits and a letter, lowest first. 10a-10e is the world
+ * surface loop (the profiler, RB_SurfaceWorld, pvrglDrawPackedStrips, the
+ * asm, the batch loop), kept under 8 KB together so it never evicts itself;
+ * 20 the packed draw's other paths  30 the tess draw (stage iterator to
+ * DrawPrimitivesPVR)  40 the per-draw setup (BeginPrimitives, GL state)
+ * 50 the scene walk  60 models  70 the submit
+ */
+#ifdef _arch_dreamcast
+#define DC_HOT( order ) __attribute__(( hot, section( ".text.hot." order ) ))
+#else
+#define DC_HOT( order )
 #endif
 
 #ifdef DC_PROF

@@ -2230,9 +2230,13 @@ void ClientCommand( int clientNum ) {
 		Cmd_FollowCycle_f( ent, 1 );
 	} else if ( Q_stricmp( cmd, "followprev" ) == 0 )  {
 		Cmd_FollowCycle_f( ent, -1 );
-	} else if ( Q_stricmp( cmd, "team" ) == 0 )  {
+	}
+#ifndef G_NO_TEAMPLAY
+	else if ( Q_stricmp( cmd, "team" ) == 0 )  {
 		Cmd_Team_f( ent );
-	} else if ( Q_stricmp( cmd, "where" ) == 0 )  {
+	}
+#endif
+	else if ( Q_stricmp( cmd, "where" ) == 0 )  {
 		Cmd_Where_f( ent );
 	}
 //	else if (Q_stricmp (cmd, "callvote") == 0)	//----(SA)	id requests these gone in sp

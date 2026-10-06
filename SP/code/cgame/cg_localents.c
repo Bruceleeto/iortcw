@@ -34,11 +34,34 @@ If you have questions concerning this license or the applicable additional terms
 
 // Ridah, increased this
 //#define	MAX_LOCAL_ENTITIES	512
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+#define MAX_LOCAL_ENTITIES  256     // DC: a third of the pool, the oldest reused when it's full
+#else
 #define MAX_LOCAL_ENTITIES  768     // renderer can only handle 1024 entities max, so we should avoid
 									// overwriting game entities
+#endif
 // done.
 
 cgPool_t cg_localEntityPool = { sizeof( localEntity_t ), 64, MAX_LOCAL_ENTITIES };
+
+/* DC: the traces of bouncing bits (shells, gibs, sparks, blood, debris) a
+   frame, 48 of them; a gibbing can have 200 in flight, a trace each a frame,
+   8 ms. Past the budget a bit stands still this frame (its path is analytic,
+   so next frame's trace covers the whole gap: nothing tunnels) */
+#define LE_TRACES_A_FRAME   48
+static int leTracesLeft;
+
+static void LE_Trace( trace_t *tr, const vec3_t start, vec3_t end, int passEnt, int mask ) {
+	if ( leTracesLeft > 0 ) {
+		leTracesLeft--;
+		CG_Trace( tr, start, NULL, NULL, end, passEnt, mask );
+		return;
+	}
+	VectorCopy( start, end );
+	memset( tr, 0, sizeof( *tr ) );
+	tr->fraction = 1.0f;
+	VectorCopy( start, tr->endpos );
+}
 localEntity_t cg_activeLocalEntities;       // double linked list
 localEntity_t   *cg_freeLocalEntities;      // single linked list
 
@@ -530,6 +553,15 @@ void CG_AddFragment( localEntity_t *le ) {
 
 		VectorCopy( le->refEntity.origin, newOrigin );
 		newOrigin [2] -= 5;
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		// a resting one asks every 8th frame, within the frame's trace budget:
+		// a fight leaves a hundred shells and gibs lying about, each asking
+		// every frame whether its floor is still there (137 traces a frame)
+		if ( ( ( cg.clientFrame + le->startTime ) & 7 ) || leTracesLeft <= 0 ) {
+			return;
+		}
+		leTracesLeft--;
+#endif
 		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, CONTENTS_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MISSILECLIP );
 
 		if ( trace.fraction == 1.0f ) { // it's clear, start moving again
@@ -562,9 +594,9 @@ void CG_AddFragment( localEntity_t *le ) {
 
 	// trace a line from previous position to new position
 	if ( ( le->leFlags & LEF_NOTOUCHPARENT ) && le->ownerNum ) {
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, le->ownerNum, contents );
+		LE_Trace( &trace, le->refEntity.origin, newOrigin, le->ownerNum, contents );
 	} else {
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, contents );
+		LE_Trace( &trace, le->refEntity.origin, newOrigin, -1, contents );
 	}
 
 	// did we hit someone?
@@ -754,7 +786,7 @@ void CG_AddSparkElements( localEntity_t *le ) {
 //		if ((le->endTime - le->startTime) > 500) {
 
 		// trace a line from previous position to new position
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
+		LE_Trace( &trace, le->refEntity.origin, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
 
 		// if stuck, kill it
 		if ( trace.startsolid ) {
@@ -870,7 +902,7 @@ void CG_AddBloodElements( localEntity_t *le ) {
 		BG_EvaluateTrajectory( &le->pos, cg.time, newOrigin );
 
 		// trace a line from previous position to new position
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
+		LE_Trace( &trace, le->refEntity.origin, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
 
 		// if stuck, kill it
 		if ( trace.startsolid ) {
@@ -1245,7 +1277,7 @@ void CG_AddDebrisElements( localEntity_t *le ) {
 		BG_EvaluateTrajectory( &le->pos, t, newOrigin );
 
 		// trace a line from previous position to new position
-		CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
+		LE_Trace( &trace, le->refEntity.origin, newOrigin, -1, MASK_SOLID );   // not bodies: an entity clip per soldier in range
 
 		// if stuck, kill it
 		if ( trace.startsolid ) {
@@ -1359,7 +1391,7 @@ void CG_AddShrapnel( localEntity_t *le ) {
 	BG_EvaluateTrajectory( &le->pos, cg.time, newOrigin );
 
 	// trace a line from previous position to new position
-	CG_Trace( &trace, le->refEntity.origin, NULL, NULL, newOrigin, -1, CONTENTS_SOLID );
+	LE_Trace( &trace, le->refEntity.origin, newOrigin, -1, CONTENTS_SOLID );
 	if ( trace.fraction == 1.0f ) {
 		// still in free fall
 		VectorCopy( newOrigin, le->refEntity.origin );
@@ -1660,6 +1692,8 @@ void CG_AddLocalEntities( void ) {
 	localEntity_t   *le, *next;
 
 	cg.viewFade = 0.0f;
+
+	leTracesLeft = LE_TRACES_A_FRAME;
 
 	// walk the list backwards, so any new local entities generated
 	// (trails, marks, etc) will be present this frame

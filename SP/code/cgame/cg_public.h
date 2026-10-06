@@ -221,7 +221,9 @@ typedef enum {
 	// New in IORTCW
 	CG_ALLOC = 900,
 	CG_R_INPVS,             // the server's PVS test, for things cgame shows with no entity
-	CG_GETLOCALPLAYERSTATE  // the local server's current player state (CG_PredictPlayerState)
+	CG_GETLOCALPLAYERSTATE, // the local server's current player state (CG_PredictPlayerState)
+	CG_CM_PVSKEY,           // CG_R_INPVS split for things that never move: where one is, once,
+	CG_CM_PVSTEST           // and whether that's in the view's PVS, each frame
 
 } cgameImport_t;
 

@@ -2948,6 +2948,11 @@ static qboolean CG_PlayerShadow( centity_t *cent, float *shadowPlane ) {
 
 	*shadowPlane = 0;
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// DC: no blob shadows, whatever the config says: a trace and a fresh
+	// decal under every body each frame, 1.5 ms with five or six enemies
+	return qfalse;
+#endif
 	if ( cg_shadows.integer == 0 ) {
 		return qfalse;
 	}
@@ -3077,6 +3082,9 @@ static void CG_PlayerSplash( centity_t *cent ) {
 	int contents;
 	polyVert_t verts[4];
 
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	return;		// DC: off with the shadows (CG_PlayerShadow), whatever the config says
+#endif
 	if ( !cg_shadows.integer ) {
 		return;
 	}
@@ -4222,10 +4230,6 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 
 	ent->entityNum = es->number;
 
-	if ( cent->pe->forceLOD ) {
-		ent->reFlags |= REFLAG_FORCE_LOD;
-	}
-
 	// RF, if in camera mode, force a full lod, since we are in a controlled environment
 	if ( cg.cameraMode ) {
 		ent->reFlags |= REFLAG_FULL_LOD;
@@ -4698,26 +4702,67 @@ static void CG_Player_( centity_t *cent ) {
 	cent->pe->lastTime = cg.time;
 
 #if defined( _arch_dreamcast ) || defined( DCSIM )
-	// a player behind the eye or behind the world (a trace to the waist
-	// and one to the head, both into a wall) isn't drawn: the snapshot has
-	// every one in the PVS, and each would cost its tags here and its
-	// skeleton in the renderer, culled only after that
-	if ( cent->currentState.number != cg.snap->ps.clientNum ) {
-		vec3_t to;
-		trace_t tr;
-
-		VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, to );
-		if ( DotProduct( to, cg.refdef.viewaxis[0] ) < -48 ) {
+	if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+		// the player's own body in first person is never drawn (RF_THIRD_PERSON:
+		// mirrors only), yet its angles, animation, shadow, tags, talking head
+		// and weapon cost over a millisecond a frame. It's built every 8th
+		// frame, so the tag entities the pain and gib code reads stay near the
+		// truth; the weapon's loop sounds (the flamethrower's hiss) every frame
+		if ( !cg.renderingThirdPerson && !cg.cameraMode && ( cg.clientFrame & 7 ) ) {
+			CG_AddPlayerWeaponSounds( cent );
 			return;
 		}
-		trap_CM_BoxTrace( &tr, cg.refdef.vieworg, cent->lerpOrigin, NULL, NULL, 0, CONTENTS_SOLID );
-		if ( tr.fraction < 1.0f ) {
-			VectorCopy( cent->lerpOrigin, to );
-			to[2] += 40;
-			trap_CM_BoxTrace( &tr, cg.refdef.vieworg, to, NULL, NULL, 0, CONTENTS_SOLID );
+	} else {
+		// a player behind the eye or behind the world (a trace to the waist
+		// and one to the head, both into a wall) isn't drawn: the snapshot has
+		// every one in the PVS, and each would cost its tags here and its
+		// skeleton in the renderer, culled only after that. The traces are long
+		// ones (170 us each on escape1's roof, 21 a frame), so the answer is
+		// kept: a hidden one is looked at again every other frame, a seen one
+		// every 4th (drawn a few frames longer than it's seen: no harm)
+		static int tanFrame = -1;
+		static float tanX, tanY;
+		vec3_t to;
+		trace_t tr;
+		float px, py, pz;
+		int hidden = cent->pe->hiddenCheck & 1;
+		int since = cg.clientFrame - ( cent->pe->hiddenCheck >> 1 );
+
+		VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, to );
+		px = DotProduct( to, cg.refdef.viewaxis[0] );
+		if ( px < -48 ) {
+			return;
+		}
+		// nor one outside the view: the renderer culls its models, but only
+		// after their skeletons and the tags here (4 ms a frame with ten
+		// soldiers round a corner on the roof). A sphere test against the
+		// view's pyramid, |side| > forward * tan(fov/2) + r, with r wide
+		// enough for the model, its weapon and the plane's slant
+		if ( tanFrame != cg.clientFrame ) {
+			tanFrame = cg.clientFrame;
+			tanX = tan( DEG2RAD( cg.refdef.fov_x * 0.5f ) );
+			tanY = tan( DEG2RAD( cg.refdef.fov_y * 0.5f ) );
+		}
+		py = DotProduct( to, cg.refdef.viewaxis[1] );
+		pz = DotProduct( to, cg.refdef.viewaxis[2] );
+		if ( fabs( py ) > px * tanX + 160 || fabs( pz ) > px * tanY + 160 ) {
+			return;
+		}
+		if ( since < 0 || since >= ( hidden ? 2 : 4 ) ) {
+			hidden = 0;
+			trap_CM_BoxTrace( &tr, cg.refdef.vieworg, cent->lerpOrigin, NULL, NULL, 0, CONTENTS_SOLID );
 			if ( tr.fraction < 1.0f ) {
-				return;
+				VectorCopy( cent->lerpOrigin, to );
+				to[2] += 40;
+				trap_CM_BoxTrace( &tr, cg.refdef.vieworg, to, NULL, NULL, 0, CONTENTS_SOLID );
+				if ( tr.fraction < 1.0f ) {
+					hidden = 1;
+				}
 			}
+			cent->pe->hiddenCheck = ( cg.clientFrame << 1 ) | hidden;
+		}
+		if ( hidden ) {
+			return;
 		}
 	}
 #endif

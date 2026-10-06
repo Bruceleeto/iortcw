@@ -439,8 +439,10 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		AddScore( self, -1 );
 	}
 
+#ifndef G_NO_TEAMPLAY
 	// Add team bonuses
 	Team_FragBonuses( self, inflictor, attacker );
+#endif
 
 	// if client is in a nodrop area, don't drop anything
 // JPW NERVE new drop behavior
@@ -1283,8 +1285,10 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 	}
 
+#ifndef G_NO_TEAMPLAY
 	// See if it's the player hurting the emeny flag carrier
 	Team_CheckHurtCarrier( targ, attacker );
+#endif
 
 	if ( targ->client ) {
 		// set the last client who damaged the target

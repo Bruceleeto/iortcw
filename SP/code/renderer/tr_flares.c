@@ -30,6 +30,23 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 
+#ifdef USE_PVR
+/* the PVR can't read its depth back (pvrglReadPixels gives 0s), so a
+   flare's test (RB_TestFlare) fails past 24 units from the eye: none is
+   ever seen. The calls are kept, as nothing */
+void R_ClearFlares( void ) {
+}
+
+void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, float scale, vec3_t normal, int id, int flags ) {
+}
+
+void RB_AddDlightFlares( void ) {
+}
+
+void RB_RenderFlares( void ) {
+}
+#else
+
 /*
 =============================================================================
 
@@ -625,3 +642,4 @@ void RB_RenderFlares( void ) {
 	qglPopMatrix();
 }
 
+#endif	// USE_PVR

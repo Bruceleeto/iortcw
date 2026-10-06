@@ -1749,11 +1749,13 @@ void ClientSpawn( gentity_t *ent ) {
 		if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
 			spawnPoint = SelectSpectatorSpawnPoint(
 				spawn_origin, spawn_angles );
+#ifndef G_NO_TEAMPLAY
 		} else if ( g_gametype.integer >= GT_TEAM ) {
 			spawnPoint = SelectCTFSpawnPoint(
 				client->sess.sessionTeam,
 				client->pers.teamState.state,
 				spawn_origin, spawn_angles, !!(ent->r.svFlags & SVF_BOT) );
+#endif
 		} else {
 			do {
 				// the first spawn should be at a good looking spot

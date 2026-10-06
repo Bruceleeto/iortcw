@@ -515,10 +515,12 @@ qboolean    ConsoleCommand( void ) {
 		return qtrue;
 	}
 
+#ifndef G_NO_TEAMPLAY
 	if ( Q_stricmp( cmd, "forceteam" ) == 0 ) {
 		Svcmd_ForceTeam_f();
 		return qtrue;
 	}
+#endif
 
 	if ( Q_stricmp( cmd, "game_memory" ) == 0 ) {
 		Svcmd_GameMem_f();

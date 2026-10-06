@@ -565,6 +565,15 @@ void AICast_Think( int client, float thinktime ) {
 		if ( cs->aiCharacter == AICHAR_ZOMBIE && !ent->r.contents ) {
 			ent->client->ps.eFlags |= EF_MONSTER_EFFECT2;
 		}
+		// a body costs what a live one does (linked for every trace, in every snapshot,
+		// bones and skinning each frame it's in view): gone 20 s after death, as the
+		// end map's sinking ones go, unless it's coming back or a boss a script may want
+		if ( cs->deathTime && !cs->rebirthTime && !cs->revivingTime && !cs->deadSinkStartTime
+			 && cs->aiCharacter != AICHAR_HELGA && cs->aiCharacter != AICHAR_HEINRICH
+			 && cs->deathTime < level.time - 20000 ) {
+			trap_DropClient( cs->entityNum, "" );
+			return;
+		}
 		//
 		if ( ent->health > GIB_HEALTH && cs->deathTime && cs->deathTime < ( level.time - 1000 ) ) {
 			//ent->r.svFlags &= ~SVF_BROADCAST;
@@ -1149,6 +1158,13 @@ void AICast_PredictMovement( cast_state_t *cs, int numframes, float frametime, a
 		pm.pointcontents = trap_PointContents;
 		pm.debugLevel = qfalse;
 		pm.noFootsteps = qtrue;
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+		// 200 ms steps, not 66: the follow code looks 10 frames of 0.8 s ahead,
+		// 130 Pmoves and 22 ms in one server frame; the moves are swept, so
+		// walls are still hit, only the fall is coarser
+		pm.pmove_fixed = 1;
+		pm.pmove_msec = 200;
+#endif
 		// RF, not needed for prediction
 		//pm.noWeapClips = qtrue;	// (SA) AI's ignore weapon clips
 

@@ -107,7 +107,7 @@ R_CullWorldSurf
 A .wld surface: by its plane when it has one, as a face, else by its box
 =================
 */
-static qboolean R_CullWorldSurf( srfWorld_t *srf, shader_t *shader ) {
+static DC_HOT( "50" ) qboolean R_CullWorldSurf( srfWorld_t *srf, shader_t *shader, int planeBits ) {
 	float d;
 
 	if ( srf->hasPlane && shader->cullType != CT_TWO_SIDED && r_facePlaneCull->integer ) {
@@ -124,11 +124,19 @@ static qboolean R_CullWorldSurf( srfWorld_t *srf, shader_t *shader ) {
 		}
 	}
 
+	// the frustum planes its leaf's node wasn't already inside of
+	if ( !planeBits ) {
+		return qfalse;
+	}
 	{
 		vec3_t bounds[2];
 
 		R_WorldSurfBounds( srf, bounds );
-		return R_CullLocalBox( bounds ) == CULL_OUT;
+		if ( tr.currentEntityNum != REFENTITYNUM_WORLD ) {
+			return R_CullLocalBox( bounds ) == CULL_OUT;
+		}
+		// the world's: its box is in world space already
+		return R_CullWorldBox( bounds[0], bounds[1], planeBits );
 	}
 }
 
@@ -142,7 +150,7 @@ added to the sorting list.
 This will also allow mirrors on both sides of a model without recursion.
 ================
 */
-static qboolean R_CullSurface( surfaceType_t *surface, shader_t *shader ) {
+static DC_HOT( "50" ) qboolean R_CullSurface( surfaceType_t *surface, shader_t *shader, int planeBits ) {
 	srfSurfaceFace_t *sface;
 	float d;
 
@@ -159,7 +167,7 @@ static qboolean R_CullSurface( surfaceType_t *surface, shader_t *shader ) {
 	}
 
 	if ( *surface == SF_WORLD ) {
-		return R_CullWorldSurf( (srfWorld_t *)surface, shader );
+		return R_CullWorldSurf( (srfWorld_t *)surface, shader, planeBits );
 	}
 
 	if ( *surface != SF_FACE ) {
@@ -249,7 +257,7 @@ static int R_DlightGrid( srfGridMesh_t *grid, int dlightBits ) {
 }
 
 
-static int R_DlightWorldSurf( srfWorld_t *srf, int dlightBits ) {
+static DC_HOT( "50" ) int R_DlightWorldSurf( srfWorld_t *srf, int dlightBits ) {
 	float d;
 	int i;
 	dlight_t    *dl;
@@ -334,7 +342,7 @@ that is touched by one or more dlights, so try to throw out
 more dlights if possible.
 ====================
 */
-static int R_DlightSurface( msurface_t *surf, int dlightBits ) {
+static DC_HOT( "50" ) int R_DlightSurface( msurface_t *surf, int dlightBits ) {
 	if ( *surf->data == SF_FACE ) {
 		dlightBits = R_DlightFace( (srfSurfaceFace_t *)surf->data, dlightBits );
 	} else if ( *surf->data == SF_GRID ) {
@@ -361,7 +369,7 @@ static int R_DlightSurface( msurface_t *surf, int dlightBits ) {
 R_AddWorldSurface
 ======================
 */
-static void R_AddWorldSurface( msurface_t *surf, int dlightBits ) {
+static DC_HOT( "50" ) void R_AddWorldSurface( msurface_t *surf, int dlightBits, int planeBits ) {
 	if ( surf->viewCount == tr.viewCount ) {
 		return;     // already in this view
 	}
@@ -369,8 +377,9 @@ static void R_AddWorldSurface( msurface_t *surf, int dlightBits ) {
 	surf->viewCount = tr.viewCount;
 	// FIXME: bmodel fog?
 
-	// try to cull before dlighting or adding
-	if ( R_CullSurface( surf->data, surf->shader ) ) {
+	// try to cull before dlighting or adding (planeBits: the frustum planes
+	// the surface's node wasn't wholly inside of, the only ones worth testing)
+	if ( R_CullSurface( surf->data, surf->shader, planeBits ) ) {
 		return;
 	}
 
@@ -468,7 +477,7 @@ void R_AddBrushModelSurfaces( trRefEntity_t *ent ) {
 
 	for ( i = 0 ; i < bmodel->numSurfaces ; i++ ) {
 		( bmodel->firstSurface + i )->fogIndex = fognum;
-		R_AddWorldSurface( bmodel->firstSurface + i, tr.currentEntity->needDlights );
+		R_AddWorldSurface( bmodel->firstSurface + i, tr.currentEntity->needDlights, 15 );
 	}
 //----(SA) end
 }
@@ -488,13 +497,13 @@ void R_AddBrushModelSurfaces( trRefEntity_t *ent ) {
 R_RecursiveWorldNode
 ================
 */
-static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigned int dlightBits ) {
+static DC_HOT( "50" ) void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigned int dlightBits ) {
 
 	do {
 		unsigned int newDlights[2];
 
 		// if the node wasn't marked as potentially visible, exit
-		if ( node->visframe != tr.visCount ) {
+		if ( ( node->visframe & tr.visMask ) != tr.visCount ) {
 			return;
 		}
 
@@ -597,7 +606,7 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 		unsigned short *mark;
 
 		// RF, hack, dlight elimination above is unreliable
-		dlightBits = 0xffffffff;
+		dlightBits = tr.refdef.num_dlights ? 0xffffffff : 0;
 
 		tr.pc.c_leafs++;
 
@@ -629,7 +638,7 @@ static void R_RecursiveWorldNode( mnode_t *node, unsigned int planeBits, unsigne
 			// the surface may have already been added if it
 			// spans multiple leafs
 			surf = tr.world->surfaces + *mark;
-			R_AddWorldSurface( surf, dlightBits );
+			R_AddWorldSurface( surf, dlightBits, planeBits );
 			mark++;
 		}
 	}
@@ -695,7 +704,13 @@ static void R_MarkLeaves( void ) {
 	const byte  *vis;
 	mnode_t *leaf, *parent;
 	int i;
-	int cluster;
+	int cluster, which, shift, mark;
+
+	// the skybox portal scene keeps its marks apart from the main scene's
+	which = ( tr.refdef.rdflags & RDF_SKYBOXPORTAL ) ? 1 : 0;
+	shift = which ? 16 : 0;
+	tr.visMask = which ? VIS_SKY : VIS_MAIN;
+	tr.visCount = tr.visCounts[which] << shift;
 
 	// lockpvs lets designers walk around to determine the
 	// extent of the current pvs
@@ -711,8 +726,9 @@ static void R_MarkLeaves( void ) {
 	// hasn't changed, we don't need to mark everything again
 
 	// if r_showcluster was just turned on, remark everything
-	if ( tr.viewCluster == cluster && !tr.refdef.areamaskModified
+	if ( tr.viewClusters[which] == cluster && !tr.refdef.areamaskModified
 		 && !r_showcluster->modified ) {
+		tr.viewCluster = cluster;
 		return;
 	}
 
@@ -723,19 +739,27 @@ static void R_MarkLeaves( void ) {
 		}
 	}
 
-	tr.visCount++;
-	tr.viewCluster = cluster;
+	// the next mark; 16 bits of them, then that half is cleared and they start over
+	if ( ++tr.visCounts[which] > 0xffff ) {
+		tr.visCounts[which] = 1;
+		for ( i = 0 ; i < tr.world->numnodes ; i++ ) {
+			tr.world->nodes[i].visframe &= ~tr.visMask;
+		}
+	}
+	mark = tr.visCounts[which] << shift;
+	tr.visCount = mark;
+	tr.viewCluster = tr.viewClusters[which] = cluster;
 
-	if ( r_novis->integer || tr.viewCluster == -1 ) {
+	if ( r_novis->integer || cluster == -1 ) {
 		for ( i = 0 ; i < tr.world->numnodes ; i++ ) {
 			if ( tr.world->nodes[i].contents != CONTENTS_SOLID ) {
-				tr.world->nodes[i].visframe = tr.visCount;
+				tr.world->nodes[i].visframe = ( tr.world->nodes[i].visframe & ~tr.visMask ) | mark;
 			}
 		}
 		return;
 	}
 
-	vis = R_ClusterPVS( tr.viewCluster );
+	vis = R_ClusterPVS( cluster );
 
 	// the leaves (the decision nodes, first, have no cluster: only the
 	// leaves under them make them visible)
@@ -757,10 +781,10 @@ static void R_MarkLeaves( void ) {
 
 		parent = leaf;
 		do {
-			if ( parent->visframe == tr.visCount ) {
+			if ( ( parent->visframe & tr.visMask ) == mark ) {
 				break;
 			}
-			parent->visframe = tr.visCount;
+			parent->visframe = ( parent->visframe & ~tr.visMask ) | mark;
 			parent = parent->parent;
 		} while ( parent );
 	}
@@ -785,7 +809,9 @@ void R_AddWorldSurfaces( void ) {
 	tr.shiftedEntityNum = tr.currentEntityNum << QSORT_REFENTITYNUM_SHIFT;
 
 	// determine which leaves are in the PVS / areamask
+	PROF_BEGIN( PROF_SC_LEAVES );
 	R_MarkLeaves();
+	PROF_END( PROF_SC_LEAVES );
 
 	// clear out the visible min/max
 	ClearBounds( tr.viewParms.visBounds[0], tr.viewParms.visBounds[1] );
@@ -794,5 +820,7 @@ void R_AddWorldSurfaces( void ) {
 	if ( tr.refdef.num_dlights > MAX_DLIGHTS ) {
 		tr.refdef.num_dlights = MAX_DLIGHTS ;
 	}
+	PROF_BEGIN( PROF_SC_NODES );
 	R_RecursiveWorldNode( tr.world->nodes, 15, ( 1ULL << tr.refdef.num_dlights ) - 1 );
+	PROF_END( PROF_SC_NODES );
 }
