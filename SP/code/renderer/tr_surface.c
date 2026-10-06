@@ -1405,13 +1405,23 @@ static DC_HOT( "10b" ) void RB_SurfaceWorld( srfWorld_t *srf ) {
 			R_WorldVertNormal( &v[i], tess.normal[j] );
 		}
 	}
-	for ( i = 0, j = first ; i < srf->numVerts ; i++, j++, v++ ) {
-		R_WorldVertXyz( srf, v, tess.xyz[j] );
-		tess.texCoords[j][0][0] = srf->stOrigin[0] + srf->stStep * v->st[0];
-		tess.texCoords[j][0][1] = srf->stOrigin[1] + srf->stStep * v->st[1];
-		tess.texCoords[j][1][0] = 0;    // lit by vertex: no lightmap
-		tess.texCoords[j][1][1] = 0;
-		*(unsigned int *)tess.vertexColors[j] = *(const unsigned int *)v->color;
+	{
+		// srf's in registers: the stores to tess are floats too, so the
+		// compiler would read them again for each vertex (R_WorldVertXyz's math)
+		const float ox = srf->origin[0], oy = srf->origin[1], oz = srf->origin[2], step = srf->xyzStep;
+		const float s0 = srf->stOrigin[0], t0 = srf->stOrigin[1], stStep = srf->stStep;
+		const int numVerts = srf->numVerts;
+
+		for ( i = 0, j = first ; i < numVerts ; i++, j++, v++ ) {
+			tess.xyz[j][0] = ox + step * v->xyz[0];
+			tess.xyz[j][1] = oy + step * v->xyz[1];
+			tess.xyz[j][2] = oz + step * v->xyz[2];
+			tess.texCoords[j][0][0] = s0 + stStep * v->st[0];
+			tess.texCoords[j][0][1] = t0 + stStep * v->st[1];
+			tess.texCoords[j][1][0] = 0;    // lit by vertex: no lightmap
+			tess.texCoords[j][1][1] = 0;
+			*(unsigned int *)tess.vertexColors[j] = *(const unsigned int *)v->color;
+		}
 	}
 
 	tess.numVertexes += srf->numVerts;
