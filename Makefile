@@ -6,7 +6,8 @@
 #   make clean         remove build/
 #   make pvrtest       build the tools/gpu_pvr smoke test
 #   make assets        Dreamcast versions of the game data (tools/rtcwconv):
-#                      sp_dc.pk3, written to ASSETS_DIR
+#                      sp_dc.pk3, and the sounds in AICA ADPCM
+#                      (tools/adpcmconv): sp_dcsnd.pk3, written to ASSETS_DIR
 #                      (default assets/main, next to the original pk3s);
 #                      images need PVRTEX (KOS utils/pvrtex); sizes for
 #                      some in tools/rtcwconv/texsizes.txt
@@ -41,12 +42,14 @@
 #
 # Options:
 #   PLATFORM=linux     linux (default) or dc (Dreamcast: KOS toolchain, pvr
-#                      renderer, no audio yet, keyboard + mouse input)
+#                      renderer, AICA sound, keyboard + mouse input)
 #   ARCH=x86           x86 (-m32, default) or x86_64
 #   RENDERER=opengl1   opengl1 (default), rend2, or pvr (Dreamcast PowerVR
 #                      backend, run on PC through tools/gpu_pvr; x86 only)
 #   AUDIO=0            no sound at all: no backend, codecs (ogg/vorbis/opus)
 #                      or VoIP are built; all S_* calls do nothing
+#   AUDIO=aica         the Dreamcast's (and DCSIM=1's, silent): snd_aica.c on
+#                      the AICA through deps/AICAflow, .wav only
 #   VIDEO=0            no RoQ video player: cinematics are skipped
 #   TEXTURES=0         world/model textures become one pixel of their average
 #                      colour (menus, fonts and lightmaps stay); opengl1/pvr
@@ -71,7 +74,7 @@ ifeq ($(PLATFORM),dc)
   endif
   override ARCH = sh4
   override RENDERER = pvr
-  override AUDIO = 0
+  override AUDIO = aica
   override VIDEO = 0
   BASEDIR ?= /cd
 else ifneq ($(PLATFORM),linux)
@@ -88,7 +91,7 @@ ifeq ($(DCSIM),1)
     $(error DCSIM=1 is for the PC build)
   endif
   override RENDERER = pvr
-  override AUDIO = 0
+  override AUDIO = aica
   override VIDEO = 0
 endif
 BASEDIR   ?= $(CURDIR)/assets
@@ -218,10 +221,10 @@ RTCWCONV_CINC = -ISP/code/qcommon -ISP/code/renderer -ISP/code/SDL2/include -Ito
 
 # the pk3s in the order the game loads them, sorted (later ones win: sp_pak4's
 # dam, crypt1 and end over pak0's); never the mp_ ones
-ALL_PAKS = $(filter-out %/sp_dc.pk3,$(sort $(wildcard $(ASSETS_DIR)/*.pk3)))
+ALL_PAKS = $(filter-out %/sp_dc.pk3 %/sp_dcsnd.pk3,$(sort $(wildcard $(ASSETS_DIR)/*.pk3)))
 SP_PAKS  = $(filter-out $(ASSETS_DIR)/mp_%,$(ALL_PAKS))
 
-assets: $(ASSETS_DIR)/sp_dc.pk3
+assets: $(ASSETS_DIR)/sp_dc.pk3 $(ASSETS_DIR)/sp_dcsnd.pk3
 
 # make texcompare: build/texcompare, each original image next to its .dt as
 # the Dreamcast gets it, from the last `make assets`; ONLY=ui/ for just those
@@ -276,6 +279,26 @@ $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(PVRTEX) $(2)  tools/rtcwconv/mapedits.t
 endef
 $(eval $(call assets_pk3,sp,$(SP_PAKS)))
 
+# the sounds, in AICA ADPCM (.adp, tools/adpcmconv), on their own: they take
+# a few minutes, so only when the pk3s or the tool change. The encoder is
+# AICAforge's (git submodule update --init in deps/AICAflow)
+AICAFORGE_DIR = deps/AICAflow/dependencies/AICAforge
+ADPCMCONV     = $(BUILD_DIR)/tools/adpcmconv
+
+$(ADPCMCONV): tools/adpcmconv/adpcmconv.c $(AICAFORGE_DIR)/src/afx_ya2beam.c
+	$(echo_cmd) "HOST_CC $@"
+	@mkdir -p $(@D)
+	$(Q)$(HOST_CC) -O2 -Wall $^ -lpthread -o $@
+
+$(ASSETS_DIR)/sp_dcsnd.pk3: $(ADPCMCONV) $(SP_PAKS)
+	$(echo_cmd) "ASSETS $@"
+	$(Q)rm -rf $(ASSETS_OUT)/snd && mkdir -p $(ASSETS_OUT)/snd/src $(ASSETS_OUT)/snd/dc
+	$(Q)for p in $(SP_PAKS); do unzip -qq -o -C "$$p" '*.wav' -d $(ASSETS_OUT)/snd/src 2>/dev/null; \
+	  [ $$? -le 11 ] || exit 1; done
+	$(Q)$(ADPCMCONV) $(ASSETS_OUT)/snd/src $(ASSETS_OUT)/snd/dc
+	$(Q)cd $(ASSETS_OUT)/snd/dc && rm -f ../sp_dcsnd.pk3 && zip -qr0 ../sp_dcsnd.pk3 .
+	$(Q)cp $(ASSETS_OUT)/snd/sp_dcsnd.pk3 $@
+
 #############################################################################
 # make disc: the Dreamcast build and the sp pk3s on a selfboot .cdi; the
 # pk3s are unpacked into main/ at the root of the disc (/cd/main on the
@@ -293,7 +316,7 @@ MKDCDISC  ?= mkdcdisc
 DISC_DIR   = $(BUILD_DIR)/disc
 DISC_CDI   = $(BUILD_DIR)/iowolfsp.cdi
 # a later pk3 (in sorted order) wins, as in the game
-DISC_PAKS  = $(sort $(SP_PAKS) $(wildcard $(ASSETS_DIR)/sp_dc.pk3))
+DISC_PAKS  = $(sort $(SP_PAKS) $(wildcard $(ASSETS_DIR)/sp_dc.pk3 $(ASSETS_DIR)/sp_dcsnd.pk3))
 DISC_FILES = $(wildcard $(ASSETS_DIR)/scripts/translation.cfg)
 
 disc:
@@ -465,6 +488,8 @@ ifeq ($(VIDEO),0)
 endif
 ifeq ($(AUDIO),0)
   CLIENT_CFLAGS += -DNO_AUDIO
+else ifeq ($(AUDIO),aica)
+  CLIENT_CFLAGS += -DUSE_AICA_SOUND
 else
   # opus first: opus and vorbis both have an mdct.h
   CLIENT_CFLAGS += \
@@ -518,6 +543,12 @@ endif
 ifeq ($(AUDIO),0)
   # snd_main.c is the S_* front end; with NO_AUDIO it never starts a backend
   ENGINE_SRC += client/snd_main.c
+else ifeq ($(AUDIO),aica)
+  # the AICA backend, on the hardware layer of dc/dc_aica.c or sys/dcsim_aica.c
+  ENGINE_SRC += client/snd_main.c client/snd_aica.c client/snd_codec.c client/snd_codec_wav.c
+  ifneq ($(PLATFORM),dc)
+    ENGINE_SRC += sys/dcsim_aica.c
+  endif
 else
   ENGINE_SRC += $(SOUND_SRC) $(CODEC_SRC)
 endif
@@ -527,13 +558,16 @@ ifeq ($(PLATFORM),dc)
   ENGINE_SRC += qcommon/vm_none.c sys/con_passive.c
   # maple keyboard and mouse instead of SDL input
   DC_OBJ = $(B)/dc/dc_input.c.o $(B)/dc/dc_posix.c.o
+  ifeq ($(AUDIO),aica)
+    DC_OBJ += $(B)/dc/dc_aica.c.o $(B)/dc/dc_aica_fw.S.o $(AICAFLOW_OBJ)
+  endif
 else
   ENGINE_SRC += qcommon/vm_x86.c sdl/sdl_input.c sys/con_tty.c asm/snapvector.c asm/ftola.c
   DC_OBJ =
 endif
 ifeq ($(ARCH),x86)
   ENGINE_SRC += asm/matha.s
-  ifneq ($(AUDIO),0)
+  ifeq ($(AUDIO),1)
     ENGINE_SRC += asm/snd_mixa.s
   endif
 endif
@@ -606,6 +640,15 @@ MODCOMMON_SRC = qcommon/q_math.c qcommon/q_shared.c
 # objects
 #############################################################################
 
+# AICAflow (AUDIO=aica on the Dreamcast): its SH4 host library, less the DSP
+# effects, and the ARM7 driver it starts (dc/dc_aica_fw.S)
+AICAFLOW_DIR = deps/AICAflow
+AICAFLOW_INC = -I$(CURDIR)/$(AICAFLOW_DIR)/driver/include -I$(CURDIR)/$(AICAFLOW_DIR)/driver/sh4/include \
+  -I$(CURDIR)/$(AICAFLOW_DIR)/driver/format/include
+AICAFLOW_SRC = sh4/src/allocator.c sh4/src/dma.c sh4/src/flow.c sh4/src/instance.c sh4/src/ipc.c \
+  sh4/src/dsp_scene.c sh4/src/dsp.c sh4/src/bank.c format/src/codec.c common/firmware.c
+AICAFLOW_OBJ = $(patsubst %,$(B)/aicaflow/%.o,$(AICAFLOW_SRC))
+
 obj = $(patsubst %,$(B)/$(1)/%.o,$(2))
 
 ENGINE_OBJ   = $(call obj,engine,$(ENGINE_SRC))
@@ -664,7 +707,20 @@ $(B)/mdsc/%.c.o: mdsc/%.c
 $(B)/dc/%.c.o: dc/%.c
 	$(echo_cmd) "DC_CC $<"
 	@mkdir -p $(@D)
-	$(Q)$(CC) $(CLIENT_CFLAGS) $(SIZE_OPT) -I$(CODE)/client -I$(CODE)/qcommon -c $< -o $@
+	$(Q)$(CC) $(CLIENT_CFLAGS) $(SIZE_OPT) -I$(CODE)/client -I$(CODE)/qcommon $(AICAFLOW_INC) -c $< -o $@
+
+# the AICAflow ARM7 driver, as data in the binary
+$(B)/dc/dc_aica_fw.S.o: dc/dc_aica_fw.S $(AICAFLOW_DIR)/firmware/aicaflow.drv
+	$(echo_cmd) "AS $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(BASE_CFLAGS) -DAICA_DRV='"$(CURDIR)/$(AICAFLOW_DIR)/firmware/aicaflow.drv"' \
+	  -x assembler-with-cpp -c $< -o $@
+
+# AICAflow's SH4 side (deps/AICAflow/driver), as its own Makefile builds it
+$(B)/aicaflow/%.c.o: $(AICAFLOW_DIR)/driver/%.c
+	$(echo_cmd) "AFX_CC $<"
+	@mkdir -p $(@D)
+	$(Q)$(CC) $(ARCH_FLAGS) -O2 -std=gnu11 -Wall $(AICAFLOW_INC) -MMD -c $< -o $@
 
 $(B)/pvr/%.S.o: pvr/%.S
 	$(echo_cmd) "AS $<"

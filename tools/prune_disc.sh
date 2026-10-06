@@ -9,6 +9,7 @@
 #   x.aasc            x.aas                (AAS_COMPACT reads only the .aasc)
 #   x.mdsc            x.mds
 #   x.mdb             x.mdc, x.md3
+#   x.adp             x.wav                (snd_aica.c reads the ADPCM first)
 #
 # Only ever an original with its replacement there, so nothing goes that is
 # still wanted.
@@ -37,5 +38,6 @@ prune col bsp
 prune aasc aas
 prune mdsc mds
 prune mdb mdc md3
+prune adp wav
 after=$(du -sk "$dir" | cut -f1)
 echo "prune_disc: $(( ( before - after ) / 1024 )) MB of originals with a converted file left out"

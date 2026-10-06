@@ -523,6 +523,11 @@ void S_Init( void )
 		Cmd_AddCommand( "s_stop", S_StopAllSounds );
 		Cmd_AddCommand( "s_info", S_SoundInfo );
 
+#ifdef USE_AICA_SOUND
+		// the Dreamcast's sound chip (snd_aica.c); the only backend built
+		started = S_AICA_Init( &si );
+		Cvar_Set( "s_backend", "AICA" );
+#else
 		cv = Cvar_Get( "s_useOpenAL", "1", CVAR_ARCHIVE | CVAR_LATCH );
 		if( cv->integer ) {
 			//OpenAL
@@ -534,6 +539,7 @@ void S_Init( void )
 			started = S_Base_Init( &si );
 			Cvar_Set( "s_backend", "base" );
 		}
+#endif
 
 		if( started ) {
 			if( !S_ValidSoundInterface( &si ) ) {
