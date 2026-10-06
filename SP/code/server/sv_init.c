@@ -325,7 +325,10 @@ SV_InitReliableCommandsForClient
 */
 void SV_InitReliableCommandsForClient( client_t *cl, int commands ) {
 	if ( !commands ) {
+		// none (an AI's): nothing to allocate, which SV_FreeReliableCommandsForClient
+		// wouldn't free (no bufSize), so 3 blocks were lost each time the slots changed
 		Com_Memset( &cl->reliableCommands, 0, sizeof( cl->reliableCommands ) );
+		return;
 	}
 	//
 	// starts small and grows when full (SV_GrowReliableCommands): few are pending at once

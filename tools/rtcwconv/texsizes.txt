@@ -59,3 +59,65 @@ models/players/jack/jack_head1      256 128
 models/players/murphy/murp_head1    512 256
 textures/director/48stars_c01       128 256
 textures/training/osa_sign_m01      256 256
+textures/castle_wall/castle_c46_on_grid 256 256
+textures/castle_wall/castle_m04     128 256
+textures/castle_wall/castle_c47     256 256
+textures/props/flags_m1_snow        128 256 yuv
+textures/snow/s_cathedrale_c06      256 256
+textures/snow/s_castle_m03_step_2a  256 256
+textures/training/trees_m01         512 256
+textures/training/bricks_m01tex2b   128 256
+textures/stone/mxrock0t             256 256
+textures/xlab_door/xdoor_m01        256 256
+textures/xlab_wall/xmetal_m02a      256 256
+models/players/blackguard/bg_body1  256 256
+models/players/drz/drz_body1        256 256
+models/players/drz/drz_head1        256 128
+models/players/mechanic/mech_head1  256 128
+models/players/mechanic/mech_body1  256 256
+models/players/priestess/ptess_head1 256 256
+models/players/priestess/ptess_body1 256 256
+models/players/priestess/ptess_cape 256 256
+models/players/officerss/o_head4    256 128
+models/players/officerss/o_body1    256 256
+models/players/officerss/o_legs1    128 256
+models/players/trench/t_body3       256 256
+models/players/helga/hel_body1      256 256
+models/players/helga/hel_head1      256 128
+models/players/drz/drz_xbody1       256 256
+models/players/drz/drz_head4        256 128
+models/players/drz/drz_xlegs1       128 256
+models/weapons2/luger/luger7        256 256
+models/mapobjects/vehicles/m109b    256 256
+textures/castle_props/shade_c01_rf  128 256
+textures/skies/newclouds            256 256
+textures/skies/dimclouds2           256 256
+textures/village/vill_c04           256 256
+textures/castle_floor/floor_c03     256 256
+textures/chateau/wall_c01           256 256
+models/mapobjects/vehicles/sub5s    512 128
+textures/xlab_floor/xfloor_c07      256 256
+models/mapobjects/tree/branch_vil1t 256 512
+models/mapobjects/tree/branch_vil1at 256 256
+models/mapobjects/plants/small_branch_t 256 256
+models/mapobjects/vehicles/truckside4g 256 256
+textures/xlab_wall/xtrim_c06        256 32
+models/mapobjects/curtain/2curtainsb 256 256 1555
+models/mapobjects/furniture/grandfatherclock01 256 256
+models/mapobjects/bodyparts/i_head  256 128
+models/mapobjects/bodyparts/i_body1 256 256
+models/mapobjects/bodyparts/i_legs1 128 256
+textures/props/flag_l_m01           64 128 yuv
+textures/props/anatomychart_c02_light2 256 256
+textures/props/board_c01            256 256
+textures/props/flag_l_m01_tad       128 256
+textures/props/flags_m1_snowtad     128 128
+textures/props/board_m01            512 256
+textures/castle_wall/castle_m03_stepdm 256 256
+textures/chat/carpet_c11            256 256
+textures/props/flag_c03dmtad        256 128 vq1555
+textures/props/flag_c03dm           128 128 yuv
+textures/castle_wall/castle_c46_om_1 256 256
+textures/castle_wall/castle_c46_om_2 256 256
+textures/wood/wood_m06              256 256
+textures/snow/s_grass_ml03a_s       256 256

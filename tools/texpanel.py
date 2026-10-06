@@ -8,7 +8,11 @@ The preview is made the way rtcwconv's tex.cpp makes the .dt (same caps,
 pvrtex flags and mipmaps); only the resize differs a little (PIL bicubic, not
 stb_image_resize).
 
-usage: texpanel.py <pvrtex> <src dir> <texsizes.txt> [port]
+With --disc <the disc's main folder> it also serves the model and map
+viewer (tools/viewer) at /view/, on the disc's files: click a surface to
+pick its image here, its new size and format shown on the mesh.
+
+usage: texpanel.py <pvrtex> <src dir> <texsizes.txt> [port] [--disc <dir>]
 """
 import io
 import json
@@ -22,7 +26,7 @@ import threading
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from PIL import Image
 
@@ -32,7 +36,9 @@ FORMATS = ("vq", "vq565", "vq1555", "vq4444", "raw", "565", "1555", "4444", "yuv
 PVR_FORMATS = {"565": "RGB565", "1555": "ARGB1555", "4444": "ARGB4444", "yuv": "YUV422", "pal8": "PAL8BPP"}
 PIXEL_FORMATS = ("1555", "565", "4444", "YUV422", "bump", "PAL4", "PAL8", "?")
 
-pvrtex = srcdir = sizesfile = None
+pvrtex = srcdir = sizesfile = discdir = None
+VIEWER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "viewer")
+TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
 images = {}         # name (lower case, no extension) -> {path, w, h}
 cache = {}          # (name, w, h, fmt) -> (png bytes, info)
 cache_lock = threading.Lock()
@@ -183,11 +189,36 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_file(self, root, rel):
+        """a file under root, not outside it"""
+        path = os.path.realpath(os.path.join(root, rel))
+        if not path.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(path):
+            self.send(404, {"error": "not found"})
+            return
+        with open(path, "rb") as f:
+            body = f.read()
+        self.send(200, body, TYPES.get(os.path.splitext(path)[1].lower(), "application/octet-stream"))
+
     def do_GET(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
-            if url.path == "/":
+            if url.path in ("/view", "/view/"):
+                self.send_file(VIEWER, "index.html")
+            elif url.path.startswith("/view/"):
+                self.send_file(VIEWER, unquote(url.path[6:]))
+            elif url.path == "/api/files":
+                if not discdir:
+                    raise ValueError("no --disc folder")
+                files = []
+                for root, _, names in os.walk(discdir):
+                    for n in names:
+                        p = os.path.join(root, n)
+                        files.append([os.path.relpath(p, discdir).replace(os.sep, "/"), os.path.getsize(p)])
+                self.send(200, files)
+            elif url.path.startswith("/disc/") and discdir:
+                self.send_file(discdir, unquote(url.path[6:]))
+            elif url.path == "/":
                 self.send(200, PAGE.encode(), "text/html; charset=utf-8")
             elif url.path == "/api/list":
                 sizes = read_sizes()
@@ -273,6 +304,7 @@ button { cursor:pointer; } button.go { border-color:var(--accent); color:var(--a
     <button class="go" id="save">save to texsizes.txt</button>
     <button id="reset">back to default</button>
     <span id="stat"></span>
+    <a href="/view/" style="margin-left:auto;color:var(--accent)">3D view →</a>
   </div>
   <div id="view">
     <div class="pane"><div id="ocap">original</div><img id="orig"></div>
@@ -379,11 +411,16 @@ load();
 
 
 def main():
-    global pvrtex, srcdir, sizesfile
-    if len(sys.argv) not in (4, 5):
+    global pvrtex, srcdir, sizesfile, discdir
+    args = sys.argv[1:]
+    if "--disc" in args:
+        i = args.index("--disc")
+        discdir = os.path.abspath(args[i + 1])
+        del args[i:i + 2]
+    if len(args) not in (3, 4):
         sys.exit(__doc__)
-    pvrtex, srcdir, sizesfile = sys.argv[1:4]
-    port = int(sys.argv[4]) if len(sys.argv) == 5 else 8765
+    pvrtex, srcdir, sizesfile = args[:3]
+    port = int(args[3]) if len(args) == 4 else 8765
     for root, _, files in os.walk(srcdir):
         for f in files:
             base, ext = os.path.splitext(f)
@@ -397,6 +434,8 @@ def main():
                         continue
                     images[name] = {"path": path, "w": w, "h": h}
     print("texpanel: %d images, http://localhost:%d/" % (len(images), port), flush=True)
+    if discdir:
+        print("viewer: %s at http://localhost:%d/view/" % (discdir, port), flush=True)
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 

@@ -21,7 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DC_MEM_TOP          ( 0x8c000000u + 16 * 1024 * 1024 - 64 * 1024 )
+// the top of the 16MB less what's kept; DCSIM_MEGS=<n> (the environment)
+// as if it had n MB, to see what a map that won't fit takes
+#define DC_MEM_TOP          memTop
+static uintptr_t memTop = 0x8c000000u + 16 * 1024 * 1024 - 64 * 1024;
 
 static unsigned char *arena;        // where DCSIM_HEAP_START is
 static uintptr_t sbrkBase;          // as a Dreamcast address
@@ -77,11 +80,15 @@ static int inArena( void *p ) {
 
 static void init( void ) {
 	static unsigned char *block;
-	size_t size = DC_MEM_TOP - DCSIM_HEAP_START;
+	size_t size;
 
 	if ( arena ) {
 		return;
 	}
+	if ( getenv( "DCSIM_MEGS" ) ) {
+		memTop = 0x8c000000u + atoi( getenv( "DCSIM_MEGS" ) ) * 1024 * 1024 - 64 * 1024;
+	}
+	size = DC_MEM_TOP - DCSIM_HEAP_START;
 	// the same place in a page as on the Dreamcast, so it lines up alike
 	// (a size aligned_alloc takes: a multiple of the alignment)
 	block = aligned_alloc( 4096, ( size + 8192 + 4095 ) & ~(size_t)4095 );

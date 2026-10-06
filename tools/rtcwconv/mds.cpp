@@ -17,6 +17,7 @@
  */
 #include <algorithm>
 #include <map>
+#include <set>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -761,5 +762,248 @@ bool ConvertMdsGroup( const MdsGroup &g, const std::vector<std::vector<uint8_t>>
 		st.bytesOut += o.pos();
 		outs[m].swap( o.b );
 	}
+	return true;
+}
+
+/* ---- frames no animation plays ----
+ *
+ * The game reads wolfanim.cfg (BG_AnimParseAnimConfig) as: VERSION 2,
+ * SKELETAL, ..., STARTANIMS, then a line an animation: name first length
+ * loop fps moveSpeed [blend] [priority], to ENDANIMS. An animation plays
+ * first .. first + length - 1 (CG_RunLerpFrame, CG_CalcMoveSpeeds) and
+ * nothing else names a body frame, so the frames between are never seen. */
+
+struct CfgToken {
+	size_t start, end;
+	bool newLine;   /* a line break between it and the one before */
+};
+
+/* COM_ParseExt's tokens: // to the end of the line, words to white space */
+static bool CfgTokens( const std::string &t, std::vector<CfgToken> &out ) {
+	size_t i = 0, n = t.size();
+	while ( true ) {
+		bool nl = false;
+		while ( i < n ) {
+			if ( t[i] == '\n' ) {
+				nl = true;
+				i++;
+			} else if ( (unsigned char)t[i] <= ' ' ) {
+				i++;
+			} else if ( t[i] == '/' && i + 1 < n && t[i + 1] == '/' ) {
+				while ( i < n && t[i] != '\n' ) {
+					i++;
+				}
+			} else if ( t[i] == '/' && i + 1 < n && t[i + 1] == '*' ) {
+				return false;   /* line breaks in these the game doesn't count: left alone */
+			} else {
+				break;
+			}
+		}
+		if ( i >= n ) {
+			return true;
+		}
+		size_t s = i;
+		if ( t[i] == '"' ) {
+			for ( i++; i < n && t[i] != '"'; i++ ) {
+			}
+			i = i < n ? i + 1 : n;
+		} else {
+			while ( i < n && (unsigned char)t[i] > ' ' ) {
+				i++;
+			}
+		}
+		out.push_back( { s, i, nl } );
+	}
+}
+
+static bool CfgInt( const std::string &t, const CfgToken &k, int &v ) {
+	if ( k.end - k.start > 6 ) {
+		return false;
+	}
+	v = 0;
+	for ( size_t i = k.start; i < k.end; i++ ) {
+		if ( t[i] < '0' || t[i] > '9' ) {
+			return false;
+		}
+		v = v * 10 + t[i] - '0';
+	}
+	return k.end > k.start;
+}
+
+bool StripMdsFrames( std::vector<uint8_t> &mds, std::string &cfg, const std::set<std::string> *retire,
+					 int &dropped, const char *name ) {
+	MdsHeader h;
+	dropped = 0;
+	if ( mds.size() < sizeof( h ) ) {
+		return false;
+	}
+	memcpy( &h, mds.data(), sizeof( h ) );
+	if ( h.ident != MDS_IDENT || h.version != MDS_VERSION || h.numFrames < 1 || h.numBones < 1 ||
+		 h.numBones > MDSC_MAX_BONES || h.ofsEnd < 0 || (size_t)h.ofsEnd > mds.size() ) {
+		return false;
+	}
+	const int nf = h.numFrames;
+	const size_t frameSize = FRAME_FLOATS * 4 + h.numBones * BONE_SHORTS * 2;
+	const size_t framesStart = h.ofsFrames, framesEnd = framesStart + nf * frameSize;
+	if ( h.ofsFrames < (int)sizeof( h ) || framesEnd > (size_t)h.ofsEnd ) {
+		return false;
+	}
+
+	/* the header part, to STARTANIMS */
+	std::vector<CfgToken> tok;
+	if ( !CfgTokens( cfg, tok ) ) {
+		fprintf( stderr, "%s: wolfanim.cfg has /* */ comments, its frames kept\n", name );
+		return false;
+	}
+	auto word = [&]( size_t i ) { std::string w = cfg.substr( tok[i].start, tok[i].end - tok[i].start );
+								  std::transform( w.begin(), w.end(), w.begin(), ::tolower ); return w; };
+	size_t i = 0;
+	int version = 0;
+	bool skeletal = false, started = false;
+	while ( i < tok.size() && !started ) {
+		std::string w = word( i++ );
+		if ( w == "footsteps" || w == "sex" ) {
+			i++;
+		} else if ( w == "headoffset" ) {
+			i += 3;
+		} else if ( w == "version" && i < tok.size() ) {
+			version = atoi( word( i++ ).c_str() );
+		} else if ( w == "skeletal" ) {
+			skeletal = true;
+		} else if ( w == "startanims" ) {
+			started = true;
+		} else {
+			return false;
+		}
+	}
+	if ( version < 2 || !skeletal || !started ) {
+		return false;
+	}
+
+	/* the animations: the frames each plays (a 0 length one: first - 1, as
+	   CG_CalcMoveSpeeds looks at); a retired one plays none of its own,
+	   pointed at frame 0 for one frame, its line and place kept (the game
+	   errors on a name it doesn't find, and some AI code counts from
+	   "attack1" by place) */
+	struct Anim {
+		size_t tok;     /* its name */
+		int first, length;
+		bool retired;
+	};
+	std::vector<Anim> anims;
+	std::vector<uint8_t> keep( nf, 0 );
+	keep[0] = 1;
+	while ( i < tok.size() ) {
+		if ( word( i ) == "endanims" ) {
+			break;
+		}
+		Anim a = { i++, 0, 0, retire && retire->count( word( i - 1 ) ) > 0 };
+		int v[5];
+		for ( int k = 0; k < 5; k++, i++ ) {
+			if ( i >= tok.size() || tok[i].newLine || ( k < 2 && !CfgInt( cfg, tok[i], v[k] ) ) ) {
+				return false;
+			}
+		}
+		for ( int k = 0; k < 2 && i < tok.size() && !tok[i].newLine; k++ ) {
+			i++;    /* blend, priority */
+		}
+		a.first = v[0];
+		a.length = v[1];
+		if ( ( a.length < 1 && a.first < 1 ) || a.first + std::max( a.length, 0 ) > nf || a.first >= nf + ( a.length < 1 ) ) {
+			fprintf( stderr, "%s: wolfanim.cfg has an animation past its %d frames, its frames kept\n", name, nf );
+			return false;
+		}
+		if ( !a.retired ) {
+			if ( a.length < 1 ) {
+				keep[a.first - 1] = 1;
+			}
+			for ( int f = a.first; f < a.first + a.length; f++ ) {
+				keep[f] = 1;
+			}
+		}
+		anims.push_back( a );
+	}
+	if ( retire ) {
+		for ( const std::string &r : *retire ) {
+			if ( std::none_of( anims.begin(), anims.end(), [&]( const Anim &a ) { return word( a.tok ) == r; } ) ) {
+				fprintf( stderr, "%s: no animation %s to retire\n", name, r.c_str() );
+			}
+		}
+	}
+
+	std::vector<int> newIndex( nf );
+	int kept = 0;
+	for ( int f = 0; f < nf; f++ ) {
+		newIndex[f] = kept;
+		kept += keep[f];
+	}
+	dropped = nf - kept;
+	if ( !dropped ) {
+		return true;
+	}
+
+	/* the cfg again: first frames renumbered, a retired one's first, length
+	   and loop 0 1 0 */
+	std::string out;
+	size_t at = 0;
+	auto put = [&]( const CfgToken &k, const std::string &v ) {
+		out += cfg.substr( at, k.start - at );
+		out += v;
+		at = k.end;
+	};
+	for ( const Anim &a : anims ) {
+		if ( a.retired ) {
+			put( tok[a.tok + 1], "0" );
+			put( tok[a.tok + 2], "1" );
+			put( tok[a.tok + 3], "0" );
+		} else {
+			put( tok[a.tok + 1], std::to_string( a.length < 1 ? newIndex[a.first - 1] + 1 : newIndex[a.first] ) );
+		}
+	}
+	out += cfg.substr( at );
+
+	/* the .mds without them: what's after the frames moves up */
+	const int32_t removed = (int32_t)( dropped * frameSize );
+	std::vector<uint8_t> m( mds.begin(), mds.begin() + framesStart );
+	for ( int f = 0; f < nf; f++ ) {
+		if ( keep[f] ) {
+			m.insert( m.end(), mds.begin() + framesStart + f * frameSize, mds.begin() + framesStart + ( f + 1 ) * frameSize );
+		}
+	}
+	m.insert( m.end(), mds.begin() + framesEnd, mds.end() );
+	auto moved = [&]( int32_t &ofs ) {
+		if ( ofs >= (int32_t)framesEnd ) {
+			ofs -= removed;
+			return true;
+		}
+		return ofs <= (int32_t)framesStart;
+	};
+	MdsHeader nh = h;
+	nh.numFrames = kept;
+	if ( !moved( nh.ofsBones ) || !moved( nh.ofsSurfaces ) || !moved( nh.ofsTags ) || !moved( nh.ofsEnd ) ) {
+		dropped = 0;
+		return false;   /* something inside the frames: not an .mds as written */
+	}
+	memcpy( m.data(), &nh, sizeof( nh ) );
+	/* a surface's ofsHeader: back to the header, from where it is now */
+	for ( int s = 0, ofs = nh.ofsSurfaces; s < nh.numSurfaces; s++ ) {
+		MdsSurface sf;
+		if ( ofs < 0 || (size_t)ofs + sizeof( sf ) > m.size() ) {
+			dropped = 0;
+			return false;
+		}
+		memcpy( &sf, m.data() + ofs, sizeof( sf ) );
+		if ( h.ofsSurfaces >= (int32_t)framesEnd ) {
+			sf.ofsHeader = -ofs;
+			memcpy( m.data() + ofs, &sf, sizeof( sf ) );
+		}
+		if ( sf.ofsEnd <= 0 ) {
+			dropped = 0;
+			return false;
+		}
+		ofs += sf.ofsEnd;
+	}
+	mds.swap( m );
+	cfg.swap( out );
 	return true;
 }

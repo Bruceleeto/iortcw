@@ -909,6 +909,12 @@ static void CG_LoadTranslationStrings( void ) {
 	int len, i, numStrings;
 	char *token;
 
+
+	// once: linked in, the module's statics outlive a restart (each map's),
+	// and the strings from before were lost each time
+	if ( translateStrings[0].localname ) {
+		return;
+	}
 	Com_sprintf( filename, MAX_QPATH, "text/strings.txt" );
 	len = trap_FS_FOpenFile( filename, &f, FS_READ );
 	if ( len <= 0 ) {

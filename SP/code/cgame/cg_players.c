@@ -129,6 +129,7 @@ CLIENT INFO
 =============================================================================
 */
 
+#if !defined( _arch_dreamcast ) && !defined( DCSIM )
 /*
 ======================
 CG_ParseGibModels
@@ -174,6 +175,7 @@ static qboolean CG_ParseGibModels( const char *filename, clientInfo_t *ci ) {
 	free( text );
 	return qtrue;
 }
+#endif
 
 
 /*
@@ -1206,7 +1208,9 @@ void CG_LoadClientInfo( int clientNum, clientInfo_t *ci ) {
 	int i;
 	const char  *s;
 	int headfail = 0;
-	char filename[MAX_QPATH];
+#if !defined( _arch_dreamcast ) && !defined( DCSIM )
+	char filename[MAX_QPATH];   // the gibs.cfg's
+#endif
 
 //----(SA) modified this for head separation
 
@@ -1277,10 +1281,16 @@ void CG_LoadClientInfo( int clientNum, clientInfo_t *ci ) {
 	}
 
 	// load the gibs
+#if defined( _arch_dreamcast ) || defined( DCSIM )
+	// DC: none, CG_GibPlayer draws no gibs (the gib sound still plays): its
+	// models and the parse of the character's gibs.cfg would be for nothing
+	memset( ci->gibModels, 0, sizeof( ci->gibModels ) );
+#else
 	Com_sprintf( filename, sizeof( filename ), "models/players/%s/gibs.cfg", dir );
 	if ( !CG_ParseGibModels( filename, ci ) ) {
 		// n/mind.. gib code will automatically fall back to old gibs
 	}
+#endif
 
 	ci->deferred = qfalse;
 

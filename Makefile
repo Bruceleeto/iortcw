@@ -13,7 +13,9 @@
 #   make texcompare    build/texcompare: each original image next to its
 #                      Dreamcast one (ONLY=ui/ for just those)
 #   make texpanel      http://localhost:8765: pick image sizes and formats,
-#                      previewed as you go, saved to texsizes.txt
+#                      previewed as you go, saved to texsizes.txt; /view/:
+#                      the disc's models and maps (tools/viewer), click a
+#                      surface to pick its image
 #
 #   make sp PLATFORM=dc   Dreamcast build with KallistiOS -> build/sp-sh4-.../iowolfsp.elf
 #                         (source /opt/toolchains/dc/kos/environ.sh first)
@@ -229,7 +231,7 @@ texcompare:
 
 # make texpanel: texsizes.txt in the browser, see tools/texpanel.py
 texpanel:
-	$(Q)python3 tools/texpanel.py $(PVRTEX) $(ASSETS_OUT)/sp/src tools/rtcwconv/texsizes.txt
+	$(Q)python3 tools/texpanel.py $(PVRTEX) $(ASSETS_OUT)/sp/src tools/rtcwconv/texsizes.txt --disc $(DISC_DIR)/main
 
 # x87 math, as the engine's x86 build does it: SSE rounds differently, and
 # the curve collision then merges fewer planes (escape1: 4655, not 4238)
@@ -261,14 +263,14 @@ $(RTCWCONV): $(RTCWCONV_SRC) mdsc/mdsc.c $(RTCWCONV_COBJ) $(RTCWCONV_HDR)
 
 # 1 = sp, 2 = its pk3s in load order
 define assets_pk3
-$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(PVRTEX) $(2) tools/rtcwconv/mapedits.txt tools/rtcwconv/texsizes.txt
+$(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(PVRTEX) $(2)  tools/rtcwconv/mapedits.txt tools/rtcwconv/texsizes.txt tools/rtcwconv/unusedanims.txt
 	$$(echo_cmd) "ASSETS $$@"
 	$$(Q)rm -rf $(ASSETS_OUT)/$(1) && mkdir -p $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)for p in $(2); do unzip -qq -o -C "$$$$p" '*.mds' '*.mdc' '*.tga' '*.jpg' '*.bsp' '*.aas' '*.rcd' \
 	  '*.shader' '*.skin' '*.menu' '*.txt' '*.cfg' '*.script' '*.ai' '*.camera' '*.sounds' '*.md3' '*.dat' '*.h' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
-	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt -z tools/rtcwconv/texsizes.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt -z tools/rtcwconv/texsizes.txt -u tools/rtcwconv/unusedanims.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef

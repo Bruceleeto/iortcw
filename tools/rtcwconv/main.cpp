@@ -35,6 +35,7 @@
  */
 #include <algorithm>
 #include <map>
+#include <set>
 #include <errno.h>
 #include <filesystem>
 #include <stdio.h>
@@ -160,6 +161,59 @@ static bool ReadSizes( const char *file, std::map<std::string, std::pair<int, in
 	return true;
 }
 
+/* a character's .mds without the frames its wolfanim.cfg never plays, and
+   the cfg renumbered to match, written out to take the pk3's place */
+static std::map<std::string, std::set<std::string>> unusedAnims;   /* character: animations, lower case */
+
+static bool StripFrames( const fs::path &inDir, const fs::path &outDir, const fs::path &rel,
+						 std::vector<uint8_t> &mds, long &frames ) {
+	std::string character = rel.parent_path().filename().string();
+	std::transform( character.begin(), character.end(), character.begin(), ::tolower );
+	auto u = unusedAnims.find( character );
+	std::error_code ec;
+	for ( const auto &e : fs::directory_iterator( inDir / rel.parent_path(), ec ) ) {
+		if ( strcasecmp( e.path().filename().c_str(), "wolfanim.cfg" ) ) {
+			continue;
+		}
+		std::vector<uint8_t> in;
+		if ( !ReadFile( e.path(), in ) ) {
+			return false;
+		}
+		std::string cfg( in.begin(), in.end() );
+		int dropped;
+		if ( StripMdsFrames( mds, cfg, u == unusedAnims.end() ? nullptr : &u->second, dropped, rel.c_str() ) && dropped ) {
+			frames += dropped;
+			return WriteFile( outDir / rel.parent_path() / e.path().filename(), std::vector<uint8_t>( cfg.begin(), cfg.end() ) );
+		}
+		return true;
+	}
+	return true;
+}
+
+/* "character animation" lines, # comments */
+static bool ReadUnusedAnims( const char *path ) {
+	FILE *f = fopen( path, "r" );
+	if ( !f ) {
+		fprintf( stderr, "can't open %s\n", path );
+		return false;
+	}
+	char line[256], who[128], anim[128];
+	while ( fgets( line, sizeof( line ), f ) ) {
+		if ( line[0] == '#' || sscanf( line, "%127s %127s", who, anim ) != 2 ) {
+			continue;
+		}
+		for ( char *c = who; *c; c++ ) {
+			*c = tolower( *c );
+		}
+		for ( char *c = anim; *c; c++ ) {
+			*c = tolower( *c );
+		}
+		unusedAnims[who].insert( anim );
+	}
+	fclose( f );
+	return true;
+}
+
 /* rel: one of an mdsGroups' members */
 static bool InMdsGroup( const std::string &rel ) {
 	for ( int g = 0; g < numMdsGroups; g++ ) {
@@ -184,6 +238,7 @@ static void Usage( void ) {
 		"  -c <f>   curve subdivisions, as r_subdivisions (default 12)\n"
 		"  -n <d>   more files that name shaders (the game's source), for dc.shaders\n"
 		"  -e <f>   map edits (see ReadEdits)\n"
+		"  -u <f>   animations nothing plays, \"character animation\" a line\n"
 		"  -z <f>   image sizes (see ReadSizes)\n"
 		"  -v       a line per file\n" );
 	exit( 1 );
@@ -221,6 +276,10 @@ int main( int argc, char **argv ) {
 			if ( !ReadEdits( argv[++i], edits ) ) {
 				return 1;
 			}
+		} else if ( i + 1 < argc && !strcmp( argv[i], "-u" ) ) {
+			if ( !ReadUnusedAnims( argv[++i] ) ) {
+				return 1;
+			}
 		} else if ( i + 1 < argc && !strcmp( argv[i], "-z" ) ) {
 			if ( !ReadSizes( argv[++i], texOpt.sizes, texOpt.formats ) ) {
 				return 1;
@@ -236,6 +295,7 @@ int main( int argc, char **argv ) {
 	texOpt.verbose = verbose;
 
 	MdsStats mds = {};
+	long unplayed = 0;     /* frames no animation plays, taken out */
 	TexStats tex = {};
 	AasStats aas = {};
 	RcdStats rcd = {};
@@ -280,7 +340,8 @@ int main( int argc, char **argv ) {
 			std::vector<uint8_t> in, out;
 			MdsStats before = mds;
 
-			if ( !ReadFile( e.path(), in ) || !ConvertMds( in, out, opt, mds, rel.c_str() ) ||
+			if ( !ReadFile( e.path(), in ) || !StripFrames( inDir, outDir, rel, in, unplayed ) ||
+				 !ConvertMds( in, out, opt, mds, rel.c_str() ) ||
 				 !WriteFile( ( outDir / rel ).concat( "c" ), out ) ) {
 				failed++;
 				continue;
@@ -398,7 +459,8 @@ int main( int argc, char **argv ) {
 		bool all = true;
 
 		for ( size_t m = 0; m < grp.members.size(); m++ ) {
-			all = all && ReadFile( inDir / grp.members[m], ins[m] );
+			all = all && ReadFile( inDir / grp.members[m], ins[m] ) &&
+				  StripFrames( inDir, outDir, grp.members[m], ins[m], unplayed );
 		}
 		if ( all && ConvertMdsGroup( grp, ins, outs, baseOut, opt, mds ) ) {
 			for ( size_t m = 0; m < grp.members.size(); m++ ) {
@@ -462,7 +524,7 @@ int main( int argc, char **argv ) {
 	}
 
 	if ( mds.files ) {
-		printf( "mds: %ld root offset keys, %ld cull bounds keys\n", mds.frameKeys, mds.cullKeys );
+		printf( "mds: %ld root offset keys, %ld cull bounds keys; %ld frames no animation plays taken out\n", mds.frameKeys, mds.cullKeys, unplayed );
 		printf( "mds: %d files, %.1f MB -> %.1f MB; bone poses kept %.1f%% (directions %.1f%%); bones off by %.3f units on average, %.2f / %.2f deg at most\n"
 				"     %d of %d triangles in %d strips; vertexes and bones %.0f K -> %.0f K, off by %.4f units, %.5f texture,"
 				" %.5f weight, %.2f deg normal at most\n",

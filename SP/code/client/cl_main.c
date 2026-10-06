@@ -825,24 +825,39 @@ quit 10 seconds into escape1; at once on an error, and after a minute
 whatever happens. 2: die 3 seconds into escape1 (kill), fire till the
 level is loaded again as dying does, and quit 10 seconds after.
 +set dcsim_map <map>: straight to that map (spmap) instead, for escape1
+3: the whole game in one run, the maps in the order their scripts'
+changelevels go (the cutscenes too), the next 10 seconds into each as
+the game loads it (spmap with g_reloading), the memory reported then, to
+see the heap over level changes (from dcsim_map, else the first); quits
+after the last, or a minute in one map
 ==================
 */
+static const char *dcsimChain[] = {
+	"cutscene1", "escape1", "escape2", "tram", "village1", "crypt1", "crypt2", "church", "boss1",
+	"cutscene6", "forest", "rocket", "baseout", "assault", "cutscene9", "sfm", "factory", "trainyard",
+	"swf", "cutscene11", "norway", "xlabs", "boss2", "cutscene14", "dam", "village2", "chateau",
+	"dark", "dig", "castle", "end", "cutscene19", NULL
+};
+
 static void CL_DCSimNewGame( void ) {
 	static int start, started, escape, lastSkip, pregameServerId = -1;
 	static int killed, killedServerId, lastFire, reloaded;
+	static char chainMap[MAX_QPATH];
+	static int chainAt, chainSent, chainDone, chainCount;
 	int now = Sys_Milliseconds();
 	const char *map = Cvar_VariableString( "dcsim_map" );
+	const int chain = Cvar_VariableIntegerValue( "dcsim_newgame" ) == 3;
 
 	if ( !Cvar_VariableIntegerValue( "dcsim_newgame" ) ) {
 		return;
 	}
 	if ( !map[0] ) {
-		map = "escape1";
+		map = chain ? dcsimChain[0] : "escape1";
 	}
 	if ( !start ) {
 		start = now;
 	}
-	if ( now - start > 60000 ) {
+	if ( now - ( chain && chainAt ? chainAt : start ) > 60000 ) {
 		Com_Printf( "DCSIM newgame: a minute and not done, quitting\n" );
 		Cbuf_AddText( "quit\n" );
 		return;
@@ -851,7 +866,7 @@ static void CL_DCSimNewGame( void ) {
 		// the menu is up
 		if ( clc.state == CA_DISCONNECTED && ( Key_GetCatcher() & KEYCATCH_UI ) && now - start > 1000 ) {
 			Com_Printf( "DCSIM newgame: New Game\n" );
-			Cbuf_AddText( va( "set g_gameskill 1; spmap %s\n", Q_stricmp( map, "escape1" ) ? map : "cutscene1" ) );
+			Cbuf_AddText( va( "set g_gameskill 1; spmap %s\n", chain || Q_stricmp( map, "escape1" ) ? map : "cutscene1" ) );
 			started = now;
 		}
 		return;
@@ -876,6 +891,38 @@ static void CL_DCSimNewGame( void ) {
 	if ( cl.cameraMode && now - lastSkip > 500 ) {
 		CL_AddReliableCommand( "cameraInterrupt", qfalse );
 		lastSkip = now;
+	}
+	if ( chain ) {
+		const char *cur = Cvar_VariableString( "mapname" );
+		int i;
+
+		if ( chainDone ) {
+			return;
+		}
+		if ( Q_stricmp( cur, chainMap ) ) {
+			Com_Printf( "DCSIM chain: in %s\n", cur );
+			Q_strncpyz( chainMap, cur, sizeof( chainMap ) );
+			chainAt = now;
+			chainSent = 0;
+			chainCount++;
+		} else if ( !chainSent && now - chainAt > 10000 ) {
+			Com_MemoryReport( va( "10 seconds into %s", cur ) );
+			for ( i = 0; dcsimChain[i] && Q_stricmp( dcsimChain[i], cur ); i++ ) {
+			}
+			// +set dcsim_maps <n>: stop after n maps
+			if ( !dcsimChain[i] || !dcsimChain[i + 1]
+				 || ( Cvar_VariableIntegerValue( "dcsim_maps" ) && chainCount >= Cvar_VariableIntegerValue( "dcsim_maps" ) ) ) {
+				Com_Printf( "DCSIM chain: done, quitting\n" );
+				Cbuf_AddText( "quit\n" );
+				chainDone = 1;
+				return;
+			}
+			Com_Printf( "DCSIM chain: to %s\n", dcsimChain[i + 1] );
+			Cvar_Set( "g_reloading", va( "%d", RELOAD_NEXTMAP ) );
+			Cbuf_AddText( va( "spmap %s\n", dcsimChain[i + 1] ) );
+			chainSent = 1;		// once, till the next is in
+		}
+		return;
 	}
 	if ( Cvar_VariableIntegerValue( "dcsim_newgame" ) == 2 && escape ) {
 		if ( !killed && now - escape > 3000 ) {

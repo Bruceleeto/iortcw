@@ -1,0 +1,1068 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Model Viewer</title>
+<!--
+ The Dreamcast build's models and maps as the game has them on the disc.
+ Served by `make texpanel` (/view/): the disc's files, and a click on a
+ surface picks its image to resize / reformat, shown on the mesh as pvrtex
+ makes it, saved to texsizes.txt. Opened as a file: pick build/disc/main,
+ viewing only.
+-->
+<style>
+:root { --bg:#16181c; --panel:#1f2228; --line:#30343c; --text:#d8dce3; --dim:#8a919c; --acc:#5aa9ff; --warn:#ffb454; --bad:#ff6b6b; --good:#7bd88f; --gold:#f0b429; }
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.35 system-ui,sans-serif; }
+#app { display:grid; grid-template-columns:250px 1fr 560px; grid-template-rows:auto 1fr; height:100vh; }
+header { grid-column:1/4; display:flex; gap:10px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+header b { font-size:14px; }
+header a { color:var(--gold); }
+#status { color:var(--dim); margin-left:auto; }
+#left { overflow:auto; border-right:1px solid var(--line); }
+#left .tools { position:sticky; top:0; background:var(--bg); padding:6px; display:flex; gap:4px; border-bottom:1px solid var(--line); z-index:1; }
+#left input { flex:1; min-width:0; }
+.grp { padding:6px 8px 2px; color:var(--acc); font-weight:600; }
+.m { display:flex; justify-content:space-between; padding:3px 8px; cursor:pointer; white-space:nowrap; gap:6px; }
+.m span:first-child { overflow:hidden; text-overflow:ellipsis; }
+.m:hover { background:#262a31; } .m.sel { background:#2b3a52; }
+.m .k { color:var(--dim); font-variant-numeric:tabular-nums; }
+#mid { display:flex; flex-direction:column; min-width:0; min-height:0; }
+#cvwrap { position:relative; flex:1; display:flex; min-height:0; }
+#cv { flex:1; width:100%; min-height:0; display:block; cursor:crosshair; outline:none; }
+#hint { position:absolute; left:8px; bottom:6px; color:var(--dim); pointer-events:none; font-size:12px; }
+#timeline { padding:6px 10px; border-top:1px solid var(--line); background:var(--panel); }
+#strip { width:100%; height:60px; display:block; background:#111317; cursor:pointer; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:5px; }
+#scrub { flex:1; min-width:150px; }
+#right { overflow:auto; border-left:1px solid var(--line); padding:8px; }
+input,select,button { background:#2a2e36; color:var(--text); border:1px solid var(--line); border-radius:3px; font:inherit; padding:2px 5px; }
+button { cursor:pointer; } button:hover { border-color:var(--acc); } button.go { border-color:var(--gold); color:var(--gold); }
+input[type=number] { width:58px; }
+.info { display:grid; grid-template-columns:auto 1fr; gap:1px 10px; margin-bottom:8px; }
+.info div:nth-child(odd) { color:var(--dim); }
+details { margin-top:8px; border-top:1px solid var(--line); padding-top:4px; }
+summary { cursor:pointer; color:var(--acc); font-weight:600; margin:4px 0; }
+table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+th { position:sticky; top:-8px; background:var(--panel); text-align:left; font-weight:600; padding:3px; color:var(--dim); cursor:pointer; }
+td { padding:1px 3px; border-top:1px solid #262a31; }
+td input[type=number] { width:58px; padding:0 3px; }
+tr.cur td { background:#2b3a52; }
+tr.drop td { color:var(--bad); text-decoration:line-through; }
+td.nm { cursor:pointer; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+td.kc { white-space:nowrap; }
+#texlist td.nm { max-width:260px; }
+.y { color:var(--good); } .n { color:var(--warn); } .dim { color:var(--dim); } .err { color:var(--bad); }
+.box { margin:6px 0; padding:6px; background:var(--panel); border:1px solid var(--line); }
+#texbox img { max-width:100%; max-height:160px; image-rendering:pixelated; background:repeating-conic-gradient(#555 0 25%,#777 0 50%) 0 0/16px 16px; display:block; margin-top:4px; }
+#overlay { position:fixed; inset:0; background:#000a; display:none; align-items:center; justify-content:center; z-index:9; }
+#overlay > div { background:var(--panel); padding:10px; width:min(800px,94vw); }
+#overlay textarea { width:100%; height:60vh; background:#111317; color:var(--text); font:12px monospace; }
+@media (max-width:900px) { #app { grid-template-columns:1fr; grid-template-rows:auto 200px 60vh auto; } header { grid-column:1; } }
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+	<b>Model Viewer</b>
+	<label id="picker">Folder (build/disc/main): <input type="file" id="dir" webkitdirectory></label>
+	<a id="texlink" href="/" style="display:none">texture panel →</a>
+	<span id="status">pick the disc's main folder</span>
+</header>
+<div id="left">
+	<div class="tools"><input id="filter" placeholder="filter"><select id="sort"><option value="size">size</option><option value="name">name</option></select></div>
+	<div id="list"></div>
+</div>
+<div id="mid">
+	<div id="cvwrap"><canvas id="cv" tabindex="0"></canvas><div id="hint"></div></div>
+	<div id="timeline">
+		<canvas id="strip"></canvas>
+		<div class="row">
+			<button id="playb">❚❚</button>
+			<input type="range" id="scrub" min="0" max="1" step="0.01" value="0">
+			<span id="fr" style="min-width:150px">-</span>
+		</div>
+		<div class="row">
+			<label>speed <select id="speed"><option>0.1</option><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option></select></label>
+			<label title="only every Nth frame of the animation, the ones between lerped: what dropping frames looks like">keep every <input type="number" id="step" min="1" max="30" value="1"> frame</label>
+			<label><input type="checkbox" id="lerp" checked> lerp</label>
+			<label><input type="checkbox" id="repeat" checked> repeat</label>
+			<label>torso <select id="torso"><option value="">(same)</option></select></label>
+		</div>
+	</div>
+</div>
+<div id="right">
+	<div class="info" id="info"></div>
+	<div class="row">
+		<label><input type="checkbox" id="tex" checked> textures</label>
+		<label><input type="checkbox" id="wire"> wire</label>
+		<label class="mo"><input type="checkbox" id="skel"> bones</label>
+		<label class="mo"><input type="checkbox" id="showhead" checked> head</label>
+		<label class="wo"><input type="checkbox" id="light" checked> light</label>
+		<label class="wo">bright <input type="range" id="bright" min="0.5" max="4" step="0.1" value="2" style="width:80px"></label>
+	</div>
+	<div class="row mo"><label>skin <select id="skin"></select></label><label>head <select id="hskin"></select></label></div>
+	<div class="row mo" id="lodrow"><label>LOD <input type="range" id="lod" min="0.05" max="1" step="0.01" value="1"></label><span id="lodv">100%</span></div>
+
+	<details open id="texsec"><summary>Texture</summary><div id="texbox" class="box dim">click a surface</div></details>
+	<details open id="texlistsec"><summary id="texsum">Textures</summary>
+		<table><thead><tr><th data-t="name">image</th><th data-t="dc">disc</th><th data-t="kb">VRAM K</th><th data-t="uses">meshes</th><th>texsizes</th></tr></thead><tbody id="texlist"></tbody></table>
+	</details>
+	<details open class="mo" id="animsec"><summary>Animations</summary>
+		<div class="dim">K: key bytes in the frame range (a frame shared by two counts in both; +grey: in the shared guards base). script/ai: name found in wolfanim.script / any map's .ai (code can play some by name too). Tick to see what dropping saves.</div>
+		<div id="sum" class="box"></div>
+		<div class="row"><button id="copycfg">edited wolfanim.cfg</button><button id="untick">untick all</button><button id="tickunused">tick unused</button></div>
+		<table><thead><tr><th>✕</th><th data-s="name">anim</th><th data-s="first">first</th><th data-s="length">len</th><th data-s="fps">fps</th><th>loop</th><th data-s="k">K</th><th data-s="use">script</th><th>ai</th></tr></thead><tbody id="anims"></tbody></table>
+	</details>
+</div>
+</div>
+<div id="overlay"><div><textarea id="ta" readonly></textarea><div class="row"><button id="closeov">close</button></div></div></div>
+<script src="core.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector( s );
+const cv = $( '#cv' ), gl = cv.getContext( 'webgl2', { antialias: true } );
+const esc = s => String( s ).replace( /[&<>"]/g, c => ( { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } )[c] );
+
+/* ---------------- files: a picked folder, or the texpanel server's disc ---------------- */
+
+const byPath = new Map();       // every tail of each path, lower case -> file
+const bufs = new Map(), texs = new Map();
+let entries = [], items = [], aiText = null, shaderImages = null, cur = null;
+let server = false, panelList = null;     // texpanel's images: name -> {w, h, def, set}
+
+const find = p => byPath.get( p.replace( /\\/g, '/' ).replace( /^\/+/, '' ).toLowerCase() );
+const read = f => { if ( !bufs.has( f ) ) bufs.set( f, f.arrayBuffer() ); return bufs.get( f ); };
+const text = async f => new TextDecoder( 'latin1' ).decode( await read( f ) );
+const status = s => { $( '#status' ).textContent = s; };
+const K = b => ( b / 1024 ).toFixed( b < 10240 ? 1 : 0 );
+const fail = err => { console.error( err ); status( 'error: ' + err.message ); };
+
+$( '#dir' ).addEventListener( 'change', e => indexFiles( [...e.target.files].map( f => ( { path: f.webkitRelativePath || f.name, file: f } ) ), 1 ) );
+
+// list: {path, file (with arrayBuffer() and size)}; skip: leading folders to drop (the picked one)
+function indexFiles( list, skip ) {
+	byPath.clear(); bufs.clear(); texs.clear(); entries = []; aiText = null; shaderImages = null;
+	for ( const { path, file } of list ) {
+		const parts = path.replace( /\\/g, '/' ).toLowerCase().split( '/' );
+		for ( let i = 0; i < parts.length; i++ ) { const k = parts.slice( i ).join( '/' ); if ( !byPath.has( k ) ) byPath.set( k, file ); }
+		entries.push( { rel: parts.slice( skip ).join( '/' ) || parts[parts.length - 1], file } );
+	}
+	items = entries.filter( e => /\.(mdsc|mdb|mdc|md3|wld)$/.test( e.rel ) ).map( e => {
+		const i = e.rel.indexOf( 'models/' ), map = e.rel.endsWith( '.wld' );
+		return { ...e, map, name: map ? e.rel.replace( /^.*\//, '' ).replace( '.wld', '' ) : i >= 0 ? e.rel.slice( i + 7 ) : e.rel, size: e.file.size };
+	} );
+	status( `${items.filter( i => i.map ).length} maps, ${items.filter( i => !i.map ).length} models, ${entries.length} files` );
+	listItems();
+}
+
+// served by texpanel: its disc folder, read as asked for
+async function tryServer() {
+	if ( location.protocol === 'file:' ) return;
+	try {
+		const r = await fetch( '/api/files' );
+		if ( !r.ok ) throw new Error( ( await r.json() ).error );
+		const files = await r.json();
+		server = true;
+		$( '#picker' ).style.display = 'none'; $( '#texlink' ).style.display = '';
+		indexFiles( files.map( ( [path, size] ) => ( { path, file: { name: path.split( '/' ).pop(), size, arrayBuffer: () => fetch( '/disc/' + path.split( '/' ).map( encodeURIComponent ).join( '/' ) ).then( r => { if ( !r.ok ) throw new Error( path + ': ' + r.status ); return r.arrayBuffer(); } ) } } ) ), 0 );
+		const l = await ( await fetch( '/api/list' ) ).json();
+		panelList = new Map( l.map( x => [x.name, x] ) );
+	} catch ( e ) {
+		status( 'no disc from the server (' + e.message + '): pick the folder' );
+	}
+}
+
+$( '#filter' ).oninput = listItems;
+$( '#sort' ).onchange = listItems;
+function listItems() {
+	const q = $( '#filter' ).value.toLowerCase(), by = $( '#sort' ).value;
+	const l = items.filter( m => m.name.includes( q ) );
+	l.sort( by === 'name' ? ( a, b ) => a.name.localeCompare( b.name ) : ( a, b ) => b.size - a.size );
+	const box = $( '#list' );
+	box.innerHTML = '';
+	for ( const [title, group] of [['maps', l.filter( m => m.map )], ['models', l.filter( m => !m.map )]] ) {
+		if ( !group.length ) continue;
+		box.insertAdjacentHTML( 'beforeend', `<div class="grp">${title} (${group.length})</div>` );
+		for ( const m of group.slice( 0, 3000 ) ) {
+			const d = document.createElement( 'div' );
+			d.className = 'm' + ( cur && cur.entry === m ? ' sel' : '' );
+			d.innerHTML = `<span>${esc( m.name )}</span><span class="k">${K( m.size )} K</span>`;
+			d.title = m.rel;
+			d.onclick = () => { for ( const x of document.querySelectorAll( '.m.sel' ) ) x.classList.remove( 'sel' ); d.classList.add( 'sel' ); open( m ).catch( fail ); };
+			box.append( d );
+		}
+	}
+}
+
+async function loadAi() {
+	if ( aiText !== null ) return;
+	aiText = '';
+	const parts = await Promise.all( entries.filter( e => /\.ai$/.test( e.rel ) ).map( e => text( e.file ) ) );
+	aiText = parts.join( '\n' ).toLowerCase();
+}
+
+async function loadShaders() {
+	if ( shaderImages ) return shaderImages;
+	const m = new Map(), files = entries.filter( e => /^scripts\/.*\.shaders?$/.test( e.rel ) );
+	// dc.shaders last: the Dreamcast's own take the place of the PC's
+	files.sort( ( a, b ) => ( a.rel.endsWith( '.shaders' ) ) - ( b.rel.endsWith( '.shaders' ) ) );
+	for ( const t of await Promise.all( files.map( e => text( e.file ) ) ) ) MV.parseShaderScript( t, m );
+	return shaderImages = m;
+}
+
+/* ---------------- GL ---------------- */
+
+function shader( type, src ) { const s = gl.createShader( type ); gl.shaderSource( s, src ); gl.compileShader( s ); if ( !gl.getShaderParameter( s, gl.COMPILE_STATUS ) ) throw new Error( gl.getShaderInfoLog( s ) ); return s; }
+const prog = gl.createProgram();
+gl.attachShader( prog, shader( gl.VERTEX_SHADER, `#version 300 es
+layout(location=0) in vec3 p; layout(location=1) in vec3 n; layout(location=2) in vec2 uv; layout(location=3) in vec4 c;
+uniform mat4 mvp; out vec3 vn; out vec2 vuv; out vec4 vc;
+void main(){ gl_Position = mvp * vec4(p, 1.); vn = n; vuv = uv; vc = c; }` ) );
+gl.attachShader( prog, shader( gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float; in vec3 vn; in vec2 vuv; in vec4 vc;
+uniform sampler2D tex; uniform int mode; uniform bool useTex; uniform bool vlight; uniform float bright; uniform vec3 col; uniform vec3 L; uniform float hl;
+out vec4 o;
+void main(){
+	if (mode == 2) { o = vec4(col, 1.); return; }
+	vec4 c = useTex ? texture(tex, vuv) : vec4(.72, .72, .74, 1.);
+	if (c.a < .5) discard;
+	if (mode == 3) { o = vec4(col, 1.); return; }       // picking: the mesh's number
+	vec3 shade = vlight ? vc.rgb * bright : vec3(.4 + .8 * abs(dot(normalize(vn), L)));
+	o = vec4(mix(c.rgb * shade, vec3(1., .55, .1), hl), 1.);
+}` ) );
+gl.linkProgram( prog );
+const U = {};
+for ( const n of ['mvp', 'mode', 'useTex', 'vlight', 'bright', 'col', 'L', 'hl', 'tex'] ) U[n] = gl.getUniformLocation( prog, n );
+
+// a mesh: surf {numVerts, tris, st, name, shader, ...}; col (Uint8 RGBA) for the world's light
+function makeMesh( surf, col ) {
+	const m = { surf, nv: surf.numVerts, pos: surf.pos || new Float32Array( surf.numVerts * 3 ), nrm: surf.nrm || new Float32Array( surf.numVerts * 3 ), rec: null };
+	const buf = ( loc, data, size, type, normalize, usage ) => {
+		const b = gl.createBuffer(); gl.bindBuffer( gl.ARRAY_BUFFER, b ); gl.bufferData( gl.ARRAY_BUFFER, data, usage );
+		gl.enableVertexAttribArray( loc ); gl.vertexAttribPointer( loc, size, type, normalize, 0, 0 );
+		return b;
+	};
+	m.vao = gl.createVertexArray(); gl.bindVertexArray( m.vao );
+	const usage = surf.pos ? gl.STATIC_DRAW : gl.DYNAMIC_DRAW;
+	m.pb = buf( 0, m.pos, 3, gl.FLOAT, false, usage );
+	m.nb = buf( 1, m.nrm, 3, gl.FLOAT, false, usage );
+	m.ub = buf( 2, surf.st, 2, gl.FLOAT, false, gl.STATIC_DRAW );
+	if ( col ) m.cb = buf( 3, col, 4, gl.UNSIGNED_BYTE, true, gl.STATIC_DRAW );
+	m.ib = gl.createBuffer(); gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, m.ib );
+	m.wvao = gl.createVertexArray(); gl.bindVertexArray( m.wvao );
+	gl.bindBuffer( gl.ARRAY_BUFFER, m.pb ); gl.enableVertexAttribArray( 0 ); gl.vertexAttribPointer( 0, 3, gl.FLOAT, false, 0, 0 );
+	m.lb = gl.createBuffer(); gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, m.lb );
+	gl.bindVertexArray( null );
+	setTris( m, surf.tris );
+	return m;
+}
+
+function setTris( m, tris ) {
+	m.tris = tris; m.count = tris.length;
+	gl.bindVertexArray( m.vao ); gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, m.ib ); gl.bufferData( gl.ELEMENT_ARRAY_BUFFER, tris, gl.STATIC_DRAW );
+	gl.bindVertexArray( null );
+	m.lcount = 0;       // the wire lines, made when first wanted
+}
+
+function wireLines( m ) {
+	if ( m.lcount ) return;
+	const t = m.tris, lines = new Uint32Array( t.length * 2 );
+	for ( let i = 0; i < t.length; i += 3 ) lines.set( [t[i], t[i + 1], t[i + 1], t[i + 2], t[i + 2], t[i]], i * 2 );
+	gl.bindVertexArray( m.wvao ); gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, m.lb ); gl.bufferData( gl.ELEMENT_ARRAY_BUFFER, lines, gl.STATIC_DRAW );
+	gl.bindVertexArray( null );
+	m.lcount = lines.length;
+}
+
+// RB_CalcMDSLod: the vertexes past the count collapse into earlier ones
+function lodTris( surf, frac ) {
+	const n = Math.max( 3, Math.round( surf.numVerts * frac ) );
+	if ( n >= surf.numVerts ) return surf.tris;
+	const out = [], c = surf.collapse, t = surf.tris;
+	const fix = p => { for ( let i = 0; p >= n && i < 64; i++ ) p = c[p]; return p; };
+	for ( let i = 0; i < t.length; i += 3 ) {
+		const a = fix( t[i] ), b = fix( t[i + 1] ), d = fix( t[i + 2] );
+		if ( a === b || b === d || a === d || a >= n || b >= n || d >= n ) continue;
+		out.push( a, b, d );
+	}
+	return Uint32Array.from( out );
+}
+
+function upload( m ) {
+	const p = m.pos, n = m.nrm, t = m.tris;
+	n.fill( 0 );
+	for ( let i = 0; i < t.length; i += 3 ) {
+		const a = t[i] * 3, b = t[i + 1] * 3, c = t[i + 2] * 3;
+		const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2], vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+		const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx;
+		n[a] += x; n[a + 1] += y; n[a + 2] += z; n[b] += x; n[b + 1] += y; n[b + 2] += z; n[c] += x; n[c + 1] += y; n[c + 2] += z;
+	}
+	gl.bindBuffer( gl.ARRAY_BUFFER, m.pb ); gl.bufferSubData( gl.ARRAY_BUFFER, 0, p );
+	gl.bindBuffer( gl.ARRAY_BUFFER, m.nb ); gl.bufferSubData( gl.ARRAY_BUFFER, 0, n );
+}
+
+function freeMesh( m ) { for ( const b of [m.pb, m.nb, m.ub, m.cb, m.ib, m.lb] ) if ( b ) gl.deleteBuffer( b ); gl.deleteVertexArray( m.vao ); gl.deleteVertexArray( m.wvao ); }
+
+/* ---------------- textures ----------------
+ * One record an image (its path, no extension, lower case: texpanel's name
+ * for it), shared by every mesh using it: { key, t (what's drawn), disc
+ * (the .dt), view: 'disc' | 'edit' | 'orig', ... } */
+
+function glTexture( src, w, h ) {
+	const t = gl.createTexture();
+	gl.bindTexture( gl.TEXTURE_2D, t );
+	if ( w ) gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, src );
+	else gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src );
+	gl.generateMipmap( gl.TEXTURE_2D );
+	gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
+	return t;
+}
+
+function texture( path ) {
+	if ( !path ) return Promise.resolve( null );
+	const key = MV.noExt( path.toLowerCase().replace( /\\/g, '/' ) );
+	if ( !texs.has( key ) ) texs.set( key, ( async () => {
+		const rec = { key, t: null, view: 'disc', disc: null };
+		const f = find( key + '.dt' );
+		if ( f ) {
+			const img = MV.decodeDT( await read( f ) );
+			if ( img ) rec.disc = { t: glTexture( img.rgba, img.w, img.h ), w: img.w, h: img.h, fmt: img.format, bytes: f.size - 32 };
+		}
+		rec.t = rec.disc && rec.disc.t;
+		return rec;
+	} )().catch( () => ( { key, t: null, view: 'disc', disc: null } ) ) );
+	return texs.get( key );
+}
+
+/* ---------------- camera: orbit for models, fly for maps ---------------- */
+
+const cam = { fly: false, yaw: 0.6, pitch: 0.15, dist: 120, target: [0, 0, 0], fit: null, pos: [0, 0, 0], speed: 400 };
+function fitCamera( lo, hi ) {
+	cam.target = [0, 1, 2].map( c => ( lo[c] + hi[c] ) / 2 );
+	const r = Math.hypot( hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2] ) / 2 || 10;
+	cam.dist = r * 3.2; cam.fit = { lo, hi };
+}
+function viewProj() {
+	const w = cv.width, h = cv.height, f = 1 / Math.tan( 0.5 );
+	let eye, fw;
+	const cp = Math.cos( cam.pitch ), dir = [cp * Math.cos( cam.yaw ), cp * Math.sin( cam.yaw ), Math.sin( cam.pitch )];
+	if ( cam.fly ) { eye = cam.pos; fw = dir; }
+	else { eye = cam.target.map( ( t, i ) => t - dir[i] * cam.dist ); fw = dir; }
+	const near = cam.fly ? 2 : cam.dist / 100, far = cam.fly ? 40000 : cam.dist * 20;
+	const rt = norm( cross( fw, [0, 0, 1] ) ), up = cross( rt, fw );
+	const V = [rt[0], up[0], -fw[0], 0, rt[1], up[1], -fw[1], 0, rt[2], up[2], -fw[2], 0, -dot( rt, eye ), -dot( up, eye ), dot( fw, eye ), 1];
+	const P = [f * h / w, 0, 0, 0, 0, f, 0, 0, 0, 0, ( far + near ) / ( near - far ), -1, 0, 0, 2 * far * near / ( near - far ), 0];
+	const R = new Float32Array( 16 );
+	for ( let c = 0; c < 4; c++ ) for ( let r = 0; r < 4; r++ ) { let s = 0; for ( let k = 0; k < 4; k++ ) s += P[k * 4 + r] * V[c * 4 + k]; R[c * 4 + r] = s; }
+	return { R, fw, rt, up };
+}
+const dot = ( a, b ) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = ( a, b ) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = a => { const l = Math.hypot( ...a ) || 1; return a.map( v => v / l ); };
+
+let drag = null;
+const keys = new Set();
+cv.addEventListener( 'contextmenu', e => e.preventDefault() );
+cv.addEventListener( 'pointerdown', e => { cv.focus(); drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, pan: e.button === 2 || e.shiftKey && !cam.fly }; cv.setPointerCapture( e.pointerId ); } );
+cv.addEventListener( 'pointerup', e => {
+	if ( drag && Math.hypot( e.clientX - drag.x0, e.clientY - drag.y0 ) < 4 && e.button === 0 ) pick( e );
+	drag = null;
+} );
+cv.addEventListener( 'pointermove', e => {
+	if ( !drag ) return;
+	const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+	drag.x = e.clientX; drag.y = e.clientY;
+	if ( drag.pan && !cam.fly ) {
+		const { rt, up } = viewProj(), s = cam.dist / cv.clientHeight * 0.85;
+		for ( let c = 0; c < 3; c++ ) cam.target[c] += ( -rt[c] * dx + up[c] * dy ) * s;
+	} else {
+		cam.yaw -= dx * 0.006; cam.pitch = Math.max( -1.55, Math.min( 1.55, cam.pitch - dy * 0.006 * ( cam.fly ? 1 : -1 ) ) );
+	}
+} );
+cv.addEventListener( 'wheel', e => {
+	e.preventDefault();
+	if ( cam.fly ) cam.speed = Math.max( 25, Math.min( 6400, cam.speed * Math.exp( -e.deltaY * 0.002 ) ) );
+	else cam.dist *= Math.exp( e.deltaY * 0.001 );
+	hint();
+}, { passive: false } );
+cv.addEventListener( 'dblclick', () => { if ( cam.fly ) { if ( cur && cur.start ) startView( cur ); } else { if ( cam.fit ) fitCamera( cam.fit.lo, cam.fit.hi ); cam.yaw = 0.6; cam.pitch = 0.15; } } );
+cv.addEventListener( 'keydown', e => { keys.add( e.code ); if ( cam.fly && /^(Key[WASDQE]|Space|ShiftLeft)$/.test( e.code ) ) e.preventDefault(); } );
+cv.addEventListener( 'keyup', e => keys.delete( e.code ) );
+cv.addEventListener( 'blur', () => keys.clear() );
+
+function flyMove( dt ) {
+	if ( !cam.fly ) return;
+	const { fw, rt } = viewProj(), s = cam.speed * dt * ( keys.has( 'ShiftLeft' ) || keys.has( 'ShiftRight' ) ? 4 : 1 );
+	const m = ( v, k ) => { for ( let c = 0; c < 3; c++ ) cam.pos[c] += v[c] * k * s; };
+	if ( keys.has( 'KeyW' ) ) m( fw, 1 ); if ( keys.has( 'KeyS' ) ) m( fw, -1 );
+	if ( keys.has( 'KeyD' ) ) m( rt, 1 ); if ( keys.has( 'KeyA' ) ) m( rt, -1 );
+	if ( keys.has( 'KeyE' ) || keys.has( 'Space' ) ) m( [0, 0, 1], 1 ); if ( keys.has( 'KeyQ' ) ) m( [0, 0, 1], -1 );
+}
+
+function hint() {
+	$( '#hint' ).textContent = cam.fly
+		? `click the view, then W A S D move · Q E down up · shift fast · drag look · wheel speed (${cam.speed | 0}) · click: pick texture · double click: back to start`
+		: 'drag turn · right drag / shift move · wheel zoom · click: pick texture · double click: reset';
+}
+
+/* ---------------- picking: each mesh drawn in its own colour, read under the click ---------------- */
+
+let pickFb = null, pickRb = null, pickTex = null, pickW = 0, pickH = 0;
+function pick( e ) {
+	if ( !cur ) return;
+	const w = cv.width, h = cv.height;
+	if ( !pickFb || pickW !== w || pickH !== h ) {
+		if ( pickFb ) { gl.deleteFramebuffer( pickFb ); gl.deleteRenderbuffer( pickRb ); gl.deleteTexture( pickTex ); }
+		pickTex = gl.createTexture(); gl.bindTexture( gl.TEXTURE_2D, pickTex ); gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null );
+		pickRb = gl.createRenderbuffer(); gl.bindRenderbuffer( gl.RENDERBUFFER, pickRb ); gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h );
+		pickFb = gl.createFramebuffer(); gl.bindFramebuffer( gl.FRAMEBUFFER, pickFb );
+		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, pickTex, 0 );
+		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, pickRb );
+		pickW = w; pickH = h;
+	}
+	gl.bindFramebuffer( gl.FRAMEBUFFER, pickFb );
+	const meshes = drawScene( true );
+	const r = cv.getBoundingClientRect(), px = new Uint8Array( 4 );
+	gl.readPixels( Math.floor( ( e.clientX - r.left ) / r.width * w ), Math.floor( ( r.bottom - e.clientY ) / r.height * h ), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px );
+	gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+	const id = px[0] | px[1] << 8 | px[2] << 16;
+	const m = id ? meshes[id - 1] : null;
+	selectTex( m && m.rec ? m.rec.key : null, m );
+}
+
+/* ---------------- opening a model or map ---------------- */
+
+// bytes a vertex model keeps for each frame: each base / compressed / kept
+// frame counted on the first frame that uses it
+function vertCost( m ) {
+	const cost = new Float32Array( m.numFrames ), dv = m.dv;
+	for ( const s of m.surfaces ) {
+		const seen = new Set();
+		for ( let f = 0; f < m.numFrames; f++ ) {
+			if ( s.type === 'md3' ) { cost[f] += s.numVerts * 8; continue; }
+			if ( s.type === 'mdc' ) {
+				const b = dv.getInt16( s.oFBF + 2 * f, true ), c = s.numComp > 0 ? dv.getInt16( s.oFCF + 2 * f, true ) : -1;
+				if ( !seen.has( 'b' + b ) ) { seen.add( 'b' + b ); cost[f] += s.numVerts * 8; }
+				if ( c >= 0 && !seen.has( 'c' + c ) ) { seen.add( 'c' + c ); cost[f] += s.numVerts * 4; }
+				continue;
+			}
+			const key = dv.getInt16( s.oFCF + 4 * f, true );
+			for ( const k of [key, key + 1] ) {
+				if ( seen.has( k ) ) continue;
+				seen.add( k );
+				if ( s.type === 'mdb bones' ) { if ( ( k * s.numBase + s.numBase ) * 20 <= s.oFCF - s.oFBF ) cost[f] += s.numBase * 20; continue; }
+				if ( k * 4 >= s.oFCF - s.oFBF ) continue;
+				const b = dv.getInt16( s.oFBF + 4 * k, true ), c = dv.getInt16( s.oFBF + 4 * k + 2, true );
+				cost[f] += 4;
+				if ( !seen.has( 'b' + b ) ) { seen.add( 'b' + b ); cost[f] += s.numVerts * 8; }
+				if ( c >= 0 && !seen.has( 'c' + c ) ) { seen.add( 'c' + c ); cost[f] += s.numVerts * 4; }
+			}
+		}
+	}
+	return cost;
+}
+
+function closeCur() {
+	if ( !cur ) return;
+	for ( const m of [...cur.meshes, ...cur.headMeshes] ) freeMesh( m );
+	cur = null;
+}
+
+async function open( entry ) {
+	status( 'loading ' + entry.rel );
+	if ( entry.map ) return openMap( entry );
+	const dir = entry.rel.slice( 0, entry.rel.lastIndexOf( '/' ) ), base = MV.noExt( entry.rel.slice( entry.rel.lastIndexOf( '/' ) + 1 ) );
+	const v = { entry, dir, base, anims: [], script: '', poses: new Map(), meshes: [], headMeshes: [] };
+	if ( /\.mdsc$/.test( entry.rel ) ) {
+		const m = v.mds = MV.parseMDSC( await read( entry.file ) );
+		if ( m.share ) {
+			const bf = find( MV.noExt( m.share.base ) + '.mdsc' );
+			if ( bf ) m.baseModel = MV.parseMDSC( await read( bf ) );
+		}
+		v.numFrames = m.numFrames; v.cost = MV.mdsFrameCost( m );
+		v.baseCost = new Float32Array( m.numFrames );
+		if ( m.baseModel ) {
+			const bc = MV.mdsFrameCost( m.baseModel );
+			for ( const s of m.share.segs ) if ( s.fromBase ) for ( let j = 0; j < s.count; j++ ) v.baseCost[s.first + j] = bc[s.srcFirst + j] || 0;
+		}
+		const cfg = find( dir + '/wolfanim.cfg' ), sc = find( dir + '/wolfanim.script' );
+		if ( cfg ) { v.cfgText = await text( cfg ); v.anims = MV.parseAnimCfg( v.cfgText ); }
+		if ( sc ) v.script = ( await text( sc ) ).toLowerCase();
+		const hf = find( dir + '/head.mdb' ) || find( dir + '/head.mdc' );
+		if ( hf ) { v.head = MV.parseVertModel( await read( hf ) ); v.headFile = hf; }
+		v.headTag = m.tags.find( t => t.name === 'tag_head' );
+	} else {
+		v.vm = MV.parseVertModel( await read( entry.file ) );
+		v.numFrames = v.vm.numFrames; v.cost = vertCost( v.vm ); v.baseCost = new Float32Array( v.numFrames );
+	}
+	v.allAnim = { name: '(all frames)', first: 0, length: v.numFrames, loop: 1, fps: 20, all: true };
+	v.anims.unshift( v.allAnim );
+	for ( const a of v.anims ) a.drop = false;
+
+	closeCur();
+	v.meshes = ( v.mds || v.vm ).surfaces.map( s => makeMesh( s ) );
+	if ( v.head ) v.headMeshes = v.head.surfaces.map( s => makeMesh( s ) );
+	cur = v;
+	setMode( false );
+
+	const skins = n => entries.filter( e => e.rel.startsWith( dir + '/' + n + '_' ) && e.rel.endsWith( '.skin' ) ).map( e => e.rel.slice( dir.length + n.length + 2, -5 ) ).sort( ( a, b ) => ( b === 'default' ) - ( a === 'default' ) || a.localeCompare( b ) );
+	fillSelect( $( '#skin' ), skins( base ) );
+	fillSelect( $( '#hskin' ), v.head ? skins( 'head' ) : [] );
+
+	play.anim = v.anims.find( a => /^(relaxed_|alert_)?idle|^stand/.test( a.name ) ) || ( v.anims.length > 1 ? v.anims[1] : v.allAnim );
+	play.t = 0; play.torso = null;
+	$( '#lod' ).value = 1; $( '#lodv' ).textContent = '100%';
+	$( '#lodrow' ).style.display = v.mds ? '' : 'none';
+	fillTorso();
+	update( true );
+	showInfo();
+	buildTable();
+	selectTex( null );
+	await applySkins();
+	status( entry.rel );
+	if ( v.mds ) loadAi().then( () => { if ( cur === v ) buildTable(); } );
+}
+
+async function openMap( entry ) {
+	const name = entry.rel.replace( /\.wld$/, '' );
+	const w = MV.parseWLD( await read( entry.file ) );
+	const colf = find( name + '.col' );
+	const ents = colf ? MV.parseEntities( await read( colf ) ) : [];
+	const images = await loadShaders();
+	closeCur();
+	const v = cur = { entry, map: w, ents, meshes: [], headMeshes: [], anims: [] };
+	v.meshes = w.meshes.map( s => { const m = makeMesh( s, s.col ); m.sky = s.sky; return m; } );
+	await entityModels( v );
+	setMode( true );
+	const ps = ents.find( e => e.classname === 'info_player_start' ) || ents.find( e => /^info_player/.test( e.classname || '' ) );
+	if ( ps && ps.origin ) v.start = { pos: ps.origin.split( /\s+/ ).map( Number ), yaw: ( +ps.angle || 0 ) * Math.PI / 180 };
+	else v.start = { pos: w.lo.map( ( l, i ) => ( l + w.hi[i] ) / 2 ), yaw: 0 };
+	startView( v );
+	showInfo();
+	selectTex( null );
+	status( `${entry.rel}: loading textures…` );
+	let done = 0;
+	await Promise.all( v.meshes.map( async m => {
+		const img = images.get( m.surf.shader ) || m.surf.shader;
+		m.texPath = img;
+		m.rec = await texture( img );
+		if ( ++done % 10 === 0 ) status( `${entry.rel}: textures ${done}/${v.meshes.length}` );
+	} ) );
+	if ( cur !== v ) return;
+	showInfo(); texTable();
+	status( entry.rel );
+}
+
+// the models the entities place (misc_gamemodel trees, props_decoration
+// flags and curtains, ...): not in the .wld, the game loads them by name.
+// Each at its origin / angles / modelscale, on its start frame
+async function entityModels( v ) {
+	const cache = new Map();
+	const load = name => {
+		const b = MV.noExt( name.toLowerCase() );
+		if ( !cache.has( b ) ) {
+			const f = find( b + '.mdc' ) || find( b + '.md3' ) || find( b + '.mdb' );
+			cache.set( b, f ? read( f ).then( MV.parseVertModel ).catch( () => null ) : Promise.resolve( null ) );
+		}
+		return cache.get( b );
+	};
+	v.entModels = 0; v.entMissing = new Set();
+	for ( const e of v.ents ) {
+		const name = e.model2 || ( e.model && !e.model.startsWith( '*' ) ? e.model : null );
+		if ( !name || e.classname === 'misc_model' ) continue;      // misc_model: in the .wld already
+		const vm = await load( name );
+		if ( cur !== v ) return;
+		if ( !vm ) { v.entMissing.add( name ); continue; }
+		const o = ( e.origin || '0 0 0' ).split( /\s+/ ).map( Number ), sc = +e.modelscale || 1;
+		const a = e.angles ? e.angles.split( /\s+/ ).map( Number ) : [0, +e.angle || 0, 0];
+		const [p, y, r] = a.map( x => x * Math.PI / 180 ), sp = Math.sin( p ), cp = Math.cos( p ), sy = Math.sin( y ), cy = Math.cos( y ), sr = Math.sin( r ), cr = Math.cos( r );
+		// AnglesToAxis: forward, left, up
+		const ax = [[cp * cy, cp * sy, -sp], [-( sr * sp * cy + cr * -sy ), -( sr * sp * sy + cr * cy ), -sr * cp], [cr * sp * cy + -sr * -sy, cr * sp * sy + -sr * cy, cr * cp]];
+		const frame = Math.min( vm.numFrames - 1, +e.startonframe || 0 );
+		for ( const s of vm.surfaces ) {
+			const m = makeMesh( s ), l = new Float32Array( m.nv * 3 );
+			MV.vertFrame( vm, s, frame, l );
+			for ( let i = 0; i < m.nv; i++ ) for ( let c = 0; c < 3; c++ )
+				m.pos[i * 3 + c] = o[c] + sc * ( l[i * 3] * ax[0][c] + l[i * 3 + 1] * ax[1][c] + l[i * 3 + 2] * ax[2][c] );
+			upload( m );
+			m.ent = e;
+			v.meshes.push( m );
+		}
+		v.entModels++;
+	}
+}
+
+function startView( v ) {
+	cam.fly = true;
+	cam.pos = [v.start.pos[0], v.start.pos[1], v.start.pos[2] + 40];
+	cam.yaw = v.start.yaw; cam.pitch = 0;
+	hint();
+}
+
+// models: the animation and skin parts; maps: the light ones
+function setMode( map ) {
+	for ( const e of document.querySelectorAll( '.mo' ) ) e.style.display = map ? 'none' : '';
+	for ( const e of document.querySelectorAll( '.wo' ) ) e.style.display = map ? '' : 'none';
+	$( '#timeline' ).style.display = map ? 'none' : '';
+	if ( !map ) cam.fly = false;
+	hint();
+}
+
+function fillSelect( sel, list ) {
+	sel.innerHTML = list.length ? list.map( s => `<option>${esc( s )}</option>` ).join( '' ) : '<option value="">(none: model shaders)</option>';
+}
+
+async function applySkins() {
+	const v = cur;
+	const load = async ( meshes, name, sel ) => {
+		const f = sel.value ? find( v.dir + '/' + name + '_' + sel.value + '.skin' ) : null;
+		const map = f ? MV.parseSkin( await text( f ) ) : {};
+		await Promise.all( meshes.map( async m => { m.texPath = map[m.surf.name] || m.surf.shader; m.rec = await texture( m.texPath ); } ) );
+	};
+	await load( v.meshes, v.base, $( '#skin' ) );
+	if ( v.head ) await load( v.headMeshes, 'head', $( '#hskin' ) );
+	if ( cur === v ) { showInfo(); texTable(); }
+}
+$( '#skin' ).onchange = $( '#hskin' ).onchange = () => cur && !cur.map && applySkins();
+
+$( '#lod' ).oninput = () => {
+	const f = +$( '#lod' ).value;
+	$( '#lodv' ).textContent = Math.round( f * 100 ) + '%';
+	if ( !cur || !cur.mds ) return;
+	for ( const m of cur.meshes ) setTris( m, lodTris( m.surf, f ) );
+	update( true ); showInfo();
+};
+
+/* ---------------- playing ---------------- */
+
+const play = { anim: null, t: 0, playing: true, torso: null, tt: 0 };
+
+function frameAt( anim, t ) {
+	const len = Math.max( 1, anim.length ), step = Math.max( 1, +$( '#step' ).value | 0 );
+	if ( !$( '#lerp' ).checked ) t = Math.floor( t );
+	if ( step > 1 ) {
+		const a = Math.floor( t / step ) * step, b = Math.min( a + step, len - 1 );
+		return [anim.first + a, anim.first + b, b > a ? Math.min( 1, ( t - a ) / ( b - a ) ) : 0];
+	}
+	const a = Math.floor( t );
+	return [anim.first + a, Math.min( anim.first + a + 1, anim.first + len - 1 ), t - a];
+}
+
+function poseAt( v, f ) {
+	f = Math.max( 0, Math.min( v.numFrames - 1, f ) );
+	let p = v.poses.get( f );
+	if ( !p ) {
+		if ( v.poses.size > 600 ) v.poses.clear();
+		p = MV.mdsPose( v.mds, f );
+		v.poses.set( f, p );
+	}
+	return p;
+}
+
+function mdsBlend( v, anim, t ) {
+	const [a, b, w] = frameAt( anim, t );
+	const A = poseAt( v, a );
+	if ( !A ) return null;
+	return w > 0 && b !== a ? MV.blendPose( A, poseAt( v, b ), w ) : A;
+}
+
+function update( force ) {
+	const v = cur;
+	if ( !v || v.map || !play.anim ) return;
+	if ( v.mds ) {
+		let pose = mdsBlend( v, play.anim, play.t );
+		if ( !pose ) return;
+		if ( play.torso ) {
+			const tp = mdsBlend( v, play.torso, play.tt );
+			if ( tp ) pose = MV.blendPose( pose, tp, v.mds.bones.map( b => b.torsoWeight ), true );
+		}
+		const T = MV.boneOrigins( v.mds, pose );
+		v.pose = pose; v.T = T;
+		v.meshes.forEach( m => { MV.skinSurface( m.surf, pose, T, m.pos ); upload( m ); } );
+		if ( v.head && v.headTag && $( '#showhead' ).checked ) {
+			// on tag_head: origin + each axis (the bone's rows) * the vertex
+			const b = v.headTag.bone, M = pose.M, o = b * 9;
+			v.headMeshes.forEach( m => {
+				if ( !m.local ) { m.local = new Float32Array( m.nv * 3 ); MV.vertFrame( v.head, m.surf, 0, m.local ); }
+				for ( let i = 0; i < m.nv; i++ ) {
+					const x = m.local[i * 3], y = m.local[i * 3 + 1], z = m.local[i * 3 + 2];
+					for ( let c = 0; c < 3; c++ ) m.pos[i * 3 + c] = T[b * 3 + c] + x * M[o + c] + y * M[o + 3 + c] + z * M[o + 6 + c];
+				}
+				upload( m );
+			} );
+		}
+	} else {
+		const [a, b, w] = frameAt( play.anim, play.t );
+		v.meshes.forEach( m => {
+			MV.vertFrame( v.vm, m.surf, a, m.pos );
+			if ( w > 0 && b !== a ) {
+				const t = m.tmp || ( m.tmp = new Float32Array( m.nv * 3 ) );
+				MV.vertFrame( v.vm, m.surf, b, t );
+				for ( let i = 0; i < t.length; i++ ) m.pos[i] += ( t[i] - m.pos[i] ) * w;
+			}
+			upload( m );
+		} );
+	}
+	if ( force === true ) {
+		const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+		for ( const m of v.meshes ) for ( let i = 0; i < m.pos.length; i += 3 ) for ( let c = 0; c < 3; c++ ) { lo[c] = Math.min( lo[c], m.pos[i + c] ); hi[c] = Math.max( hi[c], m.pos[i + c] ); }
+		if ( !v.meshes.length && v.T ) for ( let i = 0; i < v.T.length; i += 3 ) for ( let c = 0; c < 3; c++ ) { lo[c] = Math.min( lo[c], v.T[i + c] ); hi[c] = Math.max( hi[c], v.T[i + c] ); }
+		if ( lo[0] < 1e9 ) fitCamera( lo, hi );
+	}
+}
+
+let last = performance.now();
+function tick( now ) {
+	const dt = Math.min( 0.1, ( now - last ) / 1000 );
+	last = now;
+	flyMove( dt );
+	if ( cur && !cur.map && play.anim ) {
+		if ( play.playing ) {
+			const sp = +$( '#speed' ).value, rep = $( '#repeat' ).checked;
+			const adv = ( a, t ) => { const len = Math.max( 1, a.length ); t += dt * a.fps * sp; if ( t > len - 1 ) t = rep ? ( len > 1 ? t % len : 0 ) : len - 1; return t; };
+			play.t = adv( play.anim, play.t );
+			if ( play.torso ) play.tt = adv( play.torso, play.tt );
+		}
+		update();
+		$( '#scrub' ).max = Math.max( 0, play.anim.length - 1 );
+		$( '#scrub' ).value = play.t;
+		const [a] = frameAt( play.anim, play.t );
+		$( '#fr' ).textContent = `frame ${a} (${Math.floor( play.t )}/${play.anim.length - 1})${cur.mds && MV.fromBase( cur.mds, a ) ? ' base' : ''}`;
+		drawStrip();
+	}
+	draw();
+	requestAnimationFrame( tick );
+}
+
+// the meshes drawn, in order (picking numbers them from 1)
+function drawScene( picking ) {
+	const w = cv.width, h = cv.height;
+	gl.viewport( 0, 0, w, h );
+	gl.clearColor( picking ? 0 : 0.11, picking ? 0 : 0.12, picking ? 0 : 0.14, 1 ); gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+	if ( !cur ) return [];
+	const { R, fw } = viewProj();
+	gl.useProgram( prog );
+	gl.uniformMatrix4fv( U.mvp, false, R );
+	gl.uniform3fv( U.L, norm( [-fw[0] + 0.3, -fw[1] + 0.2, -fw[2] + 0.6] ) );
+	gl.uniform1f( U.bright, +$( '#bright' ).value );
+	gl.uniform1i( U.tex, 0 );
+	gl.enable( gl.DEPTH_TEST ); gl.disable( gl.CULL_FACE );
+	gl.enable( gl.POLYGON_OFFSET_FILL ); gl.polygonOffset( 1, 1 );
+	const meshes = [...cur.meshes, ...( cur.head && $( '#showhead' ).checked && cur.mds ? cur.headMeshes : [] )];
+	const useTex = $( '#tex' ).checked, vlight = !!cur.map && $( '#light' ).checked;
+	const pulse = 0.25 + 0.2 * Math.sin( performance.now() / 150 );
+	meshes.forEach( ( m, i ) => {
+		const t = m.rec && m.rec.t;
+		gl.uniform1i( U.useTex, useTex && t ? 1 : 0 );
+		if ( t ) gl.bindTexture( gl.TEXTURE_2D, t );
+		if ( picking ) {
+			gl.uniform1i( U.mode, 3 );
+			gl.uniform3f( U.col, ( ( i + 1 ) & 255 ) / 255, ( ( i + 1 ) >> 8 & 255 ) / 255, ( ( i + 1 ) >> 16 & 255 ) / 255 );
+		} else {
+			gl.uniform1i( U.mode, m.sky && !t ? 2 : 0 );
+			gl.uniform3f( U.col, 0.35, 0.45, 0.6 );
+			gl.uniform1i( U.vlight, vlight && m.cb ? 1 : 0 );
+			gl.uniform1f( U.hl, selected && m.rec && m.rec.key === selected ? pulse : 0 );
+		}
+		if ( !m.cb ) gl.vertexAttrib4f( 3, 1, 1, 1, 1 );
+		gl.bindVertexArray( m.vao );
+		gl.drawElements( gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0 );
+	} );
+	gl.disable( gl.POLYGON_OFFSET_FILL );
+	if ( !picking && $( '#wire' ).checked ) {
+		gl.uniform1i( U.mode, 2 ); gl.uniform3f( U.col, 0.35, 0.65, 1 );
+		for ( const m of meshes ) { wireLines( m ); gl.bindVertexArray( m.wvao ); gl.drawElements( gl.LINES, m.lcount, gl.UNSIGNED_INT, 0 ); }
+	}
+	if ( !picking && $( '#skel' ).checked && cur.mds && cur.T ) drawBones();
+	gl.bindVertexArray( null );
+	return meshes;
+}
+
+function draw() {
+	const dpr = window.devicePixelRatio || 1, w = Math.round( cv.clientWidth * dpr ), h = Math.round( cv.clientHeight * dpr );
+	if ( cv.width !== w || cv.height !== h ) { cv.width = w; cv.height = h; }
+	drawScene( false );
+}
+
+let boneVao = null, boneBuf = null;
+function drawBones() {
+	if ( !boneVao ) {
+		boneVao = gl.createVertexArray(); gl.bindVertexArray( boneVao );
+		boneBuf = gl.createBuffer(); gl.bindBuffer( gl.ARRAY_BUFFER, boneBuf );
+		gl.enableVertexAttribArray( 0 ); gl.vertexAttribPointer( 0, 3, gl.FLOAT, false, 0, 0 );
+	}
+	const m = cur.mds, T = cur.T, l = [];
+	m.bones.forEach( ( b, i ) => { if ( b.parent >= 0 ) l.push( T[b.parent * 3], T[b.parent * 3 + 1], T[b.parent * 3 + 2], T[i * 3], T[i * 3 + 1], T[i * 3 + 2] ); } );
+	gl.bindVertexArray( boneVao ); gl.bindBuffer( gl.ARRAY_BUFFER, boneBuf ); gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( l ), gl.DYNAMIC_DRAW );
+	gl.disable( gl.DEPTH_TEST );
+	gl.uniform1i( U.mode, 2 ); gl.uniform3f( U.col, 1, 0.75, 0.2 );
+	gl.drawArrays( gl.LINES, 0, l.length / 3 );
+	gl.enable( gl.DEPTH_TEST );
+}
+
+/* the key bytes of each frame of the animation, the frame on, the kept ones */
+function drawStrip() {
+	const c = $( '#strip' ), dpr = window.devicePixelRatio || 1, w = Math.round( c.clientWidth * dpr ), h = Math.round( c.clientHeight * dpr );
+	if ( c.width !== w || c.height !== h ) { c.width = w; c.height = h; }
+	const x = c.getContext( '2d' ), a = play.anim, v = cur, len = Math.max( 1, a.length );
+	x.clearRect( 0, 0, w, h );
+	let mx = 1;
+	for ( let i = 0; i < len; i++ ) mx = Math.max( mx, ( v.cost[a.first + i] || 0 ) + ( v.baseCost[a.first + i] || 0 ) );
+	const bw = w / len, step = Math.max( 1, +$( '#step' ).value | 0 );
+	for ( let i = 0; i < len; i++ ) {
+		const f = a.first + i, b = ( ( v.cost[f] || 0 ) + ( v.baseCost[f] || 0 ) ) / mx * ( h - 14 );
+		x.fillStyle = v.mds && MV.fromBase( v.mds, f ) ? '#556' : step > 1 && i % step && i !== len - 1 ? '#5a3030' : '#3d7bd0';
+		x.fillRect( i * bw, h - b, Math.max( 1, bw - ( bw > 3 ? 1 : 0 ) ), b );
+	}
+	x.fillStyle = '#fff';
+	x.fillRect( play.t * bw, 0, Math.max( 1.5 * dpr, bw * 0.3 ), h );
+	let sum = 0, bsum = 0;
+	for ( let i = 0; i < len; i++ ) { sum += v.cost[a.first + i] || 0; bsum += v.baseCost[a.first + i] || 0; }
+	x.font = `${11 * dpr}px system-ui`; x.fillStyle = '#d8dce3';
+	x.fillText( `${a.name}: ${len} frames, ${K( sum )} K of keys${bsum ? ` + ${K( bsum )} K in the shared base (grey)` : ''}${step > 1 ? ` · red: frames step ${step} would drop` : ''} · tallest ${mx | 0} B`, 4, 12 * dpr );
+}
+const stripSeek = e => { if ( !cur ) return; const r = $( '#strip' ).getBoundingClientRect(); play.t = Math.max( 0, Math.min( play.anim.length - 1, ( e.clientX - r.left ) / r.width * play.anim.length ) ); setPlaying( false ); };
+$( '#strip' ).addEventListener( 'pointerdown', e => { stripSeek( e ); $( '#strip' ).onpointermove = ev => ev.buttons && stripSeek( ev ); } );
+
+function setPlaying( p ) { play.playing = p; $( '#playb' ).textContent = p ? '❚❚' : '▶'; }
+$( '#playb' ).onclick = () => setPlaying( !play.playing );
+$( '#scrub' ).oninput = () => { play.t = +$( '#scrub' ).value; setPlaying( false ); };
+document.addEventListener( 'keydown', e => {
+	if ( !cur || cur.map || e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox' || e.target.tagName === 'SELECT' ) return;
+	if ( e.code === 'Space' ) { e.preventDefault(); setPlaying( !play.playing ); }
+	if ( e.code === 'ArrowRight' || e.code === 'ArrowLeft' ) { e.preventDefault(); setPlaying( false ); play.t = Math.max( 0, Math.min( play.anim.length - 1, Math.floor( play.t ) + ( e.code === 'ArrowRight' ? 1 : -1 ) ) ); }
+	if ( e.code === 'ArrowDown' || e.code === 'ArrowUp' ) { e.preventDefault(); const l = cur.anims, i = l.indexOf( play.anim ) + ( e.code === 'ArrowDown' ? 1 : -1 ); if ( l[i] ) selectAnim( l[i] ); }
+} );
+
+function fillTorso() {
+	$( '#torso' ).innerHTML = '<option value="">(same)</option>' + cur.anims.filter( a => !a.all ).map( ( a, i ) => `<option value="${i}">${esc( a.name )}</option>` ).join( '' );
+	$( '#torso' ).disabled = !cur.mds;
+}
+$( '#torso' ).onchange = () => { const i = $( '#torso' ).value; play.torso = i === '' ? null : cur.anims.filter( a => !a.all )[+i]; play.tt = 0; };
+
+/* ---------------- info ---------------- */
+
+function showInfo() {
+	const v = cur;
+	if ( v.map ) {
+		const w = v.map, recs = viewRecs(), vram = recs.reduce( ( a, r ) => a + ( r.disc ? r.disc.bytes : 0 ), 0 );
+		const rows = [
+			['map', `${esc( v.entry.rel )} · ${K( w.bytes )} K`],
+			['world', `${w.numSurfaces} surfaces as ${w.meshes.length} shader meshes · ${w.numVerts} verts · ${w.numTris} tris`],
+			['entities', `${v.ents.length} · ${v.entModels || 0} with models drawn${v.entMissing && v.entMissing.size ? ` · <span class="n">not found: ${esc( [...v.entMissing].join( ', ' ) )}</span>` : ''}`],
+			['textures', `${recs.length} images · ${K( vram )} K of VRAM (the .dt files)${recs.filter( r => !r.disc ).length ? ` · ${recs.filter( r => !r.disc ).length} without a .dt` : ''}`],
+		];
+		$( '#info' ).innerHTML = rows.map( ( [a, b] ) => `<div>${a}</div><div>${b}</div>` ).join( '' );
+		return;
+	}
+	const m = v.mds || v.vm;
+	const verts = v.meshes.reduce( ( a, x ) => a + x.nv, 0 ), tris = v.meshes.reduce( ( a, x ) => a + x.count / 3, 0 );
+	const keys = v.cost.reduce( ( a, b ) => a + b, 0 );
+	const rows = [
+		['file', `${esc( v.entry.rel )} · ${K( m.bytes )} K`],
+		['type', v.mds ? `skeletal MDSC v${m.version}${m.share ? ' (frames shared with ' + esc( m.share.base ) + ( m.baseModel ? '' : ' MISSING' ) + ')' : ''}` : m.surfaces.map( s => s.type ).filter( ( x, i, a ) => a.indexOf( x ) === i ).join( ', ' )],
+		['frames', v.numFrames + ( v.mds ? ` · ${m.numBones} bones · ${m.tags.length} tags` : '' )],
+		['mesh', `${m.surfaces.length} surfaces · ${verts} verts · ${tris} tris` + ( v.mds ? ` · ~${K( m.meshBytes )} K` : '' )],
+		['animation', `${K( keys )} K of keys` + ( v.mds ? ` (${K( m.animBytes )} K with headers)` : ` (${K( m.animBytes )} K in file)` )],
+	];
+	if ( v.head ) rows.push( ['head', `${esc( v.headFile.name )} · ${K( v.head.bytes )} K · ${v.head.numFrames} frames`] );
+	$( '#info' ).innerHTML = rows.map( ( [a, b] ) => `<div>${a}</div><div>${b}</div>` ).join( '' );
+}
+
+/* ---------------- textures: the list of this view's, and the one picked ---------------- */
+
+let selected = null, texSort = 'kb';
+const viewMeshes = () => cur ? [...cur.meshes, ...cur.headMeshes] : [];
+function viewRecs() {
+	const m = new Map();
+	for ( const x of viewMeshes() ) if ( x.rec ) { const e = m.get( x.rec.key ); if ( e ) e.uses++; else m.set( x.rec.key, Object.assign( x.rec, { uses: 1 } ) ); }
+	return [...m.values()];
+}
+const setDesc = s => s ? `${s.w}x${s.h}${s.fmt === 'vq' ? '' : ' ' + s.fmt}` : '';
+
+function texTable() {
+	if ( !cur ) return;
+	const recs = viewRecs();
+	const kb = r => r.disc ? r.disc.bytes : 0;
+	recs.sort( texSort === 'name' ? ( a, b ) => a.key.localeCompare( b.key ) : texSort === 'uses' ? ( a, b ) => b.uses - a.uses : texSort === 'dc' ? ( a, b ) => ( b.disc ? b.disc.w * b.disc.h : 0 ) - ( a.disc ? a.disc.w * a.disc.h : 0 ) : ( a, b ) => kb( b ) - kb( a ) );
+	$( '#texsum' ).textContent = `Textures (${recs.length}, ${K( recs.reduce( ( a, r ) => a + kb( r ), 0 ) )} K VRAM)`;
+	const tb = $( '#texlist' );
+	tb.innerHTML = '';
+	for ( const r of recs ) {
+		const p = panelList && panelList.get( r.key ), tr = document.createElement( 'tr' );
+		tr.className = r.key === selected ? 'cur' : '';
+		tr.innerHTML = `<td class="nm" title="${esc( r.key )}">${esc( r.key )}</td><td class="kc">${r.disc ? `${r.disc.w}x${r.disc.h} ${r.disc.fmt}` : '<span class="n">none</span>'}</td>` +
+			`<td>${r.disc ? K( r.disc.bytes ) : ''}</td><td>${r.uses}</td><td class="${p && p.set ? 'y' : 'dim'}">${p ? ( p.set ? setDesc( p.set ) : 'default' ) : ''}${r.view !== 'disc' ? ' <span class="n">(' + r.view + ')</span>' : ''}</td>`;
+		tr.onclick = () => selectTex( r.key );
+		tb.append( tr );
+	}
+}
+for ( const th of document.querySelectorAll( 'th[data-t]' ) ) th.onclick = () => { texSort = th.dataset.t; texTable(); };
+
+let texReq = 0;
+async function selectTex( key, mesh ) {
+	selected = key;
+	texTable();
+	const box = $( '#texbox' );
+	if ( !key ) {
+		box.innerHTML = mesh ? `<span class="n">${esc( mesh.surf.shader || mesh.surf.name )}: no image found for it</span>` : 'click a surface (or a row below)';
+		return;
+	}
+	const rec = await texs.get( key ), p = panelList && panelList.get( key );
+	const users = viewMeshes().filter( m => m.rec === rec ).map( m => m.surf.name || m.surf.shader );
+	let h = `<b>${esc( key )}</b><br><span class="dim">on: ${esc( [...new Set( users )].join( ', ' ) )}</span><br>`;
+	h += rec.disc ? `disc: ${rec.disc.w}x${rec.disc.h} ${rec.disc.fmt} · <b>${K( rec.disc.bytes )} K</b>` : '<span class="n">no .dt on the disc</span>';
+	if ( !server ) {
+		box.innerHTML = h + '<br><span class="dim">run <code>make texpanel</code> and open /view/ to change it</span>';
+		return;
+	}
+	if ( !p ) {
+		box.innerHTML = h + '<br><span class="n">not one of texpanel\'s images (no .tga / .jpg of that name)</span>';
+		return;
+	}
+	const s = p.set || p.def, sizes = [8, 16, 32, 64, 128, 256, 512, 1024];
+	const opt = ( list, v ) => list.map( x => `<option${x == v ? ' selected' : ''}>${x}</option>` ).join( '' );
+	h += `<br>original ${p.w}x${p.h} · texsizes.txt: ${p.set ? '<span class="y">' + setDesc( p.set ) + '</span>' : 'default ' + setDesc( p.def )}`;
+	h += `<div class="row">W <select id="tw">${opt( sizes, s.w )}</select> H <select id="th">${opt( sizes, s.h )}</select>
+		<select id="tf">${opt( ['vq', 'vq565', 'vq1555', 'vq4444', 'raw', '565', '1555', '4444', 'yuv', 'pal8'], s.fmt )}</select>
+		<button class="go" id="tsave">save to texsizes.txt</button><button id="tdef">default</button></div>
+		<div class="row">show <label><input type="radio" name="tv" value="disc"${rec.view === 'disc' ? ' checked' : ''}> disc .dt</label>
+		<label><input type="radio" name="tv" value="edit"${rec.view === 'edit' ? ' checked' : ''}> this setting</label>
+		<label><input type="radio" name="tv" value="orig"${rec.view === 'orig' ? ' checked' : ''}> PC original</label></div>
+		<div id="tstat" class="dim"></div><img id="timg">`;
+	box.innerHTML = h;
+	const choice = () => ( { w: +$( '#tw' ).value, h: +$( '#th' ).value, fmt: $( '#tf' ).value } );
+	const show = async () => {
+		const view = document.querySelector( 'input[name=tv]:checked' ).value, id = ++texReq;
+		await setView( rec, view, choice() );
+		if ( id !== texReq ) return;
+		$( '#tstat' ).innerHTML = rec.view === 'edit' && rec.editInfo
+			? `pvrtex: ${rec.editInfo.w}x${rec.editInfo.h} ${rec.editInfo.fmt}${rec.editInfo.mips ? ' + mips' : ''} · <b>${K( rec.editInfo.bytes )} K</b>` + ( rec.disc ? ` (${rec.editInfo.bytes >= rec.disc.bytes ? '+' : ''}${K( rec.editInfo.bytes - rec.disc.bytes )} K on the disc's)` : '' )
+			: rec.view === 'orig' ? `the PC's ${p.w}x${p.h}` : '';
+		$( '#timg' ).src = rec.view === 'orig' ? '/api/orig?name=' + encodeURIComponent( key ) : rec.view === 'edit' ? rec.editUrl : '';
+		$( '#timg' ).style.display = rec.view === 'disc' ? 'none' : '';
+		texTable();
+	};
+	for ( const id of ['#tw', '#th', '#tf'] ) $( id ).onchange = () => { document.querySelector( 'input[name=tv][value=edit]' ).checked = true; show(); };
+	for ( const r of document.querySelectorAll( 'input[name=tv]' ) ) r.onchange = show;
+	const save = async set => {
+		const r = await fetch( '/api/save', { method: 'POST', body: JSON.stringify( { name: key, set } ) } ), j = await r.json();
+		if ( !r.ok ) { $( '#tstat' ).innerHTML = `<span class="err">${esc( j.error )}</span>`; return; }
+		p.set = j.set;
+		selectTex( key );
+	};
+	$( '#tsave' ).onclick = () => save( choice() );
+	$( '#tdef' ).onclick = () => save( null );
+	show();
+}
+
+// what an image is drawn with: the disc's .dt, pvrtex's for a setting, or the PC's
+async function setView( rec, view, s ) {
+	if ( view === 'disc' ) { rec.view = 'disc'; rec.t = rec.disc && rec.disc.t; return; }
+	const url = view === 'orig' ? `/api/orig?name=${encodeURIComponent( rec.key )}` : `/api/dc?name=${encodeURIComponent( rec.key )}&w=${s.w}&h=${s.h}&fmt=${s.fmt}`;
+	$( '#tstat' ) && ( $( '#tstat' ).textContent = view === 'edit' ? 'pvrtex…' : 'loading…' );
+	const r = await fetch( url );
+	if ( !r.ok ) { $( '#tstat' ).innerHTML = `<span class="err">${esc( ( await r.json() ).error )}</span>`; return; }
+	const blob = await r.blob(), bmp = await createImageBitmap( blob );
+	if ( rec.alt ) gl.deleteTexture( rec.alt );
+	rec.alt = glTexture( bmp );
+	rec.t = rec.alt; rec.view = view;
+	if ( view === 'edit' ) { rec.editInfo = JSON.parse( r.headers.get( 'X-Info' ) ); if ( rec.editUrl ) URL.revokeObjectURL( rec.editUrl ); rec.editUrl = URL.createObjectURL( blob ); }
+}
+
+/* ---------------- the animation table ---------------- */
+
+const used = ( v, name ) => {
+	const re = new RegExp( '(^|[^a-z0-9_])' + name.toLowerCase().replace( /[^a-z0-9_]/g, '\\$&' ) + '($|[^a-z0-9_])' );
+	return [re.test( v.script ), aiText === null ? null : re.test( aiText )];
+};
+const animCost = ( v, a ) => { let s = 0; for ( let i = 0; i < a.length; i++ ) s += v.cost[a.first + i] || 0; return s; };
+const animBase = ( v, a ) => { let s = 0; for ( let i = 0; i < a.length; i++ ) s += v.baseCost[a.first + i] || 0; return s; };
+const kCell = ( v, a ) => K( animCost( v, a ) ) + ( animBase( v, a ) ? ` <span class="dim">+${K( animBase( v, a ) )}</span>` : '' );
+
+let sortBy = null;
+function buildTable() {
+	const v = cur, tb = $( '#anims' );
+	let list = v.anims.slice();
+	if ( sortBy === 'k' ) list.sort( ( a, b ) => animCost( v, b ) + animBase( v, b ) - animCost( v, a ) - animBase( v, a ) );
+	else if ( sortBy === 'name' ) list.sort( ( a, b ) => a.name.localeCompare( b.name ) );
+	else if ( sortBy === 'use' ) list.sort( ( a, b ) => used( v, a.name ).filter( Boolean ).length - used( v, b.name ).filter( Boolean ).length );
+	else if ( sortBy ) list.sort( ( a, b ) => b[sortBy] - a[sortBy] );
+	tb.innerHTML = '';
+	for ( const a of list ) {
+		const tr = document.createElement( 'tr' ), [sc, ai] = a.all ? [true, true] : used( v, a.name );
+		a.row = tr;
+		tr.className = ( a === play.anim ? 'cur ' : '' ) + ( a.drop ? 'drop' : '' );
+		const num = ( k, min ) => `<input type="number" data-k="${k}" min="${min}" value="${a[k]}">`;
+		tr.innerHTML = `<td>${a.all ? '' : `<input type="checkbox" data-k="drop" ${a.drop ? 'checked' : ''}>`}</td><td class="nm" title="${esc( a.name )}">${esc( a.name )}</td>
+			<td>${num( 'first', 0 )}</td><td>${num( 'length', 1 )}</td><td>${num( 'fps', 1 )}</td><td>${a.all ? '' : `<input type="checkbox" data-k="loop" ${a.loop ? 'checked' : ''}>`}</td>
+			<td class="kc">${kCell( v, a )}</td><td class="${a.all ? '' : sc ? 'y' : 'n'}">${a.all ? '' : sc ? 'yes' : 'no'}</td><td class="${a.all || ai === null ? 'dim' : ai ? 'y' : 'n'}">${a.all ? '' : ai === null ? '…' : ai ? 'yes' : 'no'}</td>`;
+		tr.querySelector( '.nm' ).onclick = () => selectAnim( a );
+		for ( const inp of tr.querySelectorAll( 'input' ) ) inp.onchange = inp.oninput = () => {
+			const k = inp.dataset.k;
+			if ( inp.type === 'checkbox' ) a[k] = k === 'loop' ? +inp.checked : inp.checked;
+			else a[k] = Math.max( +inp.min, Math.min( k === 'fps' ? 200 : v.numFrames, +inp.value || 0 ) );
+			if ( k === 'first' || k === 'length' ) { a.first = Math.min( a.first, v.numFrames - 1 ); a.length = Math.min( a.length, v.numFrames - a.first ); tr.querySelector( '.kc' ).innerHTML = kCell( v, a ); if ( play.anim === a ) play.t = Math.min( play.t, a.length - 1 ); }
+			tr.className = ( a === play.anim ? 'cur ' : '' ) + ( a.drop ? 'drop' : '' );
+			summary();
+		};
+		tb.append( tr );
+	}
+	summary();
+}
+for ( const th of document.querySelectorAll( 'th[data-s]' ) ) th.onclick = () => { sortBy = sortBy === th.dataset.s ? null : th.dataset.s; buildTable(); };
+
+function selectAnim( a ) {
+	for ( const r of document.querySelectorAll( '#anims tr.cur' ) ) r.classList.remove( 'cur' );
+	play.anim = a; play.t = 0; setPlaying( true );
+	if ( a.row ) { a.row.classList.add( 'cur' ); a.row.scrollIntoView( { block: 'nearest' } ); }
+}
+
+// what ticking saves: frames only ticked animations use
+function summary() {
+	const v = cur, kept = new Uint8Array( v.numFrames ), gone = new Uint8Array( v.numFrames );
+	const real = v.anims.filter( a => !a.all );
+	for ( const a of real ) for ( let i = 0; i < a.length; i++ ) ( a.drop ? gone : kept )[a.first + i] = 1;
+	let save = 0, frames = 0, inNone = 0, inNoneK = 0;
+	for ( let f = 0; f < v.numFrames; f++ ) {
+		if ( gone[f] && !kept[f] ) { save += v.cost[f]; frames++; }
+		if ( !gone[f] && !kept[f] ) { inNone++; inNoneK += v.cost[f]; }
+	}
+	const total = v.cost.reduce( ( a, b ) => a + b, 0 ), baseTotal = v.baseCost.reduce( ( a, b ) => a + b, 0 ), ticked = real.filter( a => a.drop ).length;
+	const unused = real.filter( a => { const [s, ai] = used( v, a.name ); return !s && ai === false; } );
+	$( '#sum' ).innerHTML = real.length
+		? `${real.length} animations, ${K( total )} K of keys${baseTotal ? ` (+ ${K( baseTotal )} K of frames it plays from the shared base)` : ''}.<br>` +
+		  `ticked ${ticked}: ${frames} frames only they use, <b>≈ ${K( save )} K</b> saved (${( save / total * 100 || 0 ).toFixed( 1 )}%)<br>` +
+		  `${inNone} frames in no animation: ${K( inNoneK )} K<br>` +
+		  `in neither the script nor any .ai: ${aiText === null ? '…' : unused.length + ' (' + K( unused.reduce( ( s, a ) => s + animCost( v, a ), 0 ) ) + ' K)'}`
+		: `no wolfanim.cfg: ${v.numFrames} frames, ${K( total )} K`;
+}
+
+$( '#untick' ).onclick = () => { for ( const a of cur.anims ) a.drop = false; buildTable(); };
+$( '#tickunused' ).onclick = () => { for ( const a of cur.anims ) if ( !a.all ) { const [s, ai] = used( cur, a.name ); a.drop = !s && ai === false; } buildTable(); };
+
+// the cfg with the edited numbers, ticked animations commented out
+$( '#copycfg' ).onclick = () => {
+	const v = cur;
+	if ( !v.cfgText ) return;
+	const byName = new Map( v.anims.filter( a => !a.all ).map( a => [a.name.toLowerCase(), a] ) );
+	const out = v.cfgText.split( /\r?\n/ ).map( line => {
+		const t = line.trim().split( /\s+/ ), a = byName.get( ( t[0] || '' ).toLowerCase() );
+		if ( !a || line.trim().startsWith( '//' ) || !/^\d+$/.test( t[1] || '' ) ) return line;
+		const l = [a.name, a.first, a.length, a.loop, a.fps, a.rest].filter( x => x !== '' ).join( '\t' );
+		return ( a.drop ? '// ' : '' ) + l;
+	} );
+	$( '#ta' ).value = out.join( '\n' );
+	$( '#overlay' ).style.display = 'flex';
+	$( '#ta' ).select();
+};
+$( '#closeov' ).onclick = () => { $( '#overlay' ).style.display = 'none'; };
+
+hint();
+setMode( false );
+tryServer();
+requestAnimationFrame( tick );
+</script>
+</body>
+</html>

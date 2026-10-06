@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <map>
 #include <stdint.h>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,14 @@ extern const int numMdsGroups;
 bool ConvertMdsGroup(const MdsGroup &g, const std::vector<std::vector<uint8_t>> &ins,
                      std::vector<std::vector<uint8_t>> &outs, std::vector<uint8_t> &baseOut,
                      const MdsOptions &opt, MdsStats &st);
+
+/* Takes out of a character's .mds the frames none of its wolfanim.cfg's
+ * animations play (but frame 0), and the cfg's first frames with them. False
+ * (the .mds and cfg as they were) when the cfg isn't one it's sure of how
+ * the game reads; dropped: how many frames went, 0 for none. retire: names
+ * (lower case) of animations nothing plays, their frames taken out too. */
+bool StripMdsFrames(std::vector<uint8_t> &mds, std::string &cfg, const std::set<std::string> *retire,
+                    int &dropped, const char *name);
 
 /* ---- tex.cpp ---- */
 
