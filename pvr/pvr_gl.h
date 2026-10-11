@@ -78,6 +78,9 @@ void pvrglPackedFog( const pvrglPackedFog_t *fog );
 int  pvrglPackedFast( const float *mins, const float *maxs );
 #endif
 int  pvrgl_FogColor( unsigned int rgba );
+/* how far off the sky box is drawn (tr_sky.c's boxSize): GL fogs the sky
+   by that, the PVR's fog table can't tell (the sky's depth is squashed) */
+void pvrglFogSkyDepth( float depth );
 
 /* one entry per GL function the renderer can call, as pvrgl<Name> */
 #define PVRGL_PROCS \

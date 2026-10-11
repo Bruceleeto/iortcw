@@ -847,6 +847,8 @@ static void CL_DCSimNewGame( void ) {
 	int now = Sys_Milliseconds();
 	const char *map = Cvar_VariableString( "dcsim_map" );
 	const int chain = Cvar_VariableIntegerValue( "dcsim_newgame" ) == 3;
+	// +set dcsim_noskip 1: let cutscenes play, and stay in the map (no quitting)
+	const int noskip = Cvar_VariableIntegerValue( "dcsim_noskip" );
 
 	if ( !Cvar_VariableIntegerValue( "dcsim_newgame" ) ) {
 		return;
@@ -857,7 +859,7 @@ static void CL_DCSimNewGame( void ) {
 	if ( !start ) {
 		start = now;
 	}
-	if ( now - ( chain && chainAt ? chainAt : start ) > 60000 ) {
+	if ( !noskip && now - ( chain && chainAt ? chainAt : start ) > 60000 ) {
 		Com_Printf( "DCSIM newgame: a minute and not done, quitting\n" );
 		Cbuf_AddText( "quit\n" );
 		return;
@@ -886,6 +888,9 @@ static void CL_DCSimNewGame( void ) {
 		Cvar_Set( "g_playerstart", "1" );
 		VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_NONE );
 		pregameServerId = cl.serverId;
+		return;
+	}
+	if ( noskip ) {
 		return;
 	}
 	if ( cl.cameraMode && now - lastSkip > 500 ) {

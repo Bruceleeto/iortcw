@@ -579,7 +579,9 @@ typedef struct {
 	int viewportX, viewportY, viewportWidth, viewportHeight;
 	float fovX, fovY;
 	float projectionMatrix[16];
-	cplane_t frustum[4];
+	cplane_t frustum[5];            // [4]: the far plane, if frustumPlanes is 5
+	int frustumPlanes;              // 4, or 5 under a fog with an end (R_SetupFrustum)
+	int frustumBits;                // a bit each
 	vec3_t visBounds[2];
 	float zFar;
 	stereoFrame_t	stereoFrame;
@@ -1324,6 +1326,7 @@ void pvrglPackedFog( const pvrglPackedFog_t *fog );
 int  pvrglPackedFast( const float *mins, const float *maxs );
 #endif
 int  pvrgl_FogColor( unsigned int rgba );
+void pvrglFogSkyDepth( float depth );
 void pvrglPackedBegin( void );
 void pvrglPackedEnd( void );
 void RB_WorldDirectEnd( void );

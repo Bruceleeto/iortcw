@@ -20,15 +20,18 @@
  *
  *   0x000000  OPBs, 300 tiles x (16+0+16+8+16) words, then 3x overflow
  *   0x041A00  region array (type 2, 6 words per tile)
- *   0x044000  vertex buffer (TA_ISP_BASE == PARAM_BASE), 768 KiB,
- *             with the background poly in the last 64 bytes
- *   0x104000  frame buffers, as 32-bit-path addresses 0x104000 (bank A)
- *             and 0x504000 (bank B); their 64-bit image is
- *             [0x208000, 0x334000)
- *   0x334000  texture heap to 0x800000 (pvr_mem_malloc)
+ *   0x044000  vertex buffer (TA_ISP_BASE == PARAM_BASE), pvr_init's
+ *             vertex_buf_size (768 KiB by default), with the background
+ *             poly in the last 64 bytes
+ *   SET_END   frame buffers, as 32-bit-path addresses SET_END (bank A)
+ *             and 0x400000 + SET_END (bank B); their 64-bit image is
+ *             [2 * SET_END, TEX_BASE)
+ *   TEX_BASE  texture heap to 0x800000 (pvr_mem_malloc)
  *
- * The same numbers KOS ends up with for bloom's pvr_init params (vertex
- * 768K, opb {16,0,16,8,16}, overflow 3), so the heap is the same size.
+ * With a 768K vertex buffer these are the numbers KOS ends up with for
+ * bloom's pvr_init params (opb {16,0,16,8,16}, overflow 3), so the heap is
+ * the same size; each 64K more of vertex buffer takes 128K from the heap, as
+ * KOS's double buffered vertex buffers do.
  */
 
 #include <cstdint>
@@ -65,13 +68,14 @@ static uint32_t ol_limit;           /* + OPB_OVERFLOW more of it */
 #define L_REGION_BASE    0x041A00u    /* right after the OPB overflow area */
 #define L_REGION_BYTES   (NTILES * 6 * 4)
 #define ISP_BASE       0x044000u    /* also PARAM_BASE */
-#define VERTEX_BYTES   (768 * 1024)
+static uint32_t vertex_bytes = 768 * 1024;	/* kos_pvr_set_vertex_bytes */
+#define VERTEX_BYTES   vertex_bytes
 #define BG_OFFSET      (VERTEX_BYTES - 64)
 #define ISP_LIMIT      (ISP_BASE + BG_OFFSET)
-#define SET_END        (ISP_BASE + VERTEX_BYTES)          /* 0x104000 */
+#define SET_END        (ISP_BASE + VERTEX_BYTES)          /* 0x104000 at 768K */
 #define FRAME_BYTES    (SCREEN_W * SCREEN_H * 2)
-static const uint32_t frame32[2] = { SET_END, 0x400000u + SET_END };
-#define TEX_BASE       (2 * (SET_END + FRAME_BYTES))     /* 0x334000 */
+static uint32_t frame32[2];        /* { SET_END, 0x400000 + SET_END } */
+#define TEX_BASE       (2 * (SET_END + FRAME_BYTES))     /* 0x334000 at 768K */
 
 static uint8_t *vram;
 static pvr::PVR *hw;
@@ -524,6 +528,14 @@ extern "C" void kos_pvr_set_presort(int enable)
 	presort = enable != 0;
 }
 
+/* pvr_init(vertex_buf_size): the TA's vertex buffer.  Call before
+ * kos_pvr_init(). */
+extern "C" void kos_pvr_set_vertex_bytes(unsigned int bytes)
+{
+	if (bytes)
+		vertex_bytes = (bytes + 31) & ~31u;
+}
+
 extern "C" int kos_pvr_init(void)
 {
 	if (hw)
@@ -542,6 +554,12 @@ extern "C" int kos_pvr_init(void)
 		ol_base_size += opb_words[l] * 4 * NTILES;
 	next_opb_init = OL_BASE + ol_base_size;
 	ol_limit = OL_BASE + ol_base_size * (1 + OPB_OVERFLOW);
+	frame32[0] = SET_END;
+	frame32[1] = 0x400000u + SET_END;
+	if (SET_END + FRAME_BYTES > 0x400000u || TEX_BASE >= VRAM_SIZE) {
+		fprintf(stderr, "kos_pvr: a %u byte vertex buffer leaves no room\n", vertex_bytes);
+		return -1;
+	}
 	if (ol_limit > L_REGION_BASE || L_REGION_BASE + L_REGION_BYTES > ISP_BASE) {
 		fprintf(stderr, "kos_pvr: VRAM layout overlap (ol_limit %x, region end %x)\n",
 			ol_limit, L_REGION_BASE + L_REGION_BYTES);

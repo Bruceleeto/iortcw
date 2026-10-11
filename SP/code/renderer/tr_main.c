@@ -296,7 +296,7 @@ Returns CULL_IN, CULL_CLIP, or CULL_OUT
 R_CullWorldBox
 
 A box in world space against the view frustum's side planes in planeBits
-(15: all four): out when its corner furthest along a plane's normal is
+(15: the four sides, 31 with the far plane): out when its corner furthest along a plane's normal is
 behind the plane
 =================
 */
@@ -304,7 +304,7 @@ DC_HOT( "50" ) qboolean R_CullWorldBox( const vec3_t mins, const vec3_t maxs, in
 	const cplane_t *f = tr.viewParms.frustum;
 	int i;
 
-	for ( i = 0 ; i < 4 ; i++, f++ ) {
+	for ( i = 0 ; i < tr.viewParms.frustumPlanes ; i++, f++ ) {
 		float d;
 
 		if ( !( planeBits & ( 1 << i ) ) ) {
@@ -348,7 +348,7 @@ DC_HOT( "50" ) int R_CullLocalBox( vec3_t bounds[2] ) {
 
 	// check against frustum planes
 	anyBack = 0;
-	for ( i = 0 ; i < 4 ; i++ ) {
+	for ( i = 0 ; i < tr.viewParms.frustumPlanes ; i++ ) {
 		frust = &tr.viewParms.frustum[i];
 
 		front = back = 0;
@@ -402,7 +402,7 @@ DC_HOT( "50" ) int R_CullPointAndRadius( vec3_t pt, float radius ) {
 	}
 
 	// check against frustum planes
-	for ( i = 0 ; i < 4 ; i++ )
+	for ( i = 0 ; i < tr.viewParms.frustumPlanes ; i++ )
 	{
 		frust = &tr.viewParms.frustum[i];
 
@@ -875,6 +875,29 @@ void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymax, floa
 		dest->frustum[i].dist = DotProduct (ofsorigin, dest->frustum[i].normal);
 		SetPlaneSignbits( &dest->frustum[i] );
 	}
+
+	dest->frustumPlanes = 4;
+	dest->frustumBits = 15;
+#ifdef USE_PVR
+	// a fog with an end (GL_LINEAR, the sky not drawn): past it all is the
+	// fog's colour, as the clear is, and R_SetFarClip ends the view there.
+	// GL's far plane clips it; the PVR has none, so leave it out here
+	if ( r_wolffog->integer && glfogNum > FOG_NONE && !( tr.refdef.rdflags & RDF_SKYBOXPORTAL )
+		 && glfogsettings[FOG_CURRENT].registered && glfogsettings[FOG_CURRENT].mode == GL_LINEAR
+		 && glfogsettings[FOG_CURRENT].end > 0 && !r_zfar->value ) {
+		float end = glfogsettings[FOG_CURRENT].end;
+
+		if ( tr.refdef.rdflags & RDF_SNOOPERVIEW ) {
+			end += 1000;    // as R_SetFarClip and R_Fog
+		}
+		VectorNegate( dest->or.axis[0], dest->frustum[4].normal );
+		dest->frustum[4].dist = DotProduct( dest->or.origin, dest->frustum[4].normal ) - end;
+		dest->frustum[4].type = PLANE_NON_AXIAL;
+		SetPlaneSignbits( &dest->frustum[4] );
+		dest->frustumPlanes = 5;
+		dest->frustumBits = 31;
+	}
+#endif
 }
 
 /*

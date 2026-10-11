@@ -1,6 +1,7 @@
 #include "core.h"
 #include "vram.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <algorithm>
 #include <vector>
@@ -699,6 +700,9 @@ void CORE::process_list(TileContext& ctx, ListType list_type,
     constexpr unsigned int MAX_LINK_FOLLOWS    = 4096;
     unsigned int processed = 0;
     unsigned int links     = 0;
+    thread_local std::vector<uint32_t> visited;
+    visited.clear();
+    visited.push_back(obj_list_addr);
 
     for (;;) {
         uint32_t word = vram_read32(addr);
@@ -713,12 +717,23 @@ void CORE::process_list(TileContext& ctx, ListType list_type,
         if (op.type == ObjectPointer::Type::PointerBlockLink) {
             if (op.end_of_list) break;
             uint32_t next = op.next_pointer * 4;
-            if (next == addr || ++links > MAX_LINK_FOLLOWS) {
-                // Self-referential or absurdly long link chain - the OPB
-                // chain for this tile is corrupt.
+            // A block already walked means the chain loops (A -> B -> A
+            // too, not just a self link): every lap would draw the same
+            // objects again, which looks like a hang
+            bool again = next == addr || ++links > MAX_LINK_FOLLOWS;
+            for (std::size_t i = 0; !again && i < visited.size(); ++i) {
+                again = visited[i] == next;
+            }
+            if (again) {
+                static std::atomic<unsigned int> reported{0};
+                if (reported.fetch_add(1) < 20) {
+                    std::fprintf(stderr, "pvr: tile %d,%d list %d: OPB chain loops at 0x%06x after %u links, %u objects\n",
+                                 ctx.tile_x, ctx.tile_y, static_cast<int>(list_type), next, links, processed);
+                }
                 isp_out_of_cache = true;
                 break;
             }
+            visited.push_back(next);
             addr = next;
             continue;
         }
@@ -730,6 +745,11 @@ void CORE::process_list(TileContext& ctx, ListType list_type,
         if (++processed > MAX_OBJECTS_PER_TILE) {
             // More objects in a single tile than any real scene produces;
             // we're almost certainly walking data that isn't an object list.
+            static std::atomic<unsigned int> reported{0};
+            if (reported.fetch_add(1) < 20) {
+                std::fprintf(stderr, "pvr: tile %d,%d list %d: over %u objects, %u links\n",
+                             ctx.tile_x, ctx.tile_y, static_cast<int>(list_type), MAX_OBJECTS_PER_TILE, links);
+            }
             isp_out_of_cache = true;
             break;
         }
@@ -1116,14 +1136,19 @@ Pixel CORE::apply_fog(const Pixel& pixel_color, const TSPInstructionWord& tsp,
         uint32_t fog_col_raw = regs_->read(RegisterName::FOG_COL_RAM);
         Pixel fog_col = Pixel::from_packed(fog_col_raw | 0xFF000000u);
         uint8_t fog_a = static_cast<uint8_t>(std::min(fog_alpha * 255.0f, 255.0f));
-        // fogged = pixel * (1 - fog_alpha) + fog_col * fog_alpha
-        return pixel_color.lerp(fog_col, fog_a);
+        // fogged = pixel * (1 - fog_alpha) + fog_col * fog_alpha, the colour
+        // only: the alpha stays (punch-through's test and the blend take it)
+        Pixel fogged = pixel_color.lerp(fog_col, fog_a);
+        fogged.a = pixel_color.a;
+        return fogged;
     }
     case FogControl::PerVertex: {
         uint8_t fog_a = static_cast<uint8_t>((offset_color >> 24) & 0xFF);
         uint32_t fog_col_raw = regs_->read(RegisterName::FOG_COL_VERT);
         Pixel fog_col = Pixel::from_packed(fog_col_raw | 0xFF000000u);
-        return pixel_color.lerp(fog_col, fog_a);
+        Pixel fogged = pixel_color.lerp(fog_col, fog_a);
+        fogged.a = pixel_color.a;
+        return fogged;
     }
     case FogControl::NoFog:
         return pixel_color;
@@ -1414,7 +1439,9 @@ void CORE::rasterize_triangle(TileContext& ctx, ListType list_type,
 
     // ---- Mip LOD (constant across the triangle) -----------------------------
     // Only meaningful for mipmapped twiddled textures; 0.0 otherwise.
-    const float mip_lod = (isp.texture && tcw.mip_mapped && !tcw.scan_order)
+    // PVR_NOMIP=1: always the full size level, to see what mip choice does
+    static const bool no_mip = std::getenv("PVR_NOMIP") != nullptr;
+    const float mip_lod = (isp.texture && tcw.mip_mapped && !tcw.scan_order && !no_mip)
                           ? compute_mip_lod(tsp, tcw, v0, v1, v2)
                           : 0.0f;
 
@@ -2233,7 +2260,7 @@ void CORE::ThreadPool::parallel_for(std::size_t n,
     {
         std::unique_lock<std::mutex> lock(mtx_);
         cv_done_.wait(lock, [this] {
-            return completed_.load() >= batch_total_;
+            return completed_.load() >= batch_total_ && active_ == 0;
         });
         current_task_ = nullptr;
     }
@@ -2254,20 +2281,21 @@ void CORE::ThreadPool::worker_loop() {
             seen_batch = batch_id_;
             task = current_task_;
             total = batch_total_;
+            if (!task || total == 0) continue;
+            ++active_;
         }
-
-        if (!task || total == 0) continue;
 
         while (true) {
             std::size_t i = next_index_.fetch_add(1);
             if (i >= total) break;
             (*task)(i);
-            std::size_t done_now = completed_.fetch_add(1) + 1;
-            if (done_now == total) {
-                // Last worker wakes the dispatcher.
-                std::lock_guard<std::mutex> lock(mtx_);
-                cv_done_.notify_all();
-            }
+            completed_.fetch_add(1);
+        }
+
+        // Out of this batch: the last one out wakes the dispatcher.
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (--active_ == 0) cv_done_.notify_all();
         }
     }
 }

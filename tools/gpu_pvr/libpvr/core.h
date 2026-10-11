@@ -164,6 +164,10 @@ private:
         std::atomic<std::size_t> next_index_{0};
         std::atomic<std::size_t> completed_{0};
         std::uint64_t batch_id_ = 0;    // incremented per parallel_for call
+        // Workers still inside the current batch (guarded by mtx_). The
+        // next batch waits for 0, so no worker can carry a stale task or
+        // total into it and take its indices.
+        unsigned int active_ = 0;
         bool shutdown_ = false;
     };
 

@@ -53,7 +53,7 @@
 /* the lists are kept in blocks, from one pool for all of them, made as
    frames need them, up to the vertex buffer pvrgl_Init gives the PVR: no
    frame can send it more than that, whichever lists it is in */
-#define VERTEX_BUFFER		( 1024 * 1024 )
+#define VERTEX_BUFFER		( 1280 * 1024 )
 #define LIST_BLOCK			( 16 * 1024 )
 #define LIST_BLOCKS			( VERTEX_BUFFER / LIST_BLOCK )
 
@@ -191,6 +191,13 @@ static struct {
 	uint32_t	fogColor;		/* this frame's vertex fog colour, RGBA bytes */
 	int			fogSet;
 	uint32_t	fogWritten;		/* the colour in the PVR's register, + 1 */
+	/* the GL fog (the map's, R_Fog), by the PVR's fog table */
+	GLenum		fogMode;
+	float		fogDensity, fogStart, fogEnd, fogRGB[3], fogSkyDepth;
+	int			fogClears;		/* the depth clears before this frame's fogged world */
+	int			fogClearsLast;	/* the same for the last frame: the table's */
+	int			fogUsed;
+	float		fogTableFor[9];	/* what the table in the PVR was made for */
 	int			packedOpen;		/* pvrglPackedBegin's batch: its list, -1 none */
 	int			packedList;
 	/* the opaque list is open on the TA from the frame's start (BeginScene),
@@ -575,9 +582,39 @@ void APIENTRY pvrglPolygonOffset( GLfloat factor, GLfloat units ) { (void)factor
 void APIENTRY pvrglScissor( GLint x, GLint y, GLsizei w, GLsizei h ) { (void)x; (void)y; (void)w; (void)h; }
 void APIENTRY pvrglHint( GLenum target, GLenum mode ) { (void)target; (void)mode; }
 void APIENTRY pvrglPixelStorei( GLenum pname, GLint param ) { (void)pname; (void)param; }
-void APIENTRY pvrglFogf( GLenum pname, GLfloat param ) { (void)pname; (void)param; }
-void APIENTRY pvrglFogi( GLenum pname, GLint param ) { (void)pname; (void)param; }
-void APIENTRY pvrglFogfv( GLenum pname, const GLfloat *params ) { (void)pname; (void)params; }
+void APIENTRY pvrglFogi( GLenum pname, GLint param ) {
+	switch ( pname ) {
+	case GL_FOG_MODE:		gl.fogMode = (GLenum)param; break;
+	case GL_FOG_DENSITY:	gl.fogDensity = (float)param; break;
+	case GL_FOG_START:		gl.fogStart = (float)param; break;
+	case GL_FOG_END:		gl.fogEnd = (float)param; break;
+	default:				break;
+	}
+}
+
+void APIENTRY pvrglFogf( GLenum pname, GLfloat param ) {
+	switch ( pname ) {
+	case GL_FOG_MODE:		gl.fogMode = (GLenum)param; break;
+	case GL_FOG_DENSITY:	gl.fogDensity = param; break;
+	case GL_FOG_START:		gl.fogStart = param; break;
+	case GL_FOG_END:		gl.fogEnd = param; break;
+	default:				break;
+	}
+}
+
+void APIENTRY pvrglFogfv( GLenum pname, const GLfloat *params ) {
+	if ( pname == GL_FOG_COLOR ) {
+		gl.fogRGB[0] = params[0];
+		gl.fogRGB[1] = params[1];
+		gl.fogRGB[2] = params[2];
+	} else {
+		pvrglFogf( pname, params[0] );
+	}
+}
+
+void pvrglFogSkyDepth( float depth ) {
+	gl.fogSkyDepth = depth;
+}
 void APIENTRY pvrglClearDepth( GLclampd depth ) { (void)depth; }
 void APIENTRY pvrglDrawBuffer( GLenum mode ) { (void)mode; }
 void APIENTRY pvrglPolygonMode( GLenum face, GLenum mode ) { (void)face; (void)mode; }
@@ -1182,7 +1219,7 @@ typedef struct {
 	uint32_t txrFormat;
 	int width, height, mipmap, alpha, clampS, clampT, linear;
 	GLenum texEnv;
-	int fogOn, cull, depthTest, depthMask;
+	int fogOn, tableFog, cull, depthTest, depthMask;
 	GLenum shadeModel, depthFunc, blendSrc, blendDst;
 } hdrKey_t;
 static hdrKey_t hdrKey;
@@ -1234,6 +1271,19 @@ static DC_HOT( "40" ) int BeginPrimitives( int forPacked ) {
 		key.texEnv = gl.texEnv;
 		key.fogOn = gl.fogArray != NULL || gl.packedFog != NULL;
 	}
+	/* the GL fog by the fog table, which takes the depth as drawn (ds / w):
+	   it's made for the world's depth scale (the last frame's), so a draw
+	   after another number of depth clears goes without. The sky's tiny
+	   scale puts it past the table's far end, slot 0, kept for it */
+	if ( gl.fog && !key.fogOn ) {
+		if ( gl.depthNear >= 1.0f ) {
+			key.tableFog = 1;
+		} else if ( gl.depthFar > 0.0f ) {
+			gl.fogClears = gl.clears;
+			gl.fogUsed = 1;
+			key.tableFog = gl.clears == gl.fogClearsLast;
+		}
+	}
 	key.cull = pvrgl_hwCull && gl.cullFace ? (int)gl.cullMode : 0;
 	key.shadeModel = gl.shadeModel;
 	key.depthTest = gl.depthTest;
@@ -1272,6 +1322,9 @@ static DC_HOT( "40" ) int BeginPrimitives( int forPacked ) {
 	} else {
 		pvr_poly_cxt_col( &cxt, list );
 	}
+	if ( key.tableFog ) {
+		cxt.gen.fog_type = PVR_FOG_TABLE;
+	}
 
 	cxt.gen.culling = PVR_CULLING_NONE;
 	if ( pvrgl_hwCull && gl.cullFace ) {
@@ -1290,6 +1343,11 @@ static DC_HOT( "40" ) int BeginPrimitives( int forPacked ) {
 	if ( list == PVR_LIST_TR_POLY ) {
 		cxt.blend.src = BlendFactor( gl.blendSrc, 0 );
 		cxt.blend.dst = BlendFactor( gl.blendDst, 1 );
+	} else if ( list == PVR_LIST_PT_POLY ) {
+		/* the hardware's must for punch-through (DC system architecture,
+		   TSP instruction word); anything else and the alpha shows */
+		cxt.blend.src = PVR_BLEND_SRCALPHA;
+		cxt.blend.dst = PVR_BLEND_INVSRCALPHA;
 	} else {
 		cxt.blend.src = PVR_BLEND_ONE;
 		cxt.blend.dst = PVR_BLEND_ZERO;
@@ -2751,6 +2809,80 @@ static void BeginScene( void ) {
 	gl.directHasLast = 0;
 }
 
+/* the GL fog's amount at view depth w */
+static float FogAt( float w ) {
+	float f;
+
+	if ( gl.fogMode == GL_LINEAR ) {
+		f = gl.fogEnd > gl.fogStart ? ( w - gl.fogStart ) / ( gl.fogEnd - gl.fogStart ) : 1.0f;
+	} else if ( gl.fogMode == GL_EXP2 ) {
+		f = 1.0f - expf( -( gl.fogDensity * w ) * ( gl.fogDensity * w ) );
+	} else {
+		f = 1.0f - expf( -gl.fogDensity * w );
+	}
+	return f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+}
+
+/* the fog table (DC system architecture, look-up table mode): slot i is
+   for z * FOG_DENSITY = 2^(i >> 4) * (16 + (i & 15)) / 16, clamped to
+   1..255.99, so with FOG_DENSITY = far / ds slot 0 is the depth far and
+   slot 127 far / 256. Linear: far is the end, past it all fog. Exp: far
+   where it's near all fog, within 2048..16384 so the near slots stay
+   close to the eye; slot 0, past it, is the sky's. Each entry has its
+   slot's amount in the high byte, the next's (to blend to) in the low.
+   Written only when it changes: the PVR may be drawing with it */
+static void WriteFogTable( void ) {
+	float for_[9], far, scale = 1.0f, fr, eff;
+	uint8_t a[128];
+	int i, m, e;
+
+	for ( i = 0; i < gl.fogClearsLast; i++ ) {
+		scale *= DEPTH_SCALE_CLEAR;
+	}
+	for_[0] = (float)gl.fogMode;
+	for_[1] = gl.fogDensity;
+	for_[2] = gl.fogStart;
+	for_[3] = gl.fogEnd;
+	for_[4] = gl.fogRGB[0];
+	for_[5] = gl.fogRGB[1];
+	for_[6] = gl.fogRGB[2];
+	for_[7] = gl.fogSkyDepth;
+	for_[8] = scale;
+	if ( !memcmp( for_, gl.fogTableFor, sizeof( for_ ) ) ) {
+		return;
+	}
+	memcpy( gl.fogTableFor, for_, sizeof( for_ ) );
+
+	if ( gl.fogMode == GL_LINEAR ) {
+		far = gl.fogEnd > 1.0f ? gl.fogEnd : 1.0f;
+	} else {
+		far = gl.fogDensity > 0.0f ? 4.6f / gl.fogDensity : 16384.0f;	/* 99% */
+		far = far < 2048.0f ? 2048.0f : far > 16384.0f ? 16384.0f : far;
+	}
+	/* FOG_DENSITY: an 8 bit mantissa, 1.0 its top bit, and an exponent */
+	fr = frexpf( far / scale, &e );
+	m = (int)( fr * 256.0f + 0.5f );
+	e--;
+	if ( m > 255 ) {
+		m = 128;
+		e++;
+	}
+	eff = ldexpf( m / 128.0f, e ) * scale;
+
+	for ( i = 0; i < 128; i++ ) {
+		a[i] = (uint8_t)( FogAt( eff / ldexpf( ( 16 + ( i & 15 ) ) / 16.0f, i >> 4 ) ) * 255.0f + 0.5f );
+	}
+	if ( gl.fogMode != GL_LINEAR ) {
+		a[0] = (uint8_t)( FogAt( gl.fogSkyDepth > 0.0f ? gl.fogSkyDepth : eff ) * 255.0f + 0.5f );
+	}
+
+	PVR_SET( PVR_FOG_DENSITY, ( m << 8 ) | ( e & 0xff ) );
+	for ( i = 0; i < 128; i++ ) {
+		PVR_SET( PVR_FOG_TABLE_BASE + i * 4, ( a[i] << 8 ) | a[i < 127 ? i + 1 : 127] );
+	}
+	PVR_SET( PVR_FOG_TABLE_COLOR, PackColor( gl.fogRGB[0], gl.fogRGB[1], gl.fogRGB[2], 0.0f ) );
+}
+
 void pvrgl_EndFrame( void ) {
 	static const int order[3] = { PVR_LIST_OP_POLY, PVR_LIST_PT_POLY, PVR_LIST_TR_POLY };
 	int i;
@@ -2767,6 +2899,11 @@ void pvrgl_EndFrame( void ) {
 		gl.fogWritten = gl.fogColor + 1;
 	}
 	gl.fogSet = 0;
+	if ( gl.fogUsed ) {
+		gl.fogClearsLast = gl.fogClears;
+		gl.fogUsed = 0;
+	}
+	WriteFogTable();
 	PROF_COUNT( STAT_TR, gl.lists[PVR_LIST_TR_POLY].used / 32 );
 	PROF_BEGIN( PROF_SUBMIT );
 	if ( !gl.sceneOpen ) {

@@ -477,7 +477,7 @@ void R_AddBrushModelSurfaces( trRefEntity_t *ent ) {
 
 	for ( i = 0 ; i < bmodel->numSurfaces ; i++ ) {
 		( bmodel->firstSurface + i )->fogIndex = fognum;
-		R_AddWorldSurface( bmodel->firstSurface + i, tr.currentEntity->needDlights, 15 );
+		R_AddWorldSurface( bmodel->firstSurface + i, tr.currentEntity->needDlights, tr.viewParms.frustumBits );
 	}
 //----(SA) end
 }
@@ -554,6 +554,16 @@ static DC_HOT( "50" ) void R_RecursiveWorldNode( mnode_t *node, unsigned int pla
 				}
 				if ( r == 1 ) {
 					planeBits &= ~8;            // all descendants will also be in front
+				}
+			}
+
+			if ( planeBits & 16 ) {             // the far plane (R_SetupFrustum)
+				r = BoxOnPlaneSide( mins, maxs, &tr.viewParms.frustum[4] );
+				if ( r == 2 ) {
+					return;                     // culled
+				}
+				if ( r == 1 ) {
+					planeBits &= ~16;
 				}
 			}
 
@@ -821,6 +831,6 @@ void R_AddWorldSurfaces( void ) {
 		tr.refdef.num_dlights = MAX_DLIGHTS ;
 	}
 	PROF_BEGIN( PROF_SC_NODES );
-	R_RecursiveWorldNode( tr.world->nodes, 15, ( 1ULL << tr.refdef.num_dlights ) - 1 );
+	R_RecursiveWorldNode( tr.world->nodes, tr.viewParms.frustumBits, ( 1ULL << tr.refdef.num_dlights ) - 1 );
 	PROF_END( PROF_SC_NODES );
 }

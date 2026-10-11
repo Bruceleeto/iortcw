@@ -135,13 +135,14 @@ void kos_pvr_present( void ) {
 /* --- KOS entry points kos_pvr.cpp leaves out ----------------------------- */
 
 int pvr_init( const pvr_init_params_t *params ) {
-	/* kos_pvr.cpp has a fixed layout (opb {16,0,16,8,16}, 768K vertex
-	 * buffer); only autosort_disabled is taken from params */
+	/* kos_pvr.cpp has a fixed OPB layout ({16,0,16,8,16}); the vertex
+	 * buffer size and autosort_disabled are taken from params */
 
 	if ( inited ) {
 		return 0;
 	}
 	kos_pvr_set_presort( params && params->autosort_disabled );
+	kos_pvr_set_vertex_bytes( params ? params->vertex_buf_size : 0 );
 	if ( kos_pvr_init() ) {
 		return -1;
 	}

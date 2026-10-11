@@ -1034,6 +1034,10 @@ void RB_StageIteratorSky( void ) {
 
 	backEnd.refdef.rdflags |= RDF_DRAWINGSKY;
 
+#ifdef USE_PVR
+	// the GL fog on the sky is by its box's distance (MakeSkyVec's)
+	pvrglFogSkyDepth( glfogsettings[FOG_SKY].registered ? glfogsettings[FOG_SKY].end : backEnd.viewParms.zFar / 1.75f );
+#endif
 
 	// go through all the polygons and project them onto
 	// the sky box to see which blocks on each side need
