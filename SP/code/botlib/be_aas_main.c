@@ -407,6 +407,19 @@ int AAS_LoadMap( const char *mapname ) {
 		return missingErrNum;
 	}
 
+#ifdef AAS_NO_COMPILE
+	// the routing and its .rcd now, with the server, not the first frame
+	// after cgame has loaded: the .rcd's read buffer (swf_b1's 212K) needs a
+	// block the world and models would have split up. After every world is
+	// loaded: AAS_FreeRoutingCaches frees the update buffer they share,
+	// which AAS_InitRoutingUpdate sizes for the biggest
+	for ( i = 0; i < MAX_AAS_WORLDS; i++ )
+	{
+		AAS_SetCurrentWorld( i );
+		AAS_ContinueInit( 0 );
+	}
+#endif
+
 	//everything went ok
 	return 0;
 } //end of the function AAS_LoadMap

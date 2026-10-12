@@ -24,6 +24,8 @@
 
 int  pvrgl_Init( void );
 void pvrgl_Shutdown( void );
+/* free what only frames use (list blocks, vertex cache), between maps */
+void pvrgl_FreeSpare( void );
 /* submit the frame to the PVR and start the next one */
 void pvrgl_EndFrame( void );
 /* Upload a pvrtex .dt file (twiddled or VQ, mipmapped or not) as the bound

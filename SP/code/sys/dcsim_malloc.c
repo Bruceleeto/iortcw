@@ -115,11 +115,13 @@ static void init( void ) {
 typedef struct {
 	void *p;            // NULL: empty; (void *)1: was one
 	unsigned size;
+	unsigned serial;    // the how-manyth allocation it was
 	void *frames[TRACK_FRAMES];
 } track_t;
 
 static track_t *tracked;
 static int tracking = -1;
+static unsigned serial;
 
 static unsigned slotFor( void *p ) {
 	return (unsigned)( ( (uintptr_t)p >> 3 ) * 2654435761u ) & ( TRACK_SLOTS - 1 );
@@ -149,6 +151,7 @@ static void track( void *p, size_t size ) {
 	}
 	tracked[i].p = p;
 	tracked[i].size = size;
+	tracked[i].serial = ++serial;
 	memset( tracked[i].frames, 0, sizeof( tracked[i].frames ) );
 	// past track and the dcsim_ call
 	if ( n > 2 ) {
@@ -188,10 +191,11 @@ void DCSim_DumpAllocs( const char *when ) {
 	if ( !( f = fopen( name, "w" ) ) ) {
 		return;
 	}
-	fprintf( f, "# %s\n", when );
+	fprintf( f, "# %s (serial %u)\n", when, serial );
 	for ( i = 0; i < TRACK_SLOTS; i++ ) {
 		if ( tracked[i].p && tracked[i].p != (void *)1 ) {
-			fprintf( f, "%u", tracked[i].size );
+			// size, where it is in the arena (bytes), its serial, then the calls
+			fprintf( f, "%u @%lu #%u", tracked[i].size, (unsigned long)( (char *)tracked[i].p - (char *)arena ), tracked[i].serial );
 			for ( j = 0; j < TRACK_FRAMES && tracked[i].frames[j]; j++ ) {
 				fprintf( f, " %p", tracked[i].frames[j] );
 			}

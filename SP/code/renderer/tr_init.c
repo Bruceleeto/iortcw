@@ -1457,6 +1457,12 @@ void RE_Shutdown( qboolean destroyWindow ) {
 	if ( tr.registered ) {
 		R_IssuePendingRenderCommands();
 		R_DeleteTextures();
+#ifdef USE_PVR
+		{
+			void pvrgl_FreeSpare( void );
+			pvrgl_FreeSpare();
+		}
+#endif
 	}
 
 	R_DoneFreeType();

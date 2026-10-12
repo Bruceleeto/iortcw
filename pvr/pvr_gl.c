@@ -2995,6 +2995,33 @@ int pvrgl_Init( void ) {
 	return 0;
 }
 
+/* between maps: the list blocks no list has and the vertex cache, made
+   again as the new map's frames need them. Made as frames grew, they were
+   kept for the run wherever the heap had room at the time, 16K at a time
+   all through it, and the next map's loading had to fit around them */
+void pvrgl_FreeSpare( void ) {
+	int i;
+
+	if ( !gl.inited ) {
+		return;
+	}
+	for ( i = 0; i < gl.numFreeBlocks; i++ ) {
+		free( gl.freeBlocks[i] );
+	}
+	gl.numBlocks -= gl.numFreeBlocks;
+	gl.numFreeBlocks = 0;
+	free( vpos );
+	free( vcode );
+	free( vst );
+	free( vcol );
+	vpos = NULL;
+	vcode = NULL;
+	vst = NULL;
+	vcol = NULL;
+	vposSize = 0;
+	lock.made = 0;
+}
+
 void pvrgl_Shutdown( void ) {
 	int i;
 

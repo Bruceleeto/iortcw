@@ -124,11 +124,13 @@ When the cgame shuts down
 ===============
 */
 void CG_FreeEffectPools( void ) {
-	extern cgPool_t cg_localEntityPool, cg_markPolyPool, cg_particlePool, cg_trailPool, cg_flameChunkPool;
+	extern cgPool_t cg_localEntityPool, cg_markPolyPool, cg_particlePool, cg_flameChunkPool;
 
 	CG_PoolFree( &cg_localEntityPool );
 	CG_PoolFree( &cg_markPolyPool );
 	CG_PoolFree( &cg_particlePool );
-	CG_PoolFree( &cg_trailPool );
+	// with its lists: CG_Init doesn't clear them, and the next level's
+	// CG_AddTrails walked the freed chunks
+	CG_ClearTrails();
 	CG_PoolFree( &cg_flameChunkPool );
 }

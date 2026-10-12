@@ -884,11 +884,88 @@ static void HunkBy_Report( void ) {
 }
 #endif
 
-void Z_Free( void *ptr ) {
-#ifndef _arch_dreamcast
-	if ( ptr ) {
-		zoneUsed -= malloc_usable_size( ptr );
+/*
+  The small zone blocks (cvar names and values, command names, sound names:
+  CopyString's) in a pool of their own, malloc'd by the first Z_Malloc at
+  boot, so at the bottom of the heap. Cvars live for the whole run and get
+  new strings as they change, sounds and commands are registered as each
+  map loads: from malloc they were left all through the heap between
+  levels, a few hundred little blocks that split up what the next map
+  frees (swf, after trainyard, had 1 MB free and no 416K block).
+
+  Pages of SMALL_PAGE, each cut into slots of one size class (16 bytes a
+  class, up to SMALL_MAX), with a free list per class. Z_Free knows a pool
+  block by its address. When the pool is full, malloc as before.
+*/
+#define SMALL_POOL      ( 128 * 1024 )
+#define SMALL_PAGE      1024
+#define SMALL_MAX       128
+#define SMALL_CLASSES   ( SMALL_MAX / 16 )
+
+static byte *smallPool;
+static int smallPages;                          // pages cut up so far
+static byte smallPageClass[SMALL_POOL / SMALL_PAGE];
+static void *smallFree[SMALL_CLASSES];
+static int smallUsed, smallPeak, smallMissed;   // bytes in slots, and mallocs when full
+
+static void *Small_Alloc( int size ) {
+	int c = ( size - 1 ) >> 4, slot = ( c + 1 ) * 16;
+	void **p;
+
+	if ( !smallPool && !( smallPool = memalign( 32, SMALL_POOL ) ) ) {
+		return NULL;
 	}
+	if ( !smallFree[c] ) {
+		byte *page;
+		int i;
+
+		if ( smallPages == SMALL_POOL / SMALL_PAGE ) {
+			smallMissed++;
+			return NULL;
+		}
+		page = smallPool + smallPages * SMALL_PAGE;
+		smallPageClass[smallPages++] = c;
+		for ( i = SMALL_PAGE / slot - 1; i >= 0; i-- ) {
+			*(void **)( page + i * slot ) = smallFree[c];
+			smallFree[c] = page + i * slot;
+		}
+	}
+	p = smallFree[c];
+	smallFree[c] = *p;
+	smallUsed += slot;
+	if ( smallUsed > smallPeak ) {
+		smallPeak = smallUsed;
+	}
+	return p;
+}
+
+static qboolean Small_Free( void *ptr ) {
+	int c;
+
+	if ( !smallPool || (byte *)ptr < smallPool || (byte *)ptr >= smallPool + SMALL_POOL ) {
+		return qfalse;
+	}
+	c = smallPageClass[( (byte *)ptr - smallPool ) / SMALL_PAGE];
+	*(void **)ptr = smallFree[c];
+	smallFree[c] = ptr;
+	smallUsed -= ( c + 1 ) * 16;
+	return qtrue;
+}
+
+// for Com_MemoryReport
+void Z_SmallPoolInfo( int *used, int *peak, int *pages, int *missed ) {
+	*used = smallUsed;
+	*peak = smallPeak;
+	*pages = smallPages * SMALL_PAGE;
+	*missed = smallMissed;
+}
+
+void Z_Free( void *ptr ) {
+	if ( !ptr || Small_Free( ptr ) ) {
+		return;
+	}
+#ifndef _arch_dreamcast
+	zoneUsed -= malloc_usable_size( ptr );
 #endif
 	free( ptr );
 }
@@ -900,7 +977,13 @@ Z_Malloc
 ================
 */
 void *Z_Malloc( int size ) {
-	void *buf = malloc( size );
+	void *buf = size > 0 && size <= SMALL_MAX ? Small_Alloc( size ) : NULL;
+
+	if ( buf ) {
+		Com_Memset( buf, 0, size );
+		return buf;
+	}
+	buf = malloc( size );
 	Com_Memset( buf, 0, size );
 #ifndef _arch_dreamcast
 	zoneUsed += malloc_usable_size( buf );
@@ -1661,6 +1744,13 @@ void Com_MemoryReport( const char *when ) {
 		extern size_t pvr_mem_available( void );    // dc/pvr.h: the texture memory left
 
 		Com_Printf( "MEM %s: VRAM %d K free\n", when, (int)( pvr_mem_available() / 1024 ) );
+	}
+	{
+		int used, peak, pages, missed;
+
+		Z_SmallPoolInfo( &used, &peak, &pages, &missed );
+		Com_Printf( "MEM %s: small zone pool %d K used, %d K peak, %d K of pages cut, %d mallocs when full\n",
+					when, used / 1024, peak / 1024, pages / 1024, missed );
 	}
 #ifdef DCSIM
 	DCSim_DumpAllocs( when );

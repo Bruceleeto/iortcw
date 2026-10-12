@@ -273,7 +273,7 @@ $(ASSETS_DIR)/$(1)_dc.pk3: $(RTCWCONV) $(PVRTEX) $(2)  tools/rtcwconv/mapedits.t
 	  '*.shader' '*.skin' '*.menu' '*.txt' '*.cfg' '*.script' '*.ai' '*.camera' '*.sounds' '*.md3' '*.dat' '*.h' -d $(ASSETS_OUT)/$(1)/src 2>/dev/null; \
 	  [ $$$$? -le 11 ] || exit 1; done
 	$$(Q)test -x $(PVRTEX) || { echo "no pvrtex at $(PVRTEX): set PVRTEX" >&2; exit 1; }
-	$$(Q)$(RTCWCONV) -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt -z tools/rtcwconv/texsizes.txt -u tools/rtcwconv/unusedanims.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
+	$$(Q)$(RTCWCONV) -a 2 -p $(PVRTEX) -n SP/code -e tools/rtcwconv/mapedits.txt -z tools/rtcwconv/texsizes.txt -u tools/rtcwconv/unusedanims.txt $(ASSETS_OUT)/$(1)/src $(ASSETS_OUT)/$(1)/dc
 	$$(Q)cd $(ASSETS_OUT)/$(1)/dc && rm -f ../$(1)_dc.pk3 && zip -qr9 ../$(1)_dc.pk3 .
 	$$(Q)cp $(ASSETS_OUT)/$(1)/$(1)_dc.pk3 $$@
 endef
