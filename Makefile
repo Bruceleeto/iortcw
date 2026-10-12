@@ -757,6 +757,11 @@ $(B)/engine/%.s.o: $(CODE)/%.s
 	@mkdir -p $(@D)
 	$(Q)$(CC) $(BASE_CFLAGS) -x assembler-with-cpp -c $< -o $@
 
+# -ffast-math (build/new_elf/ice); off for that file, if the compiler has it
+ifeq ($(PLATFORM),dc)
+$(B)/engine/renderer/tr_model_iqm.c.o: EXTRA_CFLAGS = $(shell $(CC) -mno-auto-fipr -E -x c /dev/null >/dev/null 2>&1 && echo -mno-auto-fipr)
+endif
+
 # default fs_basepath; game data goes in $(BASEDIR)/main
 $(B)/engine/sys/sys_main.c.o: EXTRA_CFLAGS = -DDEFAULT_BASEDIR=\"$(BASEDIR)\"
 $(B)/engine/sys/sys_main.c.o: Makefile
