@@ -514,6 +514,15 @@ static void ProjectDlightTexture_scalar( void ) {
 	vec3_t	floatColor;
 	float	modulate = 0.0f;
 	int		backs = r_dlightBacks->integer;
+#ifdef USE_PVR
+	// the lit triangles' vertexes alone, for the PVR to transform: not all
+	// of the surface's (the arrays are locked, so it would do them all)
+	vec4_t	*hitXyz;
+	float	( *hitSt )[2];
+	byte	( *hitColors )[4];
+	unsigned short	*remap;
+	int		numHit, packed = 0;
+#endif
 
 	if ( !backEnd.refdef.num_dlights ) {
 		return;
@@ -523,12 +532,25 @@ static void ProjectDlightTexture_scalar( void ) {
 		return;
 	}
 
+#ifdef USE_PVR
+	arrays = ri.Hunk_AllocateTempMemory( tess.numVertexes * ( sizeof( *hitXyz ) + 2 * sizeof( *texCoordsArray ) + 2 * sizeof( *colorArray )
+										 + sizeof( *remap ) + 1 ) + tess.numIndexes * sizeof( *hitIndexes ) );
+	hitXyz = (void *)arrays;
+	texCoordsArray = (void *)( hitXyz + tess.numVertexes );
+	hitSt = texCoordsArray + tess.numVertexes;
+	colorArray = (void *)( hitSt + tess.numVertexes );
+	hitColors = colorArray + tess.numVertexes;
+	remap = (void *)( hitColors + tess.numVertexes );
+	hitIndexes = (void *)( remap + tess.numVertexes );
+	clipBits = (byte *)( hitIndexes + tess.numIndexes );
+#else
 	arrays = ri.Hunk_AllocateTempMemory( tess.numVertexes * ( sizeof( *texCoordsArray ) + sizeof( *colorArray ) + 1 )
 										 + tess.numIndexes * sizeof( *hitIndexes ) );
 	texCoordsArray = (void *)arrays;
 	colorArray = (void *)( texCoordsArray + tess.numVertexes );
 	hitIndexes = (void *)( colorArray + tess.numVertexes );
 	clipBits = (byte *)( hitIndexes + tess.numIndexes );
+#endif
 
 	for ( l = 0 ; l < backEnd.refdef.num_dlights ; l++ ) {
 		dlight_t	*dl;
@@ -647,11 +669,41 @@ static void ProjectDlightTexture_scalar( void ) {
 			continue;
 		}
 
+#ifdef USE_PVR
+		// the vertexes the lit triangles use, packed, the indexes to them;
+		// locked so the light's passes transform them once
+		memset( remap, 0xff, tess.numVertexes * sizeof( *remap ) );
+		numHit = 0;
+		for ( i = 0 ; i < numIndexes ; i++ ) {
+			int v = hitIndexes[i];
+
+			if ( remap[v] == 0xffff ) {
+				remap[v] = numHit;
+				VectorCopy( tess.xyz[v], hitXyz[numHit] );
+				hitSt[numHit][0] = texCoordsArray[v][0];
+				hitSt[numHit][1] = texCoordsArray[v][1];
+				*(int *)hitColors[numHit] = *(int *)colorArray[v];
+				numHit++;
+			}
+			hitIndexes[i] = remap[v];
+		}
+		qglUnlockArraysEXT();
+		qglVertexPointer( 3, GL_FLOAT, 16, hitXyz );
+		qglLockArraysEXT( 0, numHit );
+		packed = 1;
+
+		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+		qglTexCoordPointer( 2, GL_FLOAT, 0, hitSt[0] );
+
+		qglEnableClientState( GL_COLOR_ARRAY );
+		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, hitColors );
+#else
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
 		qglTexCoordPointer( 2, GL_FLOAT, 0, texCoordsArray[0] );
 
 		qglEnableClientState( GL_COLOR_ARRAY );
 		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, colorArray );
+#endif
 
 		//----(SA) creating dlight shader to allow for special blends or alternate dlight texture
 		{
@@ -692,6 +744,14 @@ static void ProjectDlightTexture_scalar( void ) {
 		}
 	}
 
+#ifdef USE_PVR
+	if ( packed ) {
+		// tess's arrays, locked, as the passes after want them
+		qglUnlockArraysEXT();
+		qglVertexPointer( 3, GL_FLOAT, 16, tess.xyz );
+		qglLockArraysEXT( 0, tess.numVertexes );
+	}
+#endif
 	ri.Hunk_FreeTempMemory( arrays );
 }
 
