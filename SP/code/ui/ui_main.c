@@ -1010,11 +1010,6 @@ qboolean Load_Menu( int handle ) {
 		}
 
 #if defined( _arch_dreamcast ) || defined( DCSIM )
-		// the clipboards and books are lore only: not loaded (their
-		// popups do nothing, UI_SetActiveMenu)
-		if ( !Q_stricmp( token.string, "ui/clipboard.menu" ) || !Q_stricmpn( token.string, "ui/book", 7 ) ) {
-			continue;
-		}
 		// "pregame_new", a draft of pregame.menu that nothing opens
 		if ( !Q_stricmp( token.string, "ui/test.menu" ) ) {
 			continue;
@@ -5970,14 +5965,6 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 			Menus_ActivateByName( "notebook" );
 			return;
 
-#if defined( _arch_dreamcast ) || defined( DCSIM )
-		// not loaded (Load_Menu)
-		case UIMENU_BOOK1:
-		case UIMENU_BOOK2:
-		case UIMENU_BOOK3:
-		case UIMENU_CLIPBOARD:
-			return;
-#else
 		case UIMENU_BOOK1:
 		case UIMENU_BOOK2:
 		case UIMENU_BOOK3:
@@ -5993,7 +5980,6 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 			Menus_CloseAll();
 			Menus_ActivateByName( "clipboard" );
 			return;
-#endif
 
 //		case UIMENU_HELP:
 //			trap_Cvar_Set( "cl_paused", "1" );

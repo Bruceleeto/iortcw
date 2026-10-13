@@ -50,6 +50,9 @@ static int DC_AICA_VoiceFlow( int voices ) {
 	afx_write32( file + 64, voices );		// required channels
 	afx_write32( file + 68, 1000 );			// ticks: 1000 a second
 	afx_write32( file + 72, 1 );
+	// its work a tick: a PARK is none, but trusted mode (AFX_VALIDATE_ASSETS
+	// 0) refuses a flow without one (AFX_BAD_FORMAT), and only reports it
+	afx_write32( file + 76, AFX_WORK_PROFILE( 0, 1 ) );
 	return afx_bank_flow_upload( NULL, file, 96 + 1, &dc_flow );
 }
 
