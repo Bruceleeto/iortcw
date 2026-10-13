@@ -65,6 +65,19 @@ static const struct {
 	{ CONT_DPAD_RIGHT,	K_JOY10,	"weapnext",		K_RIGHTARROW },
 };
 
+/* the cheat menu: hold Y, Up twice; every level, Up/Down/Left/Right to
+   pick, A to go (spmap), B or Start to close. It eats the buttons while up */
+#define CHEAT_ROWS		16
+static const char *cheatMaps[] = {
+	"cutscene1", "escape1", "escape2", "tram", "village1", "crypt1", "crypt2", "church", "boss1",
+	"cutscene6", "forest", "rocket", "baseout", "assault", "cutscene9", "sfm", "factory", "trainyard",
+	"swf", "cutscene11", "norway", "xlabs", "boss2", "cutscene14", "dam", "village2", "chateau",
+	"dark", "dig", "castle", "end", "cutscene19"
+};
+static qboolean	cheatOpen;
+static int		cheatSel;
+static int		cheatUps;					/* Up's presses with Y held */
+
 static uint32_t	padLast;					/* buttons down the last poll */
 static int		padSent[ARRAY_LEN( padButtons )];	/* the key each one's press sent, to let go */
 static int		padLastA;					/* when A was last pressed */
@@ -88,6 +101,69 @@ static float DC_StickAxis( int v ) {
 		f = -1.0f;
 	}
 	return f * fabs( f );
+}
+
+/* a button pressed: qtrue if the cheat menu takes it */
+static qboolean DC_CheatButton( uint32_t bit, uint32_t buttons ) {
+	int n = ARRAY_LEN( cheatMaps );
+
+	if ( cheatOpen ) {
+		switch ( bit ) {
+		case CONT_DPAD_UP:
+			cheatSel = ( cheatSel + n - 1 ) % n;
+			break;
+		case CONT_DPAD_DOWN:
+			cheatSel = ( cheatSel + 1 ) % n;
+			break;
+		case CONT_DPAD_LEFT:
+			if ( cheatSel >= CHEAT_ROWS ) {
+				cheatSel -= CHEAT_ROWS;
+			}
+			break;
+		case CONT_DPAD_RIGHT:
+			if ( cheatSel + CHEAT_ROWS < n ) {
+				cheatSel += CHEAT_ROWS;
+			}
+			break;
+		case CONT_A:
+			Cbuf_AddText( va( "spmap %s\n", cheatMaps[cheatSel] ) );
+			cheatOpen = qfalse;
+			break;
+		case CONT_B:
+			cheatOpen = qfalse;
+			break;
+		}
+		return qtrue;
+	}
+	if ( bit == CONT_DPAD_UP && ( buttons & CONT_Y ) ) {
+		if ( ++cheatUps >= 2 ) {
+			cheatOpen = qtrue;
+			cheatUps = 0;
+		}
+		return qtrue;
+	}
+	return qfalse;
+}
+
+/* the cheat menu, over everything (SCR_DrawScreenField) */
+void IN_DrawCheats( void ) {
+	static vec4_t back = { 0.0f, 0.0f, 0.0f, 0.8f };
+	static vec4_t white = { 1.0f, 1.0f, 1.0f, 1.0f };
+	static vec4_t yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+	int i, x, y;
+
+	if ( !cheatOpen ) {
+		return;
+	}
+	SCR_FillRect( 48, 40, 544, 24 + ( CHEAT_ROWS + 2 ) * SMALLCHAR_HEIGHT, back );
+	SCR_DrawSmallStringExt( 64, 52, "LEVELS  A: go  B: close", yellow, qtrue, qtrue );
+	for ( i = 0; i < (int)ARRAY_LEN( cheatMaps ); i++ ) {
+		x = 64 + ( i / CHEAT_ROWS ) * 272;
+		y = 52 + ( 2 + i % CHEAT_ROWS ) * SMALLCHAR_HEIGHT;
+		SCR_DrawSmallStringExt( x, y, va( "%c %s", i == cheatSel ? '>' : ' ', cheatMaps[i] ),
+								i == cheatSel ? yellow : white, qtrue, qtrue );
+	}
+	re.SetColor( NULL );
 }
 
 static void DC_Controller( int time ) {
@@ -121,10 +197,17 @@ static void DC_Controller( int time ) {
 		}
 	}
 
+	if ( !( buttons & CONT_Y ) ) {
+		cheatUps = 0;
+	}
 	for ( i = 0; i < ARRAY_LEN( padButtons ); i++ ) {
 		uint32_t bit = padButtons[i].bit;
 
 		if ( ( buttons & bit ) && !( padLast & bit ) ) {
+			if ( DC_CheatButton( bit, buttons ) ) {
+				padSent[i] = 0;
+				continue;
+			}
 			padSent[i] = menu ? padButtons[i].menuKey : padButtons[i].gameKey;
 			if ( padSent[i] ) {
 				Com_QueueEvent( time, SE_KEY, padSent[i], qtrue, 0, NULL );
@@ -158,7 +241,9 @@ static void DC_Controller( int time ) {
 			Cbuf_AddText( "quit\n" );
 		}
 	} else if ( padStartTime ) {
-		if ( !padQuit ) {
+		if ( cheatOpen ) {
+			cheatOpen = qfalse;
+		} else if ( !padQuit ) {
 			Com_QueueEvent( time, SE_KEY, K_ESCAPE, qtrue, 0, NULL );
 			Com_QueueEvent( time, SE_KEY, K_ESCAPE, qfalse, 0, NULL );
 		}

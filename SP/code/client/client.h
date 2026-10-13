@@ -359,6 +359,9 @@ void IN_Help( void );
 
 //----(SA) salute
 void IN_Salute( void );
+#ifdef _arch_dreamcast
+void IN_DrawCheats( void );
+#endif
 //----(SA)
 
 void CL_VerifyCode( void );

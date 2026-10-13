@@ -483,6 +483,10 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 		VM_Call( uivm, UI_REFRESH, cls.realtime );
 	}
 
+#ifdef _arch_dreamcast
+	IN_DrawCheats();
+#endif
+
 	// console draws next
 	Con_DrawConsole();
 
