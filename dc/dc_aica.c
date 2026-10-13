@@ -5,14 +5,19 @@ dc_aica.c: snd_aica.h on the Dreamcast, through AICAflow (deps/AICAflow)
 AICAflow's ARM driver (aicaflow.drv, linked in by dc_aica_fw.S) runs on the
 AICA's ARM7. It plays "flows", scripts of register writes; here there's one,
 which holds every voice snd_aica.c plays on and does nothing by itself (its
-script is just PARK). snd_aica.c plays a sound by patching a voice's
-registers: afx_instance_patch writes them, raw, CONTROL last, so a key on can
-go with them. The sounds' part of AICA RAM is one AICAflow allocation, all of
+script is just PARK): it keeps the driver off those channels. snd_aica.c
+plays a sound by writing a voice's registers, raw, CONTROL last, so a key on
+can go with them; they're written here, over G2, not through the driver:
+AICAflow's PATCH won't take CONTROL or SAMPLE_LOW (89dffe0), only NOTEs in
+authored flows can key a voice on. The driver only touches the flow's
+channels when it stops, pauses or rebuilds, none of which happens while
+it plays. The sounds' part of AICA RAM is one AICAflow allocation, all of
 the arena, which snd_aica.c shares out itself.
 ===========================================================================
 */
 
 #include <kos.h>
+#include <dc/g2bus.h>
 #include <dc/spu.h>
 
 #include <aicaflow/bank.h>
@@ -24,6 +29,9 @@ the arena, which snd_aica.c shares out itself.
 #include "snd_aica.h"
 
 extern const unsigned char aica_firmware[], aica_firmware_end[];
+
+// a channel's registers, as the SH4 sees them: AICA channel n's at n * 0x80
+#define AICA_CHANNEL_REGS( n )	( 0xa0700000 + ( n ) * 0x80 )
 
 static afx_asset_t		dc_flow;
 static afx_instance_t	dc_voices;
@@ -113,14 +121,35 @@ void AICA_Read( unsigned addr, void *data, int bytes ) {
 	}
 }
 
+// the flow is the first activated after afx_init, with every channel free,
+// so its voices are channels 0 to voices - 1 (allocate_channels takes the
+// lowest): voice n is channel n
 qboolean AICA_Voice( int voice, unsigned mask, const unsigned short *values ) {
-	int err = afx_instance_patch( dc_voices, voice, mask, values );
+	uintptr_t	regs;
+	int			i, n, written;
 
-	if ( err == -AFX_IPC_FULL || err == -AFX_BUSY ) {
-		return qfalse;
+	if ( voice < 0 || voice >= dc_numVoices ) {
+		return qtrue;
 	}
-	if ( err ) {
-		Com_DPrintf( "AICA: patch voice %d: %d\n", voice, err );
+	regs = AICA_CHANNEL_REGS( voice );
+	n = 0;
+	written = 0;
+	for ( i = 0; i < AICA_FIELDS; i++ ) {
+		if ( !( mask & ( 1u << i ) ) ) {
+			continue;
+		}
+		if ( i != AICA_CONTROL ) {
+			if ( !( written++ & 7 ) ) {
+				g2_fifo_wait();
+			}
+			g2_write_32( regs + i * 4, values[n] );
+		}
+		n++;
+	}
+	// CONTROL, values[0] if it's in the mask, last
+	if ( mask & 1u ) {
+		g2_fifo_wait();
+		g2_write_32( regs, values[0] );
 	}
 	return qtrue;
 }
