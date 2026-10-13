@@ -33,6 +33,8 @@ void pvrgl_EndFrame( void );
 int  pvrgl_TexImageDT( const void *file, int len, int *width, int *height );
 /* back faces culled by the PVR: 1, or on the CPU: 0 */
 extern int pvrgl_hwCull;
+/* DrawPrimitivesPVR's opaque draws straight to the TA, not listed for the end */
+extern int pvrgl_opDirect;
 
 /* A vertex as pvrglDrawPackedStrips takes it: the position and texture
  * coordinates as shorts from an origin, in steps (16 bytes) */

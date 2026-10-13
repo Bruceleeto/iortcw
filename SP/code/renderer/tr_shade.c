@@ -1751,6 +1751,10 @@ DC_HOT( "10e" ) void RB_EndSurface( void ) {
 
 #ifdef USE_PVR
 	RB_WorldDirectEnd();	// the batch's world surfaces drawn as they came; nothing of them in tess
+	{
+		extern const char *pvrgl_drawName;
+		pvrgl_drawName = input->shader->name;
+	}
 #endif
 	if ( input->numIndexes == 0 ) {
 		return;

@@ -343,6 +343,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 	tr.frameSceneNum = 0;
 #ifdef USE_PVR
 	pvrgl_hwCull = r_pvrCull->integer;
+	pvrgl_opDirect = r_opDirect->integer;
 #endif
 
 	//

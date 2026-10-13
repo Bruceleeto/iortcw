@@ -1301,9 +1301,11 @@ extern cvar_t	*r_displayRefresh;		// optional display refresh option
 extern cvar_t   *r_allowExtensions;             // global enable/disable of OpenGL extensions
 #ifdef USE_PVR
 extern cvar_t   *r_pvrCull;
+extern cvar_t   *r_opDirect;
 extern cvar_t   *r_dlightMax;       // dynamic lights a scene, the biggest on screen (DC)
 extern cvar_t   *r_dlightMinSize;   // a dynamic light's radius over its distance, below which it's dropped (DC)
 extern int      pvrgl_hwCull;
+extern int      pvrgl_opDirect;
 void pvrglFogArray( const unsigned char *amounts );
 /* A fog for a packed batch's fast draws (pvrglPackedFog before
  * pvrglPackedBegin, till pvrglPackedEnd): the PVR blends pvrgl_FogColor's

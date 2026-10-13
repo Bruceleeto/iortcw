@@ -56,6 +56,7 @@
 #define VERTEX_BUFFER		( 1280 * 1024 )
 #define LIST_BLOCK			( 16 * 1024 )
 #define LIST_BLOCKS			( VERTEX_BUFFER / LIST_BLOCK )
+#define OP_STAGE			( 4 * 1024 )	/* the direct opaque draws' block: in the cache */
 
 /* scale factors on 1/w, see the comment at the top */
 #define DEPTH_SCALE_SKY		0.01f
@@ -121,6 +122,13 @@ typedef struct {
 } immVert_t;
 
 int pvrgl_hwCull = 1;
+int pvrgl_opDirect = 1;
+
+/* the draw's shader, from the renderer (RB_EndSurface), for the dump */
+const char *pvrgl_drawName;
+/* every DUMP_EVERY frames, each DrawPrimitivesPVR of the frame printed */
+#define DUMP_EVERY	300
+static int dumpFrames, dumpOn;
 
 static struct {
 	int			inited;
@@ -210,7 +218,15 @@ static struct {
 	int			packedDirect;	/* the batch's fast draws go direct */
 	pvr_poly_hdr_t	directLast;
 	int			directHasLast;
+	/* DrawPrimitivesPVR's opaque draws (pvrgl_opDirect) straight to the TA
+	   too: written to opStage, sent each time it fills and at each draw's
+	   end, so the TA has whole strips when the packed draws go between.
+	   Its header is the direct stream's, directLast */
+	listBuffer_t	opStage;
+	listBuffer_t	*drawTo;	/* BeginPrimitives's: the list or the stage */
 } gl;
+
+static uint8_t opStageBlock[OP_STAGE] __attribute__( ( aligned( 32 ) ) );
 
 /* each vertex's position as the PVR takes it, made for all of a draw's
    vertexes before its triangles (once a lock, while what it was made
@@ -1102,9 +1118,23 @@ void APIENTRY pvrglTexParameteri( GLenum target, GLenum pname, GLint param ) {
 /* ===================================================================== */
 
 /* ListAlloc's way when the last block is full */
+static void StageFlush( listBuffer_t *l );
+
 static DC_HOT( "30" ) uint32_t * __attribute__((noinline)) ListAllocBlock( listBuffer_t *l ) {
 	uint32_t *d;
 
+	if ( l == &gl.opStage ) {
+		/* full: to the TA, and from its start again (the emitters only go
+		   back to the line before, which is the new one by then) */
+		StageFlush( l );
+		d = (uint32_t *)l->cur;
+		l->used += 32;
+		l->cur += 32;
+#ifdef USE_SH4ZAM
+		shz_dcache_alloc_line( d );
+#endif
+		return d;
+	}
 	if ( l->overflowed ) {
 		return NULL;
 	}
@@ -1359,7 +1389,23 @@ static DC_HOT( "40" ) int BeginPrimitives( int forPacked ) {
 	hdrValid = 1;
 
 compiled:
+	if ( !forPacked && list == PVR_LIST_OP_POLY && gl.sceneOpen && pvrgl_opDirect ) {
+		/* straight to the TA through the stage: the header too, unless
+		   the direct stream's last is it */
+		l = &gl.opStage;
+		if ( !gl.directHasLast || memcmp( &gl.directLast, &hdr, sizeof( hdr ) ) ) {
+			ListWrite( l, &hdr );
+			gl.directLast = hdr;
+			gl.directHasLast = 1;
+		}
+		gl.drawTo = l;
+		gl.packedDirect = 0;
+		gl.drawnSinceClear = 1;
+		xf.fogOn = t && gl.fogArray;
+		return list;
+	}
 	l = &gl.lists[list];
+	gl.drawTo = l;
 	if ( !l->hasLast || memcmp( &l->last, &hdr, sizeof( hdr ) ) ) {
 		ListWrite( l, &hdr );
 		l->last = hdr;
@@ -1990,7 +2036,12 @@ static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_
 		PROF_END( PROF_PVR_SETUP );
 		return;
 	}
-	l = &gl.lists[list];
+	l = gl.drawTo;
+	if ( dumpOn ) {
+		printf( "DRAW %-40s %s mode %x idx %d verts %d ds %g%s\n", pvrgl_drawName ? pvrgl_drawName : "?",
+				list == PVR_LIST_OP_POLY ? "op" : list == PVR_LIST_PT_POLY ? "pt" : "tr", mode, count,
+				hi - lo + 1, DepthScale(), locked ? " locked" : "" );
+	}
 
 	SetTransform();
 #ifdef USE_SH4ZAM
@@ -2059,6 +2110,9 @@ static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_
 		break;
 	}
 #undef V
+	if ( l == &gl.opStage ) {
+		StageFlush( l );
+	}
 }
 
 /* DC_PROF: its time as pvr */
@@ -2738,6 +2792,7 @@ static void ResetLists( void ) {
 	gl.clears = 0;
 	gl.drawnSinceClear = 0;
 	gl.clearedColor = 0;
+	gl.opStage.used = 0;
 }
 
 /*
@@ -2795,6 +2850,17 @@ static void DC_HOT( "70" ) SubmitBlock( const void *data, int bytes ) {
 #else
 #define SubmitBlock( data, bytes )	pvr_prim( (void *)( data ), bytes )
 #endif
+
+/* the stage's lines so far to the TA (its list open there), and the
+   stage empty */
+static void StageFlush( listBuffer_t *l ) {
+	if ( l->cur != l->blocks[0] ) {
+		PROF_BEGIN( PROF_SUBMIT );
+		SubmitBlock( l->blocks[0], l->cur - l->blocks[0] );
+		PROF_END( PROF_SUBMIT );
+		l->cur = l->blocks[0];
+	}
+}
 
 /* the next frame's scene, with its opaque list open on the TA for the
    direct draws (its cover quad first, in the clear colour as it is now) */
@@ -2944,6 +3010,13 @@ void pvrgl_EndFrame( void ) {
 
 	ResetLists();
 	BeginScene();
+	if ( dumpOn ) {
+		printf( "DRAW frame %d end\n", dumpFrames );
+	}
+	dumpOn = !( ++dumpFrames % DUMP_EVERY );
+	if ( dumpOn ) {
+		printf( "DRAW frame %d: each DrawPrimitivesPVR (shader, list, GL mode, indexes, vertexes, depth scale)\n", dumpFrames );
+	}
 }
 
 int pvrgl_Init( void ) {
@@ -2990,6 +3063,10 @@ int pvrgl_Init( void ) {
 	gl.shadeModel = GL_SMOOTH;
 	gl.color = 0xffffffff;
 	pvr_set_pal_format( PVR_PAL_ARGB8888 );
+	gl.opStage.blocks[0] = opStageBlock;
+	gl.opStage.numBlocks = 1;
+	gl.opStage.cur = opStageBlock;
+	gl.opStage.end = opStageBlock + OP_STAGE;
 	BeginScene();
 	gl.inited = 1;
 	return 0;
