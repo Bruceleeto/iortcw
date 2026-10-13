@@ -1034,6 +1034,8 @@ RB_SurfaceAnim
 */
 DC_HOT( "60" ) void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	int j, k;
+	qboolean lit;
+	diffuseLight_t dl;
 	refEntity_t *refent;
 	int             *boneList;
 	mdsHeader_t     *header;
@@ -1164,6 +1166,11 @@ DC_HOT( "60" ) void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	v = ( mdscVertex_t * )( (byte *)surface + surface->ofsVerts );
 	tempVert = ( float * )( tess.xyz + baseVertex );
 	tempNormal = ( float * )( tess.normal + baseVertex );
+
+	// its diffuse lighting too, while the normal's at hand (RB_CalcDiffuseColor
+	// then takes it as it is)
+	lit = RB_DiffuseFused( &dl );
+
 	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
 		const mdscWeight_t *w = (const mdscWeight_t *)( v + 1 );
 #ifndef USE_SH4ZAM
@@ -1208,11 +1215,17 @@ DC_HOT( "60" ) void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		ofs[2] = v->normal[2] * ( 1.0f / MDSC_NORMAL_SCALE );
 		LocalMatrixTransformVector( ofs, bones[w->boneIndex].matrix, tempNormal );
 #endif
+		if ( lit ) {
+			R_DiffuseVertex( tempNormal, dl.lightDir, dl.ambient05, dl.directedLight, tess.vertexColors[baseVertex + j] );
+		}
 
 		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0] * ( 1.0f / MDSC_TC_SCALE );
 		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1] * ( 1.0f / MDSC_TC_SCALE );
 
 		v = (mdscVertex_t *)( w + v->numWeights );
+	}
+	if ( lit ) {
+		tess.litVertexes = baseVertex + render_count;
 	}
 
 	DBG_SHOWTIME

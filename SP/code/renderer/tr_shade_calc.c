@@ -1198,50 +1198,59 @@ void RB_CalcSpecularAlpha( unsigned char *alphas ) {
 **
 ** The basic vertex lighting calc
 */
+/*
+Whether a model surface about to be added to tess is to work out its own
+diffuse lighting, into tess.vertexColors, as its vertexes are made (then
+tess.litVertexes on to its end): the shader has a stage of it, no deform
+moves the normals first, and every vertex in tess before it has it too.
+dl: the entity's light, when it is
+*/
+qboolean RB_DiffuseFused( diffuseLight_t *dl ) {
+	const trRefEntity_t *ent = backEnd.currentEntity;
+	int i;
+
+	if ( tess.shader->numDeforms || tess.litVertexes != tess.numVertexes ) {
+		return qfalse;
+	}
+	for ( i = 0; i < tess.numPasses; i++ ) {
+		if ( tess.xstages[i] && tess.xstages[i]->rgbGen == CGEN_LIGHTING_DIFFUSE ) {
+			break;
+		}
+	}
+	if ( i == tess.numPasses ) {
+		return qfalse;
+	}
+	VectorCopy( ent->lightDir, dl->lightDir );
+	VectorCopy( ent->directedLight, dl->directedLight );
+	dl->ambient05[0] = ent->ambientLight[0] + 0.5f;
+	dl->ambient05[1] = ent->ambientLight[1] + 0.5f;
+	dl->ambient05[2] = ent->ambientLight[2] + 0.5f;
+	return qtrue;
+}
+
 static void RB_CalcDiffuseColor_scalar( unsigned char *colors )
 {
-	int				i, j;
-	float			*v, *normal;
-	float			incoming;
+	int				i;
+	float			*normal;
 	trRefEntity_t	*ent;
-	vec3_t			ambientLight;
-	vec3_t			lightDir;
-	vec3_t			directedLight;
+	vec3_t			ambient05;
 	int				numVertexes;
 
-	ent = backEnd.currentEntity;
-	VectorCopy( ent->ambientLight, ambientLight );
-	VectorCopy( ent->directedLight, directedLight );
-	VectorCopy( ent->lightDir, lightDir );
-
-	v = tess.xyz[0];
-	normal = tess.normal[0];
-
 	numVertexes = tess.numVertexes;
-	for (i = 0 ; i < numVertexes ; i++, v += 4, normal += 4) {
-		incoming = DotProduct (normal, lightDir);
-		if ( incoming <= 0 ) {
-			incoming = 0.0f;
-		}
-		j = (int)( ambientLight[0] + incoming * directedLight[0] + 0.5f );
-		if ( j > 255 ) {
-			j = 255;
-		}
-		colors[i * 4 + 0] = j;
+	if ( numVertexes && tess.litVertexes == numVertexes && !tess.shader->numDeforms ) {
+		// worked out already, as the vertexes were made
+		memcpy( colors, tess.vertexColors, numVertexes * 4 );
+		return;
+	}
 
-		j = (int)( ambientLight[1] + incoming * directedLight[1] + 0.5f );
-		if ( j > 255 ) {
-			j = 255;
-		}
-		colors[i * 4 + 1] = j;
+	ent = backEnd.currentEntity;
+	ambient05[0] = ent->ambientLight[0] + 0.5f;
+	ambient05[1] = ent->ambientLight[1] + 0.5f;
+	ambient05[2] = ent->ambientLight[2] + 0.5f;
 
-		j = (int)( ambientLight[2] + incoming * directedLight[2] + 0.5f );
-		if ( j > 255 ) {
-			j = 255;
-		}
-		colors[i * 4 + 2] = j;
-
-		colors[i * 4 + 3] = 255;
+	normal = tess.normal[0];
+	for ( i = 0 ; i < numVertexes ; i++, normal += 4 ) {
+		R_DiffuseVertex( normal, ent->lightDir, ambient05, ent->directedLight, colors + i * 4 );
 	}
 }
 

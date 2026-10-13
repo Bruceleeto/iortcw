@@ -856,18 +856,28 @@ static int R_MdbWeights( const mdcSurface_t *surf, float backlerp, mdbWeight_t w
 	return n;
 }
 
+/* dl: the vertexes' diffuse lighting into tess.vertexColors as their
+   normals are made (RB_DiffuseFused), else NULL */
+#define DIFFUSE_VERTEX( normal ) \
+	do { \
+		if ( dl ) { \
+			R_DiffuseVertex( normal, dl->lightDir, dl->ambient05, dl->directedLight, *outColor++ ); \
+		} \
+	} while ( 0 )
+
 /*
 ** LerpMdbBoneVertexes
 
 An .mdb bone surface: each bone's turn and move, lerped between the kept
 frames, on its vertexes as at rest
 */
-static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
+static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp, const diffuseLight_t *dl ) {
 	const md3XyzNormal_t *v = ( const md3XyzNormal_t * )( (byte *)surf + surf->ofsXyzNormals );
 	const short *count = ( const short * )( (byte *)surf + surf->ofsXyzCompressed );
 	const mdbPose_t *poses = ( const mdbPose_t * )( (byte *)surf + surf->ofsFrameBaseFrames );
 	float *outXyz = tess.xyz[tess.numVertexes];
 	float *outNormal = tess.normal[tess.numVertexes];
+	color4ub_t *outColor = tess.vertexColors + tess.numVertexes;
 	mdbWeight_t w[4];
 	int numWeights, bone, i, j;
 
@@ -926,6 +936,7 @@ static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
 			outNormal[0] = p.x;
 			outNormal[1] = p.y;
 			outNormal[2] = p.z;
+			DIFFUSE_VERTEX( outNormal );
 		}
 #else
 		for ( i = 0 ; i < count[bone] ; i++, v++, outXyz += 4, outNormal += 4 ) {
@@ -942,6 +953,7 @@ static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
 			outNormal[0] = m[0][0] * n[0] + m[0][1] * n[1] + m[0][2] * n[2];
 			outNormal[1] = m[1][0] * n[0] + m[1][1] * n[1] + m[1][2] * n[2];
 			outNormal[2] = m[2][0] * n[0] + m[2][1] * n[1] + m[2][2] * n[2];
+			DIFFUSE_VERTEX( outNormal );
 		}
 #endif
 	}
@@ -952,12 +964,13 @@ static void LerpMdbBoneVertexes( mdcSurface_t *surf, float backlerp ) {
 
 An .mdb vertex surface: the .mdc's vertexes, lerped between the kept frames
 */
-static void LerpMdbKeyVertexes( mdcSurface_t *surf, float backlerp ) {
+static void LerpMdbKeyVertexes( mdcSurface_t *surf, float backlerp, const diffuseLight_t *dl ) {
 	const mdbKey_t *keys = ( const mdbKey_t * )( (byte *)surf + surf->ofsFrameBaseFrames );
 	const md3XyzNormal_t *xyz[4];
 	const mdcXyzCompressed_t *comp[4];
 	float *outXyz = tess.xyz[tess.numVertexes];
 	float *outNormal = tess.normal[tess.numVertexes];
+	color4ub_t *outColor = tess.vertexColors + tess.numVertexes;
 	mdbWeight_t w[4];
 	int numWeights, i, j;
 
@@ -993,6 +1006,7 @@ static void LerpMdbKeyVertexes( mdcSurface_t *surf, float backlerp ) {
 		if ( numWeights > 1 ) {
 			R_NormalizeFast( outNormal );
 		}
+		DIFFUSE_VERTEX( outNormal );
 	}
 }
 
@@ -1000,9 +1014,10 @@ static void LerpMdbKeyVertexes( mdcSurface_t *surf, float backlerp ) {
 /*
 ** LerpCMeshVertexes
 */
-static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
+static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp, const diffuseLight_t *dl ) {
 	short   *oldXyz, *newXyz, *oldNormals, *newNormals;
 	float   *outXyz, *outNormal;
+	color4ub_t *outColor;
 	float oldXyzScale, newXyzScale;
 	float oldNormalScale, newNormalScale;
 	int vertNum;
@@ -1017,6 +1032,7 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 
 	outXyz = tess.xyz[tess.numVertexes];
 	outNormal = tess.normal[tess.numVertexes];
+	outColor = tess.vertexColors + tess.numVertexes;
 
 	newBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + backEnd.currentEntity->e.frame );
 	newXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals )
@@ -1058,6 +1074,7 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 			} else {
 				R_LatLongToNormal( outNormal, newNormals[0] );
 			}
+			DIFFUSE_VERTEX( outNormal );
 		}
 	} else {
 		//
@@ -1112,9 +1129,11 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 			outNormal[2] = uncompressedOldNormal[2] * oldNormalScale + uncompressedNewNormal[2] * newNormalScale;
 
 			R_NormalizeFast( outNormal );
+			DIFFUSE_VERTEX( outNormal );
 		}
 	}
 }
+#undef DIFFUSE_VERTEX
 
 /*
 =============
@@ -1128,6 +1147,7 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	int indexes;
 	int Bob, Doug;
 	int numVerts;
+	diffuseLight_t dl, *dlp;
 
 	// RF, check for REFLAG_HANDONLY
 	if ( backEnd.currentEntity->e.reFlags & REFLAG_ONLYHAND ) {
@@ -1144,12 +1164,15 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 
 	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
 
+	// its diffuse lighting too, while each normal's at hand (RB_CalcDiffuseColor
+	// then takes it as it is)
+	dlp = RB_DiffuseFused( &dl ) ? &dl : NULL;
 	if ( surface->numCompFrames == MDB_BONES ) {
-		LerpMdbBoneVertexes( surface, backlerp );
+		LerpMdbBoneVertexes( surface, backlerp, dlp );
 	} else if ( surface->numCompFrames == MDB_KEYS ) {
-		LerpMdbKeyVertexes( surface, backlerp );
+		LerpMdbKeyVertexes( surface, backlerp, dlp );
 	} else {
-		LerpCMeshVertexes( surface, backlerp );
+		LerpCMeshVertexes( surface, backlerp, dlp );
 	}
 
 	indexes = surface->numTriangles * 3;
@@ -1169,6 +1192,9 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	}
 
 	tess.numVertexes += surface->numVerts;
+	if ( dlp ) {
+		tess.litVertexes = tess.numVertexes;
+	}
 }
 // done.
 

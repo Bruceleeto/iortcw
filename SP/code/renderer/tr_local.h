@@ -1648,6 +1648,10 @@ typedef struct shaderCommands_s
 	int numIndexes;
 	int numVertexes;
 
+	// the first litVertexes have their diffuse lighting in vertexColors
+	// already, worked out as they were made (RB_SurfaceAnim)
+	int litVertexes;
+
 	qboolean ATI_tess;
 
 	// info extracted from current shader
@@ -1657,6 +1661,39 @@ typedef struct shaderCommands_s
 } shaderCommands_t;
 
 extern shaderCommands_t tess;
+
+/*
+A vertex's diffuse lighting (rgbGen lightingDiffuse) from its normal and
+the entity's light: ambient + directed * the normal's dot with the light,
+ambient05 the ambient + 0.5 (rounding)
+*/
+static ID_INLINE void R_DiffuseVertex( const float *normal, const vec3_t lightDir, const vec3_t ambient05,
+									   const vec3_t directedLight, byte *color ) {
+#ifdef USE_SH4ZAM
+	float incoming = shz_dot6f( normal[0], normal[1], normal[2], lightDir[0], lightDir[1], lightDir[2] );
+#else
+	float incoming = DotProduct( normal, lightDir );
+#endif
+	int r, g, b;
+
+	if ( incoming <= 0 ) {
+		incoming = 0.0f;
+	}
+	r = (int)( ambient05[0] + incoming * directedLight[0] );
+	g = (int)( ambient05[1] + incoming * directedLight[1] );
+	b = (int)( ambient05[2] + incoming * directedLight[2] );
+	color[0] = r > 255 ? 255 : r;
+	color[1] = g > 255 ? 255 : g;
+	color[2] = b > 255 ? 255 : b;
+	color[3] = 255;
+}
+
+// the entity's light, as R_DiffuseVertex takes it
+typedef struct {
+	vec3_t lightDir, ambient05, directedLight;
+} diffuseLight_t;
+
+qboolean RB_DiffuseFused( diffuseLight_t *dl );
 
 #ifdef USE_BLOOM
 void RB_SetGL2D (void);
