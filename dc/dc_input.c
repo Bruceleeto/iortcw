@@ -65,18 +65,49 @@ static const struct {
 	{ CONT_DPAD_RIGHT,	K_JOY10,	"weapnext",		K_RIGHTARROW },
 };
 
-/* the cheat menu: hold Y, Up twice; every level, Up/Down/Left/Right to
-   pick, A to go (spmap), B or Start to close. It eats the buttons while up */
+/* the cheat menus, hold Y and: Up twice, every level (spdevmap, so the
+   cheats work in it); Down twice, the cheats and the guns, which stay up to
+   pick more. Up/Down/Left/Right to pick, A to go, B or Start to close. They
+   eat the buttons while up */
 #define CHEAT_ROWS		16
-static const char *cheatMaps[] = {
-	"cutscene1", "escape1", "escape2", "tram", "village1", "crypt1", "crypt2", "church", "boss1",
-	"cutscene6", "forest", "rocket", "baseout", "assault", "cutscene9", "sfm", "factory", "trainyard",
-	"swf", "cutscene11", "norway", "xlabs", "boss2", "cutscene14", "dam", "village2", "chateau",
-	"dark", "dig", "castle", "end", "cutscene19"
+typedef struct {
+	const char	*label;
+	const char	*cmd;		/* NULL: a level, spdevmap label */
+} cheatItem_t;
+static const cheatItem_t cheatLevels[] = {
+	{ "cutscene1" }, { "escape1" }, { "escape2" }, { "tram" }, { "village1" }, { "crypt1" },
+	{ "crypt2" }, { "church" }, { "boss1" }, { "cutscene6" }, { "forest" }, { "rocket" },
+	{ "baseout" }, { "assault" }, { "cutscene9" }, { "sfm" }, { "factory" }, { "trainyard" },
+	{ "swf" }, { "cutscene11" }, { "norway" }, { "xlabs" }, { "boss2" }, { "cutscene14" },
+	{ "dam" }, { "village2" }, { "chateau" }, { "dark" }, { "dig" }, { "castle" },
+	{ "end" }, { "cutscene19" }
 };
-static qboolean	cheatOpen;
+/* give takes bg_itemlist's pickup names */
+static const cheatItem_t cheatCheats[] = {
+	{ "god mode", "god" }, { "no clip", "noclip" }, { "no target", "notarget" },
+	{ "no fatigue", "nofatigue" }, { "give all", "give all" }, { "health", "give health" },
+	{ "armor", "give armor" }, { "ammo (all guns)", "give allammo 999" }, { "keys", "give keys" },
+	{ "knife", "give Knife" }, { "luger", "give Luger" }, { "silencer", "give Silencer" },
+	{ "colt", "give Colt" }, { "dual colts", "give Dual Colts" }, { "mp40", "give MP40" },
+	{ "thompson", "give Thompson" }, { "sten", "give Sten" }, { "mauser", "give Mauser Rifle" },
+	{ "sniper scope", "give Sniper Scope" }, { "snooper rifle", "give Snooper Rifle" },
+	{ "fg42", "give FG42 Paratroop Rifle" }, { "fg42 scope", "give FG42 Scope" },
+	{ "panzerfaust", "give Panzerfaust" }, { "venom", "give Venom" },
+	{ "flamethrower", "give Flamethrower" }, { "tesla", "give Tesla Gun" },
+	{ "grenades", "give Grenade" }, { "pineapples", "give Pineapple" },
+	{ "dynamite", "give Dynamite Weapon" }
+};
+static const cheatItem_t	*cheatMenu;		/* the one up; NULL: none */
+static int		cheatCount;
 static int		cheatSel;
-static int		cheatUps;					/* Up's presses with Y held */
+static int		cheatUps, cheatDowns;		/* their presses with Y held */
+
+static void DC_CheatOpen( const cheatItem_t *items, int count ) {
+	cheatMenu = items;
+	cheatCount = count;
+	cheatSel = 0;
+	cheatUps = cheatDowns = 0;
+}
 
 static uint32_t	padLast;					/* buttons down the last poll */
 static int		padSent[ARRAY_LEN( padButtons )];	/* the key each one's press sent, to let go */
@@ -103,17 +134,17 @@ static float DC_StickAxis( int v ) {
 	return f * fabs( f );
 }
 
-/* a button pressed: qtrue if the cheat menu takes it */
+/* a button pressed: qtrue if a cheat menu takes it */
 static qboolean DC_CheatButton( uint32_t bit, uint32_t buttons ) {
-	int n = ARRAY_LEN( cheatMaps );
+	if ( cheatMenu ) {
+		const cheatItem_t *item = &cheatMenu[cheatSel];
 
-	if ( cheatOpen ) {
 		switch ( bit ) {
 		case CONT_DPAD_UP:
-			cheatSel = ( cheatSel + n - 1 ) % n;
+			cheatSel = ( cheatSel + cheatCount - 1 ) % cheatCount;
 			break;
 		case CONT_DPAD_DOWN:
-			cheatSel = ( cheatSel + 1 ) % n;
+			cheatSel = ( cheatSel + 1 ) % cheatCount;
 			break;
 		case CONT_DPAD_LEFT:
 			if ( cheatSel >= CHEAT_ROWS ) {
@@ -121,46 +152,61 @@ static qboolean DC_CheatButton( uint32_t bit, uint32_t buttons ) {
 			}
 			break;
 		case CONT_DPAD_RIGHT:
-			if ( cheatSel + CHEAT_ROWS < n ) {
+			if ( cheatSel + CHEAT_ROWS < cheatCount ) {
 				cheatSel += CHEAT_ROWS;
 			}
 			break;
 		case CONT_A:
-			Cbuf_AddText( va( "spmap %s\n", cheatMaps[cheatSel] ) );
-			cheatOpen = qfalse;
+			if ( item->cmd ) {
+				Cbuf_AddText( va( "%s\n", item->cmd ) );
+			} else {
+				Cbuf_AddText( va( "spdevmap %s\n", item->label ) );
+				cheatMenu = NULL;
+			}
 			break;
 		case CONT_B:
-			cheatOpen = qfalse;
+			cheatMenu = NULL;
 			break;
 		}
 		return qtrue;
 	}
-	if ( bit == CONT_DPAD_UP && ( buttons & CONT_Y ) ) {
+	if ( !( buttons & CONT_Y ) ) {
+		return qfalse;
+	}
+	if ( bit == CONT_DPAD_UP ) {
+		cheatDowns = 0;
 		if ( ++cheatUps >= 2 ) {
-			cheatOpen = qtrue;
-			cheatUps = 0;
+			DC_CheatOpen( cheatLevels, ARRAY_LEN( cheatLevels ) );
+		}
+		return qtrue;
+	}
+	if ( bit == CONT_DPAD_DOWN ) {
+		cheatUps = 0;
+		if ( ++cheatDowns >= 2 ) {
+			DC_CheatOpen( cheatCheats, ARRAY_LEN( cheatCheats ) );
 		}
 		return qtrue;
 	}
 	return qfalse;
 }
 
-/* the cheat menu, over everything (SCR_DrawScreenField) */
+/* the cheat menu up, over everything (SCR_DrawScreenField) */
 void IN_DrawCheats( void ) {
 	static vec4_t back = { 0.0f, 0.0f, 0.0f, 0.8f };
 	static vec4_t white = { 1.0f, 1.0f, 1.0f, 1.0f };
 	static vec4_t yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
 	int i, x, y;
 
-	if ( !cheatOpen ) {
+	if ( !cheatMenu ) {
 		return;
 	}
 	SCR_FillRect( 48, 40, 544, 24 + ( CHEAT_ROWS + 2 ) * SMALLCHAR_HEIGHT, back );
-	SCR_DrawSmallStringExt( 64, 52, "LEVELS  A: go  B: close", yellow, qtrue, qtrue );
-	for ( i = 0; i < (int)ARRAY_LEN( cheatMaps ); i++ ) {
+	SCR_DrawSmallStringExt( 64, 52, cheatMenu == cheatLevels ? "LEVELS  A: go  B: close" :
+							"CHEATS  A: use  B: close  (a level from Y+Up+Up)", yellow, qtrue, qtrue );
+	for ( i = 0; i < cheatCount; i++ ) {
 		x = 64 + ( i / CHEAT_ROWS ) * 272;
 		y = 52 + ( 2 + i % CHEAT_ROWS ) * SMALLCHAR_HEIGHT;
-		SCR_DrawSmallStringExt( x, y, va( "%c %s", i == cheatSel ? '>' : ' ', cheatMaps[i] ),
+		SCR_DrawSmallStringExt( x, y, va( "%c %s", i == cheatSel ? '>' : ' ', cheatMenu[i].label ),
 								i == cheatSel ? yellow : white, qtrue, qtrue );
 	}
 	re.SetColor( NULL );
@@ -198,7 +244,7 @@ static void DC_Controller( int time ) {
 	}
 
 	if ( !( buttons & CONT_Y ) ) {
-		cheatUps = 0;
+		cheatUps = cheatDowns = 0;
 	}
 	for ( i = 0; i < ARRAY_LEN( padButtons ); i++ ) {
 		uint32_t bit = padButtons[i].bit;
@@ -241,8 +287,8 @@ static void DC_Controller( int time ) {
 			Cbuf_AddText( "quit\n" );
 		}
 	} else if ( padStartTime ) {
-		if ( cheatOpen ) {
-			cheatOpen = qfalse;
+		if ( cheatMenu ) {
+			cheatMenu = NULL;
 		} else if ( !padQuit ) {
 			Com_QueueEvent( time, SE_KEY, K_ESCAPE, qtrue, 0, NULL );
 			Com_QueueEvent( time, SE_KEY, K_ESCAPE, qfalse, 0, NULL );
