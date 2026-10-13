@@ -48,7 +48,7 @@ struct MdsSurface {
 
 #define FRAME_FLOATS     13     /* bounds[2], localOrigin, radius, parentOffset */
 #define CULL_TOL         8.0f   /* how far the cull bounds may be off, before they're made bigger to hold it */
-#define BONE_SHORTS      MDSC_POSE_SHORTS
+#define BONE_SHORTS      6        /* an .mds bone: angles[4], ofsAngles[2] */
 #define BONE_INFO_SIZE   80     /* mdsBoneInfo_t */
 #define TAG_SIZE         72     /* mdsTag_t */
 
@@ -532,7 +532,7 @@ static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile
 
 	for ( int f = 0; f < nf; f++ ) {
 		const short *ma = &s.model[(size_t)f * nb * BONE_SHORTS];
-		const short *mb = (const short *)( dec.data() + FRAME_FLOATS * 4 );
+		const mdscPose_t *mb = ( (const mdscFrame_t *)dec.data() )->bones;
 		const float *rootA = &s.frameVals[f * FRAME_FLOATS + 10];
 		const float *rootB = (const float *)dec.data() + 10;
 
@@ -560,7 +560,7 @@ static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile
 		/* bone positions, the way R_CalcBone places them */
 		for ( int b = 0; b < nb; b++ ) {
 			for ( int set = 0; set < 2; set++ ) {
-				const short *p = ( set ? mb : ma ) + b * BONE_SHORTS;
+				const short *p = ma + b * BONE_SHORTS;
 				float *pos = &( set ? posB : posA )[b * 3];
 				const float *root = set ? rootB : rootA;
 
@@ -569,9 +569,14 @@ static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile
 					if ( fixes ) {
 						pos[0] = pos[1] = pos[2] = 0;
 					}
+				} else if ( set ) {
+					const float *pp = &posB[s.parent[b] * 3];
+					for ( int c = 0; c < 3; c++ ) {
+						pos[c] = pp[c] + s.parentDist[b] * mb[b].dir[c] * ( 1.0f / MDSC_POSE_SCALE );
+					}
 				} else {
 					float pitch = p[4] * ( (float)M_PI / 32768.0f ), yaw = p[5] * ( (float)M_PI / 32768.0f );
-					const float *pp = &( set ? posB : posA )[s.parent[b] * 3];
+					const float *pp = &posA[s.parent[b] * 3];
 					pos[0] = pp[0] + s.parentDist[b] * cosf( pitch ) * cosf( yaw );
 					pos[1] = pp[1] + s.parentDist[b] * cosf( pitch ) * sinf( yaw );
 					pos[2] = pp[2] - s.parentDist[b] * sinf( pitch );
@@ -582,7 +587,9 @@ static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile
 			}
 			float qa[4], qb[4];
 			MDSC_LocalRotation( NULL, ma + b * BONE_SHORTS, qa );
-			MDSC_LocalRotation( NULL, mb + b * BONE_SHORTS, qb );
+			for ( int c = 0; c < 4; c++ ) {
+				qb[c] = mb[b].quat[c] * ( 1.0f / MDSC_POSE_SCALE );
+			}
 			float ang = MDSC_QuatAngle( qa, qb );
 			if ( ang > st.maxAngle ) {
 				st.maxAngle = ang;

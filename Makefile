@@ -122,8 +122,8 @@ ifeq ($(PLATFORM),dc)
   SYM_PREFIX = _
   # kos-cc links with $(KOS_LDFLAGS) from the environment: KOS's script with
   # the hot code (DC_HOT, dc_prof.h) first and together (tools/dc/shlelf.xc);
-  # DC_HOTLAYOUT=0 links with KOS's own script (rm the .elf to relink)
-  DC_HOTLAYOUT ?= 1
+  # DC_HOTLAYOUT=1 links with it, 0 (the default) with KOS's own script (rm the .elf to relink)
+  DC_HOTLAYOUT ?= 0
   ifeq ($(DC_HOTLAYOUT),1)
     export KOS_LDFLAGS := $(patsubst -T%/utils/ldscripts/shlelf.xc,-T$(CURDIR)/tools/dc/shlelf.xc,$(KOS_LDFLAGS))
   endif

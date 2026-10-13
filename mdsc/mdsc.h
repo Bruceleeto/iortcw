@@ -37,9 +37,31 @@ extern "C" {
 
 #define MDSC_MAX_BONES      128     /* MDS_MAX_BONES */
 #define MDSC_FRAME_FLOATS   13      /* bounds[2], localOrigin, radius, parentOffset */
-#define MDSC_POSE_SHORTS    6       /* angles[4] (4th unused), ofsAngles[2] */
+#define MDSC_POSE_SHORTS    8       /* an mdscPose_t */
 
-/* the size of one decoded frame: an mdsFrame_t with numBones bones */
+/*
+ * A decoded frame: an mdsFrame_t's floats, then each bone in model space as
+ * the renderer uses it, no angles: its rotation as a quaternion (w, x, y, z,
+ * the matrix of it is the bone's axes, as AnglesToAxis's of its .mds angles)
+ * and the direction to it from its parent (unit; the root's is 0), both
+ * * MDSC_POSE_SCALE.
+ */
+#define MDSC_POSE_SCALE     32767.0f
+
+typedef struct {
+	short quat[4];
+	short dir[4];                   /* x, y, z, 0 */
+} mdscPose_t;
+
+typedef struct {
+	float bounds[2][3];
+	float localOrigin[3];
+	float radius;
+	float parentOffset[3];
+	mdscPose_t bones[1];            /* [numBones] */
+} mdscFrame_t;
+
+/* the size of one decoded frame with numBones bones */
 #define MDSC_FRAME_SIZE( numBones )	( MDSC_FRAME_FLOATS * 4 + ( numBones ) * MDSC_POSE_SHORTS * 2 )
 
 typedef struct {
@@ -192,12 +214,18 @@ void MDSC_TrackDir( const unsigned short *keys, const short *values, int numKeys
 void MDSC_ChildMatrix( const mdscMatrix_t parent, const float q[4], mdscMatrix_t m );
 
 /* Rebuilds frame `frame` of the MDSC whose file starts at `mds` into `out`,
- * laid out as an mdsFrame_t (MDSC_FRAME_SIZE bytes). Bones must come after
- * their parents, which the converter checks. */
+ * an mdscFrame_t (MDSC_FRAME_SIZE bytes). Bones must come after their
+ * parents, which the converter checks. */
 void MDSC_DecodeFrame( const void *mds, int frame, void *out );
 
 /* The same for an MDSC_VERSION_SHARED one, `base` its base's file. */
 void MDSC_DecodeSharedFrame( const void *mds, const void *base, int frame, void *out );
+
+/* An .mds's frame (an mdsFrame_t of numBones bones) as a decoded one. */
+void MDSC_MdsFrame( const void *mdsFrame, int numBones, void *out );
+
+/* a decoded bone's rotation as a matrix: rows are its axes */
+void MDSC_PoseMatrix( const mdscPose_t *pose, mdscMatrix_t m );
 
 #ifdef __cplusplus
 }

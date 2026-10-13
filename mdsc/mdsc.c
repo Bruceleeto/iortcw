@@ -4,7 +4,10 @@
  *
  * A bone's .mds angles become its matrix with AnglesToAxis, and the renderer
  * applies it as model = M * local (each row dotted with the vertex offset).
- * So the bone relative to its parent is L = Mp^T * M, and back M = Mp * L.
+ * So the bone relative to its parent is L = Mp^T * M, and back M = Mp * L,
+ * or with quaternions q = qp * ql. Decoding gives the renderer each bone's
+ * model space quaternion and direction from its parent (mdscFrame_t), which
+ * it makes its matrix and place of without trigonometry.
  */
 #include <math.h>
 #include <string.h>
@@ -15,9 +18,11 @@
 #include <sh4zam/shz_scalar.h>
 #define FastSqrt( x )       shz_sqrtf( x )
 #define FastDiv( a, b )     shz_divf_fsrra( a, b )     /* b > 0 */
+#define FastInvSqrt( x )    shz_inv_sqrtf_fsrra( x )   /* x > 0 */
 #else
 #define FastSqrt( x )       sqrtf( x )
 #define FastDiv( a, b )     ( ( a ) / ( b ) )
+#define FastInvSqrt( x )    ( 1.0f / sqrtf( x ) )
 #endif
 
 /* where they are in an mdsHeader_t / mdscBoneInfo_t */
@@ -37,12 +42,6 @@ static float ShortToAngle( short s ) {
 	return s * ( 360.0f / 65536.0f );
 }
 
-/* radians (atan2f's, -pi to pi) to the nearest 1/65536 turn; the offset
-   keeps it positive so the cast rounds without lrintf */
-static short RadToShort( float r ) {
-	return (short)(unsigned short)( (int)( r * ( 32768.0f / (float)M_PI ) + 65536.5f ) & 65535 );
-}
-
 /* q_math.c's AnglesToAxis */
 void MDSC_AnglesToMatrix( const short angles[3], mdscMatrix_t m ) {
 	float p = DEG2RAD( ShortToAngle( angles[0] ) );
@@ -59,22 +58,6 @@ void MDSC_AnglesToMatrix( const short angles[3], mdscMatrix_t m ) {
 	m[2][0] = cr * sp * cy + sr * sy;
 	m[2][1] = cr * sp * sy - sr * cy;
 	m[2][2] = cr * cp;
-}
-
-/* and back */
-static void MatrixToAngles( const mdscMatrix_t m, short angles[3] ) {
-	float horiz = sqrtf( m[0][0] * m[0][0] + m[0][1] * m[0][1] );
-
-	if ( horiz > 1e-5f ) {
-		angles[0] = RadToShort( atan2f( -m[0][2], horiz ) );
-		angles[1] = RadToShort( atan2f( m[0][1], m[0][0] ) );
-		angles[2] = RadToShort( atan2f( m[1][2], m[2][2] ) );
-	} else {
-		/* straight up or down: yaw and roll are the same turn, call it yaw */
-		angles[0] = m[0][2] < 0 ? 16384 : -16384;
-		angles[1] = RadToShort( atan2f( -m[1][0], m[1][1] ) );
-		angles[2] = 0;
-	}
 }
 
 /* rotation matrix (applied as M * v) <-> quaternion w, x, y, z */
@@ -129,13 +112,6 @@ static void DirFromAngles( short pitch, short yaw, float dir[3] ) {
 	dir[0] = cosf( p ) * cosf( y );
 	dir[1] = cosf( p ) * sinf( y );
 	dir[2] = -sinf( p );
-}
-
-static void DirToAngles( const float dir[3], short *pitch, short *yaw ) {
-	float horiz = sqrtf( dir[0] * dir[0] + dir[1] * dir[1] );
-
-	*pitch = RadToShort( atan2f( -dir[2], horiz ) );
-	*yaw = horiz > 1e-5f ? RadToShort( atan2f( dir[1], dir[0] ) ) : 0;
 }
 
 void MDSC_LocalRotation( const mdscMatrix_t p, const short angles[3], float q[4] ) {
@@ -226,9 +202,9 @@ static void LerpQuat( const float a[4], const float b[4], float t, float out[4] 
 	for ( i = 0; i < 4; i++ ) {
 		out[i] = a[i] * ( 1 - t ) + b[i] * tb;
 	}
-	len = sqrtf( out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3] );
+	len = FastInvSqrt( out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3] );
 	for ( i = 0; i < 4; i++ ) {
-		out[i] /= len;
+		out[i] *= len;
 	}
 }
 
@@ -441,7 +417,60 @@ static void TrackDirAt( const unsigned char *animBase, const mdscTrack_t *track,
 	}
 }
 
-/* each bone's model space matrix, of the frame DecodePose did last */
+/* q = a * b: b's rotation, then a's */
+static void QuatMul( const float a[4], const float b[4], float q[4] ) {
+	q[0] = a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3];
+	q[1] = a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2];
+	q[2] = a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1];
+	q[3] = a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0];
+}
+
+static short PoseShort( float v ) {   /* v within +-1 */
+	int n = (int)( v * MDSC_POSE_SCALE + ( v < 0 ? -0.5f : 0.5f ) );
+	return (short)( n < -32767 ? -32767 : n > 32767 ? 32767 : n );
+}
+
+static void PackPoseQuat( const float q[4], short out[4] ) {
+	int i;
+
+	for ( i = 0; i < 4; i++ ) {
+		out[i] = PoseShort( q[i] );
+	}
+}
+
+/* d, any length, as a unit direction */
+static void PackPoseDir( const float d[3], short out[4] ) {
+	float len = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+	int i;
+
+	len = len > 0 ? FastInvSqrt( len ) : 0;
+	for ( i = 0; i < 3; i++ ) {
+		out[i] = PoseShort( d[i] * len );
+	}
+	out[3] = 0;
+}
+
+/* m * d */
+static void RotateDir( const mdscMatrix_t m, const float d[3], float out[3] ) {
+	int j;
+
+	for ( j = 0; j < 3; j++ ) {
+		out[j] = m[j][0] * d[0] + m[j][1] * d[1] + m[j][2] * d[2];
+	}
+}
+
+void MDSC_PoseMatrix( const mdscPose_t *pose, mdscMatrix_t m ) {
+	float q[4];
+	int i;
+
+	for ( i = 0; i < 4; i++ ) {
+		q[i] = pose->quat[i] * ( 1.0f / MDSC_POSE_SCALE );
+	}
+	QuatToMatrix( q, m );
+}
+
+/* each bone's model space rotation, of the frame DecodePose did last */
+static float decodedQuat[MDSC_MAX_BONES][4];
 static mdscMatrix_t decodedModel[MDSC_MAX_BONES];
 
 /* the parent offsets and bones of frame `frame` of the mdscAnim_t at
@@ -450,37 +479,31 @@ static void DecodePose( const unsigned char *base, const unsigned char *animBase
 	int numBones = ReadInt( base + HDR_NUMBONES );
 	const mdscAnim_t *anim = (const mdscAnim_t *)animBase;
 	const unsigned char *boneInfo = base + ReadInt( base + HDR_OFSBONES );
-	float *floats = (float *)out;
-	short *poses = (short *)( floats + MDSC_FRAME_FLOATS );
-	mdscMatrix_t *model = decodedModel;
-	int i, j;
+	mdscFrame_t *f = (mdscFrame_t *)out;
+	int i;
 
-	TrackFloats( animBase, &anim->frameTrack, MDSC_OFFSET_FLOATS, frame, floats + MDSC_CULL_FLOATS );
+	TrackFloats( animBase, &anim->frameTrack, MDSC_OFFSET_FLOATS, frame, f->parentOffset );
 
 	/* bones, parents first */
 	for ( i = 0; i < numBones; i++ ) {
-		const mdscTrack_t *rot = &anim->tracks[i];
 		int parent = ReadInt( boneInfo + i * BONEINFO_SIZE + BONEINFO_PARENT );
-		short *pose = poses + i * MDSC_POSE_SHORTS;
+		mdscPose_t *pose = &f->bones[i];
 		float q[4];
 
-		TrackQuatAt( animBase, rot, frame, q );
+		TrackQuatAt( animBase, &anim->tracks[i], frame, q );
 		if ( parent < 0 ) {
-			MDSC_ChildMatrix( NULL, q, model[i] );
-			pose[4] = pose[5] = 0;
+			memcpy( decodedQuat[i], q, sizeof( q ) );
+			pose->dir[0] = pose->dir[1] = pose->dir[2] = pose->dir[3] = 0;
 		} else {
-			const mdscTrack_t *dir = &anim->tracks[numBones + i];
 			float d[3], md[3];
 
-			MDSC_ChildMatrix( (const float (*)[3])model[parent], q, model[i] );
-			TrackDirAt( animBase, dir, frame, d );
-			for ( j = 0; j < 3; j++ ) {
-				md[j] = model[parent][j][0] * d[0] + model[parent][j][1] * d[1] + model[parent][j][2] * d[2];
-			}
-			DirToAngles( md, &pose[4], &pose[5] );
+			QuatMul( decodedQuat[parent], q, decodedQuat[i] );
+			TrackDirAt( animBase, &anim->tracks[numBones + i], frame, d );
+			RotateDir( (const float (*)[3])decodedModel[parent], d, md );
+			PackPoseDir( md, pose->dir );
 		}
-		MatrixToAngles( (const float (*)[3])model[i], pose );
-		pose[3] = 0;
+		QuatToMatrix( decodedQuat[i], decodedModel[i] );
+		PackPoseQuat( decodedQuat[i], pose->quat );
 	}
 }
 
@@ -526,28 +549,42 @@ void MDSC_DecodeSharedFrame( const void *mds, const void *base, int frame, void 
 	if ( seg->fromBase ) {
 		const unsigned char *b = (const unsigned char *)base;
 		const mdscFix_t *fix = (const mdscFix_t *)( shareBase + share->ofsFixes );
-		float *floats = (float *)out;
-		short *poses = (short *)( floats + MDSC_FRAME_FLOATS );
+		mdscFrame_t *f = (mdscFrame_t *)out;
 		int i, j;
 
 		DecodePose( b, b + ReadInt( b + HDR_OFSFRAMES ), ClampFrame( b, seg->srcFirst + frame - seg->first ), out );
 
 		/* its own tags and root on them (mdscFix_t) */
 		for ( i = 0; i < share->numFixes; i++, fix++ ) {
-			const float( *pm )[3] = (const float( * )[3])decodedModel[fix->parent];
-			short *pose = poses + fix->bone * MDSC_POSE_SHORTS;
 			float md[3];
 
-			for ( j = 0; j < 3; j++ ) {
-				md[j] = pm[j][0] * fix->dir[0] + pm[j][1] * fix->dir[1] + pm[j][2] * fix->dir[2];
-			}
-			DirToAngles( md, &pose[4], &pose[5] );
+			RotateDir( (const float( * )[3])decodedModel[fix->parent], fix->dir, md );
+			PackPoseDir( md, f->bones[fix->bone].dir );
 		}
 		for ( j = 0; j < 3; j++ ) {
-			floats[MDSC_CULL_FLOATS + j] += share->rootOffset[j];
+			f->parentOffset[j] += share->rootOffset[j];
 		}
 	} else {
 		DecodePose( own, animBase, seg->srcFirst + frame - seg->first, out );
+	}
+}
+
+void MDSC_MdsFrame( const void *mdsFrame, int numBones, void *out ) {
+	const short *in = (const short *)( (const float *)mdsFrame + MDSC_FRAME_FLOATS );
+	mdscFrame_t *f = (mdscFrame_t *)out;
+	int i;
+
+	memcpy( f, mdsFrame, MDSC_FRAME_FLOATS * 4 );
+	/* an .mds bone: angles[4] (4th unused), ofsAngles[2] */
+	for ( i = 0; i < numBones; i++, in += 6 ) {
+		mdscMatrix_t m;
+		float q[4], d[3];
+
+		MDSC_AnglesToMatrix( in, m );
+		MatrixToQuat( m, q );
+		PackPoseQuat( q, f->bones[i].quat );
+		DirFromAngles( in[4], in[5], d );
+		PackPoseDir( d, f->bones[i].dir );
 	}
 }
 

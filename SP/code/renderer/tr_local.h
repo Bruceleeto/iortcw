@@ -963,7 +963,7 @@ typedef struct model_s {
 #define MAX_MOD_KNOWN   1024    // (was 2048)
 
 void        R_ModelInit( void );
-mdsFrame_t  *R_MDSFrame( mdsHeader_t *header, int frame );
+mdscFrame_t *R_MDSFrame( mdsHeader_t *header, int frame );
 void        R_ClearMDSFrames( void );
 model_t     *R_GetModelByHandle( qhandle_t hModel );
 int         R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex );
