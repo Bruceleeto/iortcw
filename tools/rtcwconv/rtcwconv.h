@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include "mdsc.h"
+
 /* ---- strip.cpp ---- */
 
 /* Reorders a triangle list (3 indices each) so triangles that make a strip
@@ -73,14 +75,29 @@ bool ConvertMds(const std::vector<uint8_t> &in, std::vector<uint8_t> &out,
 struct MdsGroup {
 	std::string base;
 	std::vector<std::string> members;
+	std::vector<std::string> retarget;  /* members put on the first's animation first (RetargetMds) */
+};
+
+/* a member's own tags and root on the base's frames (mdsc.h, mdscFix_t) */
+struct MdsFixes {
+	std::vector<mdscFix_t> fixes;
+	float rootOffset[3] = { 0, 0, 0 };
 };
 extern const MdsGroup mdsGroups[];
 extern const int numMdsGroups;
 
 /* ins in members' order; outs the members' .mdsc, baseOut base's */
 bool ConvertMdsGroup(const MdsGroup &g, const std::vector<std::vector<uint8_t>> &ins,
-                     std::vector<std::vector<uint8_t>> &outs, std::vector<uint8_t> &baseOut,
-                     const MdsOptions &opt, MdsStats &st);
+                     const std::vector<MdsFixes> &fixes, std::vector<std::vector<uint8_t>> &outs,
+                     std::vector<uint8_t> &baseOut, const MdsOptions &opt, MdsStats &st);
+
+/* Puts the character in mds (and its wolfanim.cfg, cfg) on animIn's
+ * skeleton, bone for bone by name, its animations that animIn has (animCfg),
+ * near enough, replaced by animIn's frames: so a group shares them. Its
+ * tags stay on their own parents, as `fixes`. False (mds and cfg as they
+ * were) where the skeletons differ. */
+bool RetargetMds(const std::vector<uint8_t> &animIn, const std::string &animCfg, std::vector<uint8_t> &mds,
+                 std::string &cfg, MdsFixes &fixes, const char *name);
 
 /* Takes out of a character's .mds the frames none of its wolfanim.cfg's
  * animations play (but frame 0), and the cfg's first frames with them. False

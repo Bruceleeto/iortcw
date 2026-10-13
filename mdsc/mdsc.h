@@ -95,12 +95,30 @@ typedef struct {
 	int fromBase;
 } mdscSegment_t;
 
+/*
+ * A character with its own proportions on the base's animation (the
+ * mechanic on the guards'): its bones are the base's, in the same order,
+ * but for some leaves (tags) on another parent of its own, or elsewhere on
+ * it. On the base's frames such a bone keeps its place against its parent
+ * as on its own frames, where it never moves against it: the direction dir
+ * (unit) in the parent's space. Its rotation, in model space, is the base's,
+ * which its own follows. And the root on them is moved by rootOffset, for
+ * its own leg lengths. Neither touches its own frames.
+ */
+typedef struct {
+	int bone, parent;               /* parent: its own, which comes before it */
+	float dir[3];
+} mdscFix_t;
+
 typedef struct {
 	char base[64];                  /* the base, as the game registers it (.mds) */
 	int baseHandle;                 /* the renderer's: the base's model handle once loaded */
 	int numSegments;
 	int ofsSegments;                /* mdscSegment_t[numSegments] by first, from the start of this */
 	int ofsAnim;                    /* its mdscAnim_t, from the start of this */
+	int numFixes;
+	int ofsFixes;                   /* mdscFix_t[numFixes], from the start of this */
+	float rootOffset[3];
 } mdscShare_t;
 
 /*

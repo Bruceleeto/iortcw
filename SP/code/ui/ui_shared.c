@@ -6534,11 +6534,22 @@ Menu_New
 ===============
 */
 void Menu_New( int handle ) {
+	static itemDef_t *parsed[MAX_MENUITEMS];   // its items as it's parsed
 	menuDef_t *menu = &Menus[menuCount];
 
 	if ( menuCount < MAX_MENUS ) {
 		Menu_Init( menu );
+		menu->items = parsed;
 		if ( Menu_Parse( handle, menu ) ) {
+			// then just as many as it has
+			menu->items = NULL;
+			if ( menu->itemCount ) {
+				menu->items = UI_Alloc( menu->itemCount * sizeof( menu->items[0] ) );
+				if ( !menu->items ) {
+					return;
+				}
+				memcpy( menu->items, parsed, menu->itemCount * sizeof( menu->items[0] ) );
+			}
 			Menu_PostParse( menu );
 			menuCount++;
 		}

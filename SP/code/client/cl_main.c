@@ -827,9 +827,10 @@ level is loaded again as dying does, and quit 10 seconds after.
 +set dcsim_map <map>: straight to that map (spmap) instead, for escape1
 3: the whole game in one run, the maps in the order their scripts'
 changelevels go (the cutscenes too), the next 10 seconds into each as
-the game loads it (spmap with g_reloading), the memory reported then, to
-see the heap over level changes (from dcsim_map, else the first); quits
-after the last, or a minute in one map
+the game loads it (spmap with g_reloading), the memory reported then, and
+again with the pause menu up (Start: its menus are loaded then), to see
+the heap over level changes (from dcsim_map, else the first); quits after
+the last, or a minute in one map
 ==================
 */
 static const char *dcsimChain[] = {
@@ -912,6 +913,15 @@ static void CL_DCSimNewGame( void ) {
 			chainCount++;
 		} else if ( !chainSent && now - chainAt > 10000 ) {
 			Com_MemoryReport( va( "10 seconds into %s", cur ) );
+			// Start, as cl_keys.c's escape
+			Com_Printf( "DCSIM chain: the pause menu\n" );
+			VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_INGAME );
+			chainSent = 1;
+		} else if ( chainSent == 1 && now - chainAt > 12000 ) {
+			Com_MemoryReport( va( "pause menu up in %s", cur ) );
+			VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_NONE );
+			Key_SetCatcher( Key_GetCatcher() & ~KEYCATCH_UI );
+			Cvar_Set( "cl_paused", "0" );
 			for ( i = 0; dcsimChain[i] && Q_stricmp( dcsimChain[i], cur ); i++ ) {
 			}
 			// +set dcsim_maps <n>: stop after n maps
@@ -925,7 +935,7 @@ static void CL_DCSimNewGame( void ) {
 			Com_Printf( "DCSIM chain: to %s\n", dcsimChain[i + 1] );
 			Cvar_Set( "g_reloading", va( "%d", RELOAD_NEXTMAP ) );
 			Cbuf_AddText( va( "spmap %s\n", dcsimChain[i + 1] ) );
-			chainSent = 1;		// once, till the next is in
+			chainSent = 2;		// once, till the next is in
 		}
 		return;
 	}

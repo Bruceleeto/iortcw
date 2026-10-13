@@ -167,12 +167,18 @@ function parseMDSC( ab ) {
 	m.meshBytes = meshBytes;
 	if ( m.version === 9 ) {
 		const sb = ofsFrames, segs = [];
-		const numSeg = I( sb + 68 ), ofsSeg = I( sb + 72 ), ofsAnim = I( sb + 76 );
+		const numSeg = I( sb + 68 ), ofsSeg = I( sb + 72 ), ofsAnim = I( sb + 76 ), numFix = I( sb + 80 ), ofsFix = I( sb + 84 );
 		for ( let i = 0; i < numSeg; i++ ) {
 			const o = sb + ofsSeg + 16 * i;
 			segs.push( { first: I( o ), count: I( o + 4 ), srcFirst: I( o + 8 ), fromBase: I( o + 12 ) } );
 		}
-		m.share = { base: str( u8, sb, 64 ), segs };
+		// its own tags and root on the base's frames (mdscFix_t)
+		const fixes = [], F = o => dv.getFloat32( o, true );
+		for ( let i = 0; i < numFix; i++ ) {
+			const o = sb + ofsFix + 20 * i;
+			fixes.push( { bone: I( o ), parent: I( o + 4 ), dir: [F( o + 8 ), F( o + 12 ), F( o + 16 )] } );
+		}
+		m.share = { base: str( u8, sb, 64 ), segs, fixes, rootOffset: [F( sb + 88 ), F( sb + 92 ), F( sb + 96 )] };
 		m.anim = parseAnim( dv, sb + ofsAnim, m.numBones );
 	} else {
 		m.anim = parseAnim( dv, ofsFrames, m.numBones );
@@ -243,7 +249,13 @@ function mdsPose( m, f ) {
 	if ( s.fromBase ) {
 		const b = m.baseModel;
 		if ( !b ) return null;
-		return decodePose( b.anim, b.bones, Math.max( 0, Math.min( b.numFrames - 1, s.srcFirst + f - s.first ) ) );
+		const pose = decodePose( b.anim, b.bones, Math.max( 0, Math.min( b.numFrames - 1, s.srcFirst + f - s.first ) ) );
+		for ( const x of m.share.fixes ) {
+			const M = pose.M, po = x.parent * 9, d = x.dir;
+			for ( let c = 0; c < 3; c++ ) pose.D[x.bone * 3 + c] = M[po + c * 3] * d[0] + M[po + c * 3 + 1] * d[1] + M[po + c * 3 + 2] * d[2];
+		}
+		for ( let c = 0; c < 3; c++ ) pose.P[c] += m.share.rootOffset[c];
+		return pose;
 	}
 	return decodePose( m.anim, m.bones, s.srcFirst + f - s.first );
 }

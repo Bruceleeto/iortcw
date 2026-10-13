@@ -516,7 +516,16 @@ static size_t PutAnim( Out &o, const MdsSrc &s, const std::vector<int> &pose, co
 
 /* decode every frame of the MDSC made of s (with its base, if shared) as the
    game will, and see how far the bones moved */
-static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile, const MdsSrc &s, MdsStats &st, const char *name ) {
+static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile, const MdsSrc &s, MdsStats &st, const char *name,
+					   const MdsFixes *fixes = nullptr ) {
+	/* on another's animation: its tags and root aren't that one's, so
+	   those are left out and the rest measured from the root */
+	std::vector<bool> skip( s.nb, false );
+	if ( fixes ) {
+		for ( const mdscFix_t &f : fixes->fixes ) {
+			skip[f.bone] = true;
+		}
+	}
 	const int nf = s.nf, nb = s.nb;
 	std::vector<uint8_t> dec( MDSC_FRAME_SIZE( nb ) );
 	std::vector<float> posA( nb * 3 ), posB( nb * 3 );
@@ -557,6 +566,9 @@ static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile
 
 				if ( s.parent[b] < 0 ) {
 					memcpy( pos, root, 12 );
+					if ( fixes ) {
+						pos[0] = pos[1] = pos[2] = 0;
+					}
 				} else {
 					float pitch = p[4] * ( (float)M_PI / 32768.0f ), yaw = p[5] * ( (float)M_PI / 32768.0f );
 					const float *pp = &( set ? posB : posA )[s.parent[b] * 3];
@@ -564,6 +576,9 @@ static bool CheckMdsc( const std::vector<uint8_t> &file, const uint8_t *baseFile
 					pos[1] = pp[1] + s.parentDist[b] * cosf( pitch ) * sinf( yaw );
 					pos[2] = pp[2] - s.parentDist[b] * sinf( pitch );
 				}
+			}
+			if ( skip[b] ) {
+				continue;
 			}
 			float qa[4], qb[4];
 			MDSC_LocalRotation( NULL, ma + b * BONE_SHORTS, qa );
@@ -621,13 +636,16 @@ const MdsGroup mdsGroups[] = {
 	/* the guards: of officerss' 5335 frames, 4205 are infantryss' (but for
 	   the cull bounds), of trench's 5383, 4156 */
 	{ "models/players/guards_anim.mds",
-	  { "models/players/infantryss/body.mds", "models/players/officerss/body.mds", "models/players/trench/body.mds" } },
+	  { "models/players/infantryss/body.mds", "models/players/officerss/body.mds", "models/players/trench/body.mds",
+		"models/players/mechanic/body.mds" },
+	  /* the mechanic its own proportions on infantryss' animation (RetargetMds) */
+	  { "models/players/mechanic/body.mds" } },
 };
 const int numMdsGroups = sizeof( mdsGroups ) / sizeof( mdsGroups[0] );
 
 bool ConvertMdsGroup( const MdsGroup &g, const std::vector<std::vector<uint8_t>> &ins,
-					  std::vector<std::vector<uint8_t>> &outs, std::vector<uint8_t> &baseOut,
-					  const MdsOptions &opt, MdsStats &st ) {
+					  const std::vector<MdsFixes> &fixes, std::vector<std::vector<uint8_t>> &outs,
+					  std::vector<uint8_t> &baseOut, const MdsOptions &opt, MdsStats &st ) {
 	const int n = (int)ins.size();
 	std::vector<MdsSrc> src( n );
 
@@ -635,7 +653,14 @@ bool ConvertMdsGroup( const MdsGroup &g, const std::vector<std::vector<uint8_t>>
 		if ( !ParseMds( ins[m], src[m], g.members[m].c_str() ) ) {
 			return false;
 		}
-		if ( src[m].nb != src[0].nb || src[m].parent != src[0].parent ) {
+		/* the same skeleton, but for its own tags' parents */
+		std::vector<int> parent = src[m].parent;
+		for ( const mdscFix_t &f : fixes[m].fixes ) {
+			if ( f.bone < (int)parent.size() ) {
+				parent[f.bone] = src[0].parent[f.bone];
+			}
+		}
+		if ( src[m].nb != src[0].nb || parent != src[0].parent ) {
 			fprintf( stderr, "%s: not %s's skeleton\n", g.members[m].c_str(), g.members[0].c_str() );
 			return false;
 		}
@@ -738,9 +763,13 @@ bool ConvertMdsGroup( const MdsGroup &g, const std::vector<std::vector<uint8_t>>
 		mdscShare_t share = {};
 		snprintf( share.base, sizeof( share.base ), "%s", g.base.c_str() );
 		share.numSegments = (int)segs.size();
+		share.numFixes = (int)fixes[m].fixes.size();
+		memcpy( share.rootOffset, fixes[m].rootOffset, sizeof( share.rootOffset ) );
 		o.put( &share, sizeof( share ) );
 		o.set32( shareAt + offsetof( mdscShare_t, ofsSegments ), (int32_t)( o.pos() - shareAt ) );
 		o.put( segs.data(), segs.size() * sizeof( mdscSegment_t ) );
+		o.set32( shareAt + offsetof( mdscShare_t, ofsFixes ), (int32_t)( o.pos() - shareAt ) );
+		o.put( fixes[m].fixes.data(), fixes[m].fixes.size() * sizeof( mdscFix_t ) );
 		size_t anim = PutAnim( o, s, own, all, opt, st );
 		o.set32( shareAt + offsetof( mdscShare_t, ofsAnim ), (int32_t)( anim - shareAt ) );
 		MdsHeader *oh = (MdsHeader *)o.b.data();
@@ -748,7 +777,7 @@ bool ConvertMdsGroup( const MdsGroup &g, const std::vector<std::vector<uint8_t>>
 		oh->ofsFrames = (int32_t)shareAt;
 		oh->ofsEnd = (int32_t)o.pos();
 
-		if ( !CheckMdsc( o.b, baseOut.data(), s, st, name ) ) {
+		if ( !CheckMdsc( o.b, baseOut.data(), s, st, name, fixes[m].fixes.empty() ? nullptr : &fixes[m] ) ) {
 			return false;
 		}
 		int baseFrames = 0, runs = 0;
@@ -1004,6 +1033,380 @@ bool StripMdsFrames( std::vector<uint8_t> &mds, std::string &cfg, const std::set
 		ofs += sf.ofsEnd;
 	}
 	mds.swap( m );
+	cfg.swap( out );
+	return true;
+}
+
+/* ---- a character on another's animation (mdscFix_t) ----
+ *
+ * The mechanic has the guards' skeleton (the same bones by name, its own
+ * lengths) and 70 of its 87 animations are theirs, near enough. It's put in
+ * the guards' bone order with those animations replaced by infantryss'
+ * frames, so it shares them in guards_anim; its tags, on parents of its own
+ * and fixed to them, kept as mdscFixes, its root moved for its legs. */
+
+#define RETARGET_MAX_ERR 2.5f   /* most an animation's body bones may be off on average, in units */
+
+struct CfgAnim {
+	std::string name;   /* lower case */
+	size_t tok;         /* its name's */
+	int first, length;
+};
+
+/* wolfanim.cfg's animations, as StripMdsFrames reads them */
+static bool CfgAnims( const std::string &cfg, std::vector<CfgToken> &tok, std::vector<CfgAnim> &anims ) {
+	if ( !CfgTokens( cfg, tok ) ) {
+		return false;
+	}
+	auto word = [&]( size_t i ) { std::string w = cfg.substr( tok[i].start, tok[i].end - tok[i].start );
+								  std::transform( w.begin(), w.end(), w.begin(), ::tolower ); return w; };
+	size_t i = 0;
+	while ( i < tok.size() && word( i ) != "startanims" ) {
+		i++;
+	}
+	for ( i++; i < tok.size() && word( i ) != "endanims"; ) {
+		CfgAnim a = { word( i ), i, 0, 0 };
+		i++;
+		for ( int k = 0; k < 5; k++, i++ ) {
+			if ( i >= tok.size() || tok[i].newLine || ( k == 0 && !CfgInt( cfg, tok[i], a.first ) ) ||
+				 ( k == 1 && !CfgInt( cfg, tok[i], a.length ) ) ) {
+				return false;
+			}
+		}
+		while ( i < tok.size() && !tok[i].newLine ) {
+			i++;    /* blend, priority */
+		}
+		anims.push_back( a );
+	}
+	return i < tok.size();
+}
+
+static std::string BoneName( const MdsSrc &s, int b ) {
+	const char *n = (const char *)s.in->data() + s.h.ofsBones + b * BONE_INFO_SIZE;
+	std::string w( n, strnlen( n, 64 ) );
+	std::transform( w.begin(), w.end(), w.begin(), ::tolower );
+	return w;
+}
+
+/* bone positions relative to the root, the way R_CalcBone places them, of
+   frame f of s, bone b being s's map[b] */
+static void RootPositions( const MdsSrc &s, int f, const std::vector<int> &map, const std::vector<int> &parent,
+						   const std::vector<float> &dist, std::vector<float> &pos ) {
+	const int nb = (int)map.size();
+	pos.assign( nb * 3, 0 );
+	for ( int b = 0; b < nb; b++ ) {
+		const short *p = &s.model[( (size_t)f * s.nb + map[b] ) * BONE_SHORTS];
+		if ( parent[b] < 0 ) {
+			continue;
+		}
+		float pitch = p[4] * ( (float)M_PI / 32768.0f ), yaw = p[5] * ( (float)M_PI / 32768.0f );
+		pos[b * 3] = pos[parent[b] * 3] + dist[b] * cosf( pitch ) * cosf( yaw );
+		pos[b * 3 + 1] = pos[parent[b] * 3 + 1] + dist[b] * cosf( pitch ) * sinf( yaw );
+		pos[b * 3 + 2] = pos[parent[b] * 3 + 2] - dist[b] * sinf( pitch );
+	}
+}
+
+bool RetargetMds( const std::vector<uint8_t> &animIn, const std::string &animCfg, std::vector<uint8_t> &mds,
+				  std::string &cfg, MdsFixes &fixes, const char *name ) {
+	MdsSrc g, m;
+	if ( !ParseMds( animIn, g, "retarget" ) || !ParseMds( mds, m, name ) ) {
+		return false;
+	}
+	const int nb = g.nb;
+	if ( m.nb != nb ) {
+		fprintf( stderr, "%s: %d bones, not %d\n", name, m.nb, nb );
+		return false;
+	}
+
+	/* its bones in the other's order: map[b] its, of the other's b */
+	std::map<std::string, int> byName;
+	for ( int b = 0; b < nb; b++ ) {
+		byName[BoneName( m, b )] = b;
+	}
+	std::vector<int> map( nb ), toNew( nb ), ident( nb );
+	for ( int b = 0; b < nb; b++ ) {
+		auto it = byName.find( BoneName( g, b ) );
+		if ( it == byName.end() ) {
+			fprintf( stderr, "%s: no bone %s\n", name, BoneName( g, b ).c_str() );
+			return false;
+		}
+		map[b] = it->second;
+		toNew[it->second] = b;
+		ident[b] = b;
+	}
+
+	/* the other's parents but for tags no bone hangs from, on their own */
+	std::vector<int> parent( nb ), ownParent( nb );
+	std::vector<float> dist( nb );
+	std::vector<bool> leaf( nb, true ), fixed( nb, false );
+	for ( int b = 0; b < nb; b++ ) {
+		ownParent[b] = m.parent[map[b]] < 0 ? -1 : toNew[m.parent[map[b]]];
+		dist[b] = m.parentDist[map[b]];
+		if ( g.parent[b] >= 0 ) {
+			leaf[g.parent[b]] = false;
+		}
+		if ( ownParent[b] >= 0 ) {
+			leaf[ownParent[b]] = false;
+		}
+	}
+	for ( int b = 0; b < nb; b++ ) {
+		fixed[b] = leaf[b] && ownParent[b] >= 0 && !BoneName( g, b ).compare( 0, 4, "tag_" );
+		parent[b] = fixed[b] ? ownParent[b] : g.parent[b];
+		if ( !fixed[b] && ownParent[b] != g.parent[b] ) {
+			fprintf( stderr, "%s: %s on another parent\n", name, BoneName( g, b ).c_str() );
+			return false;
+		}
+		if ( parent[b] >= b ) {
+			fprintf( stderr, "%s: %s comes before its parent\n", name, BoneName( g, b ).c_str() );
+			return false;
+		}
+	}
+
+	std::vector<CfgToken> gtok, mtok;
+	std::vector<CfgAnim> ganims, manims;
+	if ( !CfgAnims( animCfg, gtok, ganims ) || !CfgAnims( cfg, mtok, manims ) ) {
+		fprintf( stderr, "%s: can't read a wolfanim.cfg\n", name );
+		return false;
+	}
+	std::map<std::string, const CfgAnim *> gByName;
+	for ( const CfgAnim &a : ganims ) {
+		gByName[a.name] = &a;
+	}
+
+	/* which of its animations take the other's frames: the same name and
+	   length (one that plays: not retired), and its body near enough */
+	std::vector<const CfgAnim *> from( manims.size(), nullptr );
+	std::vector<float> pa, pb;
+	double off[3] = { 0, 0, 0 };
+	long offN = 0;
+	int shared = 0, sharedFrames = 0;
+	for ( size_t i = 0; i < manims.size(); i++ ) {
+		const CfgAnim &a = manims[i];
+		auto it = gByName.find( a.name );
+		if ( it == gByName.end() || a.first < 1 || a.length < 1 || it->second->first < 1 ||
+			 it->second->length != a.length ) {
+			continue;
+		}
+		const CfgAnim &o = *it->second;
+		double err = 0;
+		long n = 0;
+		for ( int f = 0; f < a.length; f++ ) {
+			RootPositions( m, a.first + f, map, parent, dist, pa );
+			RootPositions( g, o.first + f, ident, parent, dist, pb );
+			for ( int b = 0; b < nb; b++ ) {
+				if ( !fixed[b] ) {
+					err += sqrtf( ( pa[b * 3] - pb[b * 3] ) * ( pa[b * 3] - pb[b * 3] ) + ( pa[b * 3 + 1] - pb[b * 3 + 1] ) * ( pa[b * 3 + 1] - pb[b * 3 + 1] )
+								  + ( pa[b * 3 + 2] - pb[b * 3 + 2] ) * ( pa[b * 3 + 2] - pb[b * 3 + 2] ) );
+					n++;
+				}
+			}
+		}
+		if ( err / n > RETARGET_MAX_ERR ) {
+			printf( "mds: %s: %s its own, %.1f units off\n", name, a.name.c_str(), err / n );
+			continue;
+		}
+		from[i] = &o;
+		shared++;
+		sharedFrames += a.length;
+		for ( int f = 0; f < a.length; f++, offN++ ) {
+			for ( int c = 0; c < 3; c++ ) {
+				off[c] += m.frameVals[( a.first + f ) * FRAME_FLOATS + 10 + c] - g.frameVals[( o.first + f ) * FRAME_FLOATS + 10 + c];
+			}
+		}
+	}
+	if ( !shared ) {
+		fprintf( stderr, "%s: no animation to share\n", name );
+		return false;
+	}
+	fixes = MdsFixes();
+	for ( int c = 0; c < 3; c++ ) {
+		fixes.rootOffset[c] = (float)( off[c] / offN );
+	}
+
+	/* the tags' places against their own parents: the same on all its
+	   frames? (their rotations, in model space, follow the other's) */
+	float worstDir = 0, worstRot = 0;
+	for ( int b = 0; b < nb; b++ ) {
+		if ( !fixed[b] ) {
+			continue;
+		}
+		float dir = 0;
+		mdscFix_t fx = {};
+		fx.bone = b;
+		fx.parent = parent[b];
+		for ( int f = 0; f < m.nf; f++ ) {
+			const short *pp = &m.model[( (size_t)f * nb + map[parent[b]] ) * BONE_SHORTS];
+			const short *p = &m.model[( (size_t)f * nb + map[b] ) * BONE_SHORTS];
+			mdscMatrix_t pm;
+			float d[3];
+			MDSC_AnglesToMatrix( pp, pm );
+			MDSC_LocalDir( pm, p + 4, d );
+			if ( !f ) {
+				float l = sqrtf( d[0] * d[0] + d[1] * d[1] + d[2] * d[2] );
+				for ( int c = 0; c < 3; c++ ) {
+					fx.dir[c] = l > 0 ? d[c] / l : 0;
+				}
+			} else if ( dist[b] > 0.01f ) {
+				dir = std::max( dir, MDSC_DirAngle( d, fx.dir ) );
+			}
+		}
+		if ( dir > 1 ) {
+			printf( "mds: %s: %s moves against %s, up to %.1f degrees\n", name, BoneName( g, b ).c_str(),
+					BoneName( g, parent[b] ).c_str(), dir );
+		}
+		worstDir = std::max( worstDir, dir );
+		fixes.fixes.push_back( fx );
+	}
+	/* and how far the rotations are off, on the shared animations */
+	for ( size_t i = 0; i < manims.size(); i++ ) {
+		for ( int f = 0; from[i] && f < manims[i].length; f++ ) {
+			for ( const mdscFix_t &fx : fixes.fixes ) {
+				float qa[4], qb[4];
+				MDSC_LocalRotation( NULL, &m.model[( (size_t)( manims[i].first + f ) * nb + map[fx.bone] ) * BONE_SHORTS], qa );
+				MDSC_LocalRotation( NULL, &g.model[( (size_t)( from[i]->first + f ) * nb + fx.bone ) * BONE_SHORTS], qb );
+				if ( g.parent[fx.bone] == ownParent[fx.bone] ) {
+					worstRot = std::max( worstRot, MDSC_QuatAngle( qa, qb ) );
+				}
+			}
+		}
+	}
+
+	/* the frames: its 0, then each animation's, its own or the other's */
+	struct Src {
+		bool other;
+		int frame;
+	};
+	std::vector<Src> frames = { { false, 0 } };
+	std::map<std::pair<bool, int>, int> placed;     /* a run's first: where it went */
+	std::vector<int> newFirst( manims.size() );
+	for ( size_t i = 0; i < manims.size(); i++ ) {
+		const CfgAnim &a = manims[i];
+		bool other = from[i] != nullptr;
+		int first = other ? from[i]->first : a.length < 1 ? a.first - 1 : a.first;
+		int length = other ? from[i]->length : a.length < 1 ? 1 : a.length;
+		if ( !other && a.first < 1 ) {
+			newFirst[i] = a.first;  /* frame 0 (retired) */
+			continue;
+		}
+		auto it = placed.find( { other, first } );
+		int at;
+		if ( it != placed.end() ) {
+			at = it->second;
+		} else {
+			at = (int)frames.size();
+			placed[{ other, first }] = at;
+			for ( int f = 0; f < length; f++ ) {
+				frames.push_back( { other, first + f } );
+			}
+		}
+		newFirst[i] = !other && a.length < 1 ? at + 1 : at;
+	}
+	if ( frames.size() > 65535 ) {
+		fprintf( stderr, "%s: too many frames\n", name );
+		return false;
+	}
+
+	/* the cfg: first frames, and the other's length, loop, fps and moveSpeed */
+	std::string out;
+	size_t at = 0;
+	auto put = [&]( const CfgToken &k, const std::string &v ) {
+		out += cfg.substr( at, k.start - at );
+		out += v;
+		at = k.end;
+	};
+	for ( size_t i = 0; i < manims.size(); i++ ) {
+		put( mtok[manims[i].tok + 1], std::to_string( newFirst[i] ) );
+		for ( int k = 2; from[i] && k <= 5; k++ ) {
+			const CfgToken &s = gtok[from[i]->tok + k];
+			put( mtok[manims[i].tok + k], animCfg.substr( s.start, s.end - s.start ) );
+		}
+	}
+	out += cfg.substr( at );
+
+	/* the .mds: header, frames, bones, tags, surfaces */
+	const std::vector<uint8_t> &in = *m.in;
+	const size_t frameSize = FRAME_FLOATS * 4 + nb * BONE_SHORTS * 2;
+	MdsHeader h = m.h;
+	std::vector<uint8_t> o( sizeof( h ) );
+	h.numFrames = (int32_t)frames.size();
+	h.ofsFrames = (int32_t)o.size();
+	for ( const Src &s : frames ) {
+		const MdsSrc &src = s.other ? g : m;
+		size_t fa = o.size();
+		o.resize( fa + frameSize );
+		memcpy( &o[fa], &src.frameVals[s.frame * FRAME_FLOATS], FRAME_FLOATS * 4 );
+		for ( int b = 0; b < nb; b++ ) {
+			memcpy( &o[fa + FRAME_FLOATS * 4 + b * BONE_SHORTS * 2],
+					&src.model[( (size_t)s.frame * nb + ( s.other ? b : map[b] ) ) * BONE_SHORTS], BONE_SHORTS * 2 );
+		}
+	}
+	h.ofsBones = (int32_t)o.size();
+	for ( int b = 0; b < nb; b++ ) {
+		size_t ba = o.size();
+		o.insert( o.end(), in.begin() + m.h.ofsBones + map[b] * BONE_INFO_SIZE, in.begin() + m.h.ofsBones + ( map[b] + 1 ) * BONE_INFO_SIZE );
+		int32_t p = parent[b];
+		memcpy( &o[ba + 64], &p, 4 );
+	}
+	h.torsoParent = m.h.torsoParent < 0 ? m.h.torsoParent : toNew[m.h.torsoParent];
+	h.ofsTags = (int32_t)o.size();
+	for ( int t = 0; t < m.h.numTags; t++ ) {
+		size_t ta = o.size();
+		int32_t bi;
+		o.insert( o.end(), in.begin() + m.h.ofsTags + t * TAG_SIZE, in.begin() + m.h.ofsTags + ( t + 1 ) * TAG_SIZE );
+		memcpy( &bi, &o[ta + 68], 4 );
+		if ( bi < 0 || bi >= nb ) {
+			fprintf( stderr, "%s: a tag on no bone\n", name );
+			return false;
+		}
+		bi = toNew[bi];
+		memcpy( &o[ta + 68], &bi, 4 );
+	}
+	h.ofsSurfaces = (int32_t)o.size();
+	auto remap = [&]( size_t at ) {
+		int32_t v;
+		memcpy( &v, &o[at], 4 );
+		if ( v < 0 || v >= nb ) {
+			return false;
+		}
+		v = toNew[v];
+		memcpy( &o[at], &v, 4 );
+		return true;
+	};
+	for ( int s = 0, ofs = m.h.ofsSurfaces; s < m.h.numSurfaces; s++ ) {
+		MdsSurface sf;
+		memcpy( &sf, in.data() + ofs, sizeof( sf ) );
+		size_t sa = o.size();
+		o.insert( o.end(), in.begin() + ofs, in.begin() + ofs + sf.ofsEnd );
+		sf.ofsHeader = -(int32_t)sa;
+		memcpy( &o[sa], &sf, sizeof( sf ) );
+		for ( int v = 0, va = sf.ofsVerts; v < sf.numVerts; v++ ) {
+			int32_t nw;
+			memcpy( &nw, &o[sa + va + 20], 4 );
+			for ( int k = 0; k < nw; k++ ) {
+				if ( !remap( sa + va + 32 + k * 20 ) ) {
+					fprintf( stderr, "%s: %s: a weight on no bone\n", name, sf.name );
+					return false;
+				}
+			}
+			va += 32 + nw * 20;
+		}
+		for ( int r = 0; r < sf.numBoneReferences; r++ ) {
+			if ( !remap( sa + sf.ofsBoneReferences + r * 4 ) ) {
+				fprintf( stderr, "%s: %s: a bone reference to no bone\n", name, sf.name );
+				return false;
+			}
+		}
+		ofs += sf.ofsEnd;
+	}
+	h.ofsEnd = (int32_t)o.size();
+	memcpy( o.data(), &h, sizeof( h ) );
+
+	printf( "mds: %s: %d of its %d animations (%d frames) on the other's, %d frames now, not %d; %d tags"
+			" placed its own way (moving %.1f degrees most; turned %.1f from its own, but on other parents),"
+			" root moved %.2f %.2f %.2f\n",
+			name, shared, (int)manims.size(), sharedFrames, (int)frames.size(), m.nf, (int)fixes.fixes.size(),
+			worstDir, worstRot, fixes.rootOffset[0], fixes.rootOffset[1], fixes.rootOffset[2] );
+	mds.swap( o );
 	cfg.swap( out );
 	return true;
 }

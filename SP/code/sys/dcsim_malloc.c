@@ -22,7 +22,8 @@
 #include <string.h>
 
 // the top of the 16MB less what's kept; DCSIM_MEGS=<n> (the environment)
-// as if it had n MB, to see what a map that won't fit takes
+// as if it had n MB, to see what a map that won't fit takes (DCSIM_KB=<n>
+// in K, for a finer step)
 #define DC_MEM_TOP          memTop
 static uintptr_t memTop = 0x8c000000u + 16 * 1024 * 1024 - 64 * 1024;
 
@@ -87,6 +88,9 @@ static void init( void ) {
 	}
 	if ( getenv( "DCSIM_MEGS" ) ) {
 		memTop = 0x8c000000u + atoi( getenv( "DCSIM_MEGS" ) ) * 1024 * 1024 - 64 * 1024;
+	}
+	if ( getenv( "DCSIM_KB" ) ) {
+		memTop = 0x8c000000u + atoi( getenv( "DCSIM_KB" ) ) * 1024 - 64 * 1024;
 	}
 	size = DC_MEM_TOP - DCSIM_HEAP_START;
 	// the same place in a page as on the Dreamcast, so it lines up alike

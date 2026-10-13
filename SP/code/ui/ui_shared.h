@@ -305,7 +305,8 @@ typedef struct {
 
 	vec4_t focusColor;              // focus color for items
 	vec4_t disableColor;            // focus color for items
-	itemDef_t *items[MAX_MENUITEMS]; // items this menu contains
+	itemDef_t **items;  // items this menu contains [itemCount]: MAX_MENUITEMS while it's parsed, then just
+	                    // as many (Menu_New)
 } menuDef_t;
 
 typedef struct {

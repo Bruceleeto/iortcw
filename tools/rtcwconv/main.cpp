@@ -162,11 +162,13 @@ static bool ReadSizes( const char *file, std::map<std::string, std::pair<int, in
 }
 
 /* a character's .mds without the frames its wolfanim.cfg never plays, and
-   the cfg renumbered to match, written out to take the pk3's place */
+   the cfg renumbered to match, written out to take the pk3's place; the cfg
+   (as it is now) and where it goes to cfgOut / cfgPath */
 static std::map<std::string, std::set<std::string>> unusedAnims;   /* character: animations, lower case */
 
 static bool StripFrames( const fs::path &inDir, const fs::path &outDir, const fs::path &rel,
-						 std::vector<uint8_t> &mds, long &frames ) {
+						 std::vector<uint8_t> &mds, long &frames, std::string *cfgOut = nullptr,
+						 fs::path *cfgPath = nullptr ) {
 	std::string character = rel.parent_path().filename().string();
 	std::transform( character.begin(), character.end(), character.begin(), ::tolower );
 	auto u = unusedAnims.find( character );
@@ -181,7 +183,14 @@ static bool StripFrames( const fs::path &inDir, const fs::path &outDir, const fs
 		}
 		std::string cfg( in.begin(), in.end() );
 		int dropped;
-		if ( StripMdsFrames( mds, cfg, u == unusedAnims.end() ? nullptr : &u->second, dropped, rel.c_str() ) && dropped ) {
+		bool stripped = StripMdsFrames( mds, cfg, u == unusedAnims.end() ? nullptr : &u->second, dropped, rel.c_str() ) && dropped;
+		if ( cfgOut ) {
+			*cfgOut = cfg;
+		}
+		if ( cfgPath ) {
+			*cfgPath = outDir / rel.parent_path() / e.path().filename();
+		}
+		if ( stripped ) {
 			frames += dropped;
 			return WriteFile( outDir / rel.parent_path() / e.path().filename(), std::vector<uint8_t>( cfg.begin(), cfg.end() ) );
 		}
@@ -455,14 +464,22 @@ int main( int argc, char **argv ) {
 	for ( int g = 0; g < numMdsGroups; g++ ) {
 		const MdsGroup &grp = mdsGroups[g];
 		std::vector<std::vector<uint8_t>> ins( grp.members.size() ), outs;
+		std::vector<std::string> cfgs( grp.members.size() );
+		std::vector<MdsFixes> fixes( grp.members.size() );
 		std::vector<uint8_t> baseOut;
 		bool all = true;
 
 		for ( size_t m = 0; m < grp.members.size(); m++ ) {
+			fs::path cfgPath;
 			all = all && ReadFile( inDir / grp.members[m], ins[m] ) &&
-				  StripFrames( inDir, outDir, grp.members[m], ins[m], unplayed );
+				  StripFrames( inDir, outDir, grp.members[m], ins[m], unplayed, &cfgs[m], &cfgPath );
+			/* on the first's animation: its cfg renumbered again */
+			if ( all && std::find( grp.retarget.begin(), grp.retarget.end(), grp.members[m] ) != grp.retarget.end() ) {
+				all = RetargetMds( ins[0], cfgs[0], ins[m], cfgs[m], fixes[m], grp.members[m].c_str() ) &&
+					  WriteFile( cfgPath, std::vector<uint8_t>( cfgs[m].begin(), cfgs[m].end() ) );
+			}
 		}
-		if ( all && ConvertMdsGroup( grp, ins, outs, baseOut, opt, mds ) ) {
+		if ( all && ConvertMdsGroup( grp, ins, fixes, outs, baseOut, opt, mds ) ) {
 			for ( size_t m = 0; m < grp.members.size(); m++ ) {
 				if ( !WriteFile( ( outDir / grp.members[m] ).concat( "c" ), outs[m] ) ) {
 					failed++;

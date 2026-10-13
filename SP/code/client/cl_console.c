@@ -38,7 +38,7 @@ int g_console_field_width = 78;
 #define NUM_CON_TIMES 4
 
 //#define		CON_TEXTSIZE	32768
-#define     CON_TEXTSIZE    8192    // 16K: no one scrolls back far on a Dreamcast
+#define     CON_TEXTSIZE    2048    // 4K, ~26 lines: no one scrolls back far on a Dreamcast (only con_debug draws more than the notify lines)
 
 typedef struct {
 	qboolean initialized;

@@ -441,6 +441,9 @@ static void TrackDirAt( const unsigned char *animBase, const mdscTrack_t *track,
 	}
 }
 
+/* each bone's model space matrix, of the frame DecodePose did last */
+static mdscMatrix_t decodedModel[MDSC_MAX_BONES];
+
 /* the parent offsets and bones of frame `frame` of the mdscAnim_t at
    animBase, of the MDSC at base (for its bones), into the decoded frame out */
 static void DecodePose( const unsigned char *base, const unsigned char *animBase, int frame, void *out ) {
@@ -449,7 +452,7 @@ static void DecodePose( const unsigned char *base, const unsigned char *animBase
 	const unsigned char *boneInfo = base + ReadInt( base + HDR_OFSBONES );
 	float *floats = (float *)out;
 	short *poses = (short *)( floats + MDSC_FRAME_FLOATS );
-	static mdscMatrix_t model[MDSC_MAX_BONES];
+	mdscMatrix_t *model = decodedModel;
 	int i, j;
 
 	TrackFloats( animBase, &anim->frameTrack, MDSC_OFFSET_FLOATS, frame, floats + MDSC_CULL_FLOATS );
@@ -522,7 +525,27 @@ void MDSC_DecodeSharedFrame( const void *mds, const void *base, int frame, void 
 	seg += lo;
 	if ( seg->fromBase ) {
 		const unsigned char *b = (const unsigned char *)base;
+		const mdscFix_t *fix = (const mdscFix_t *)( shareBase + share->ofsFixes );
+		float *floats = (float *)out;
+		short *poses = (short *)( floats + MDSC_FRAME_FLOATS );
+		int i, j;
+
 		DecodePose( b, b + ReadInt( b + HDR_OFSFRAMES ), ClampFrame( b, seg->srcFirst + frame - seg->first ), out );
+
+		/* its own tags and root on them (mdscFix_t) */
+		for ( i = 0; i < share->numFixes; i++, fix++ ) {
+			const float( *pm )[3] = (const float( * )[3])decodedModel[fix->parent];
+			short *pose = poses + fix->bone * MDSC_POSE_SHORTS;
+			float md[3];
+
+			for ( j = 0; j < 3; j++ ) {
+				md[j] = pm[j][0] * fix->dir[0] + pm[j][1] * fix->dir[1] + pm[j][2] * fix->dir[2];
+			}
+			DirToAngles( md, &pose[4], &pose[5] );
+		}
+		for ( j = 0; j < 3; j++ ) {
+			floats[MDSC_CULL_FLOATS + j] += share->rootOffset[j];
+		}
 	} else {
 		DecodePose( own, animBase, seg->srcFirst + frame - seg->first, out );
 	}

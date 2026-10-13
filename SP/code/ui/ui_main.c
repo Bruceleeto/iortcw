@@ -1015,6 +1015,10 @@ qboolean Load_Menu( int handle ) {
 		if ( !Q_stricmp( token.string, "ui/clipboard.menu" ) || !Q_stricmpn( token.string, "ui/book", 7 ) ) {
 			continue;
 		}
+		// "pregame_new", a draft of pregame.menu that nothing opens
+		if ( !Q_stricmp( token.string, "ui/test.menu" ) ) {
+			continue;
+		}
 #endif
 		UI_ParseMenu( token.string );
 		LOAD_STEP( va( "ui %s", token.string ) );
