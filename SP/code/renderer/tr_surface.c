@@ -772,7 +772,7 @@ static DC_HOT( "60" ) void RB_SurfaceMesh( md3Surface_t *surface ) {
 	float backlerp;
 	float           *texCoords;
 	int indexes;
-	int Bob, Doug;
+	int Doug;
 	int numVerts;
 
 	// RF, check for REFLAG_HANDONLY
@@ -793,10 +793,8 @@ static DC_HOT( "60" ) void RB_SurfaceMesh( md3Surface_t *surface ) {
 	LerpMeshVertexes( surface, backlerp );
 
 	indexes = surface->numTriangles * 3;
-	Bob = tess.numIndexes;
 	Doug = tess.numVertexes;
-	R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
-					  tess.indexes + Bob, Doug );
+	R_TessStrips( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles, Doug );
 	tess.numIndexes += indexes;
 
 	texCoords = ( float * )( (byte *)surface + surface->ofsSt );
@@ -1145,7 +1143,7 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	float backlerp;
 	float           *texCoords;
 	int indexes;
-	int Bob, Doug;
+	int Doug;
 	int numVerts;
 	diffuseLight_t dl, *dlp;
 
@@ -1176,10 +1174,8 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	}
 
 	indexes = surface->numTriangles * 3;
-	Bob = tess.numIndexes;
 	Doug = tess.numVertexes;
-	R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
-					  tess.indexes + Bob, Doug );
+	R_TessStrips( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles, Doug );
 	tess.numIndexes += indexes;
 
 	texCoords = ( float * )( (byte *)surface + surface->ofsSt );
@@ -1230,6 +1226,42 @@ glIndex_t *R_StripTriangles( const unsigned short *strips, int numTriangles, glI
 		} while ( --numTriangles > 0 && !( *strips & STRIP_START ) );
 	}
 	return out;
+}
+
+/*
+=============
+R_TessStrips
+
+A surface's strips into tess: their triangles at tess.numIndexes (the caller
+counts them in), and the strips kept as they are for pvrglDrawStrips, plus
+add, while all of tess's triangles have come so
+=============
+*/
+void R_TessStrips( const unsigned short *strips, int numTriangles, int add ) {
+#ifdef USE_PVR
+	const unsigned short *s = strips;
+	unsigned short *out = tess.strips + tess.numStrips;
+	int n = numTriangles;
+#endif
+
+	R_StripTriangles( strips, numTriangles, tess.indexes + tess.numIndexes, add );
+#ifdef USE_PVR
+	if ( tess.stripTris * 3 != tess.numIndexes
+		 || tess.numStrips + 3 * numTriangles > (int)ARRAY_LEN( tess.strips ) ) {
+		TESS_NO_STRIPS();
+		return;
+	}
+	while ( n > 0 ) {
+		*out++ = ( ( s[0] & ~STRIP_START ) + add ) | STRIP_START;
+		*out++ = s[1] + add;
+		s += 2;
+		do {
+			*out++ = *s++ + add;
+		} while ( --n > 0 && !( *s & STRIP_START ) );
+	}
+	tess.numStrips = out - tess.strips;
+	tess.stripTris += numTriangles;
+#endif
 }
 
 /*
@@ -1394,7 +1426,6 @@ static DC_HOT( "10b" ) qboolean RB_WorldDirect( const srfWorld_t *srf ) {
 static DC_HOT( "10b" ) void RB_SurfaceWorld( srfWorld_t *srf ) {
 	int i, j, first;
 	const wldVert_t *v;
-	glIndex_t *tessIndexes;
 	int dlightBits;
 #ifdef USE_PVR
 	qboolean direct;
@@ -1421,8 +1452,7 @@ static DC_HOT( "10b" ) void RB_SurfaceWorld( srfWorld_t *srf ) {
 	tess.dlightBits |= dlightBits;
 
 	first = tess.numVertexes;
-	tessIndexes = tess.indexes + tess.numIndexes;
-	R_StripTriangles( srf->indexes, srf->numIndexes / 3, tessIndexes, first );
+	R_TessStrips( srf->indexes, srf->numIndexes / 3, first );
 	tess.numIndexes += srf->numIndexes;
 
 	v = srf->verts;

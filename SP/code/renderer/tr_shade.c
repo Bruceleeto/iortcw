@@ -169,6 +169,25 @@ static void R_DrawStripElements( int numIndexes, const glIndex_t *indexes, void 
 
 /*
 ==================
+R_DrawTess
+
+tess's triangles: as the strips they came as, when it has them all
+(R_TessStrips), else as triangles
+==================
+*/
+static DC_HOT( "30" ) void R_DrawTess( const shaderCommands_t *input ) {
+#ifdef USE_PVR
+	if ( input->numStrips && input->stripTris * 3 == input->numIndexes && !input->shader->numDeforms
+		 && r_tessStrips->integer ) {
+		pvrglDrawStrips( input->strips, input->numStrips, input->numVertexes );
+		return;
+	}
+#endif
+	R_DrawElements( input->numIndexes, input->indexes );
+}
+
+/*
+==================
 R_DrawElements
 
 Optionally performs our own glDrawElements that looks for strip conditions
@@ -316,7 +335,7 @@ static void DrawTris( shaderCommands_t *input ) {
 					GL_INDEX_TYPE,
 					input->indexes );
 #else
-	R_DrawElements( input->numIndexes, input->indexes );
+	R_DrawTess( input );
 #endif
 
 	if ( qglUnlockArraysEXT ) {
@@ -397,6 +416,10 @@ DC_HOT( "10e" ) void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
 	tess.litVertexes = 0;
+#ifdef USE_PVR
+	tess.numStrips = 0;
+	tess.stripTris = 0;
+#endif
 	tess.shader = state;
 	tess.fogNum = fogNum;
 	tess.dlightBits = 0;        // will be OR'd in by surface functions
@@ -473,7 +496,7 @@ static void DrawMultitextured( shaderCommands_t *input, int stage ) {
 
 	R_BindAnimatedImage( &pStage->bundle[1] );
 
-	R_DrawElements( input->numIndexes, input->indexes );
+	R_DrawTess( input );
 
 	//
 	// disable texturing on TEXTURE1, then select TEXTURE0
@@ -522,6 +545,10 @@ static void ProjectDlightTexture_scalar( void ) {
 	byte	( *hitColors )[4];
 	unsigned short	*remap;
 	int		numHit, packed = 0;
+	// r_dlightFast: here only which vertexes the light reaches; the lit
+	// triangles' texture coordinates and colours made by pvr_gl as it
+	// transforms them (pvrglDlight)
+	const int fast = r_dlightFast->integer;
 #endif
 
 	if ( !backEnd.refdef.num_dlights ) {
@@ -589,6 +616,23 @@ static void ProjectDlightTexture_scalar( void ) {
 			floatColor[2] = dl->color[2] * 255.0f;
 		}
 
+#ifdef USE_PVR
+		if ( fast ) {
+			// s < 0 is x more than half the radius from the light, and so on
+			const float hr = radius * 0.5f;
+
+			for ( i = 0 ; i < tess.numVertexes ; i++ ) {
+				const float dx = origin[0] - tess.xyz[i][0], dy = origin[1] - tess.xyz[i][1], dz = origin[2] - tess.xyz[i][2];
+
+				if ( !backs && dx * tess.normal[i][0] + dy * tess.normal[i][1] + dz * tess.normal[i][2] < 0.0f ) {
+					clipBits[i] = 63;
+				} else {
+					clipBits[i] = ( dx < -hr ) | ( dx > hr ) << 1 | ( dy < -hr ) << 2 | ( dy > hr ) << 3
+								  | ( dz > radius ) << 4 | ( dz < -radius ) << 5;
+				}
+			}
+		} else
+#endif
 		for ( i = 0 ; i < tess.numVertexes ; i++, texCoords += 2, colors += 4 ) {
 			int		clip = 0;
 			vec3_t	dist;
@@ -680,9 +724,14 @@ static void ProjectDlightTexture_scalar( void ) {
 			if ( remap[v] == 0xffff ) {
 				remap[v] = numHit;
 				VectorCopy( tess.xyz[v], hitXyz[numHit] );
-				hitSt[numHit][0] = texCoordsArray[v][0];
-				hitSt[numHit][1] = texCoordsArray[v][1];
-				*(int *)hitColors[numHit] = *(int *)colorArray[v];
+				if ( fast ) {
+					// what fog leaves of the light, for pvr_gl
+					hitXyz[numHit][3] = dlightFog ? ( 255 - dlightFog[v] ) * ( 1.0f / 255 ) : 1.0f;
+				} else {
+					hitSt[numHit][0] = texCoordsArray[v][0];
+					hitSt[numHit][1] = texCoordsArray[v][1];
+					*(int *)hitColors[numHit] = *(int *)colorArray[v];
+				}
 				numHit++;
 			}
 			hitIndexes[i] = remap[v];
@@ -697,6 +746,9 @@ static void ProjectDlightTexture_scalar( void ) {
 
 		qglEnableClientState( GL_COLOR_ARRAY );
 		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, hitColors );
+		if ( fast ) {
+			pvrglDlight( origin, radius, floatColor );
+		}
 #else
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
 		qglTexCoordPointer( 2, GL_FLOAT, 0, texCoordsArray[0] );
@@ -742,6 +794,11 @@ static void ProjectDlightTexture_scalar( void ) {
 				R_FogOn();
 			}
 		}
+#ifdef USE_PVR
+		if ( fast ) {
+			pvrglDlight( NULL, 0, NULL );
+		}
+#endif
 	}
 
 #ifdef USE_PVR
@@ -816,7 +873,7 @@ static void RB_FogPass( void ) {
 		GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
 	}
 
-	R_DrawElements( tess.numIndexes, tess.indexes );
+	R_DrawTess( &tess );
 	PROF_END( PROF_FOG );
 }
 
@@ -1354,7 +1411,7 @@ static DC_HOT( "30" ) void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			//
 			// draw
 			//
-			R_DrawElements( input->numIndexes, input->indexes );
+			R_DrawTess( input );
 		}
 		// allow skipping out to show just lightmaps during development
 		if ( r_lightmap->integer && ( pStage->bundle[0].isLightmap
@@ -1627,7 +1684,7 @@ void RB_StageIteratorVertexLitTexture( void ) {
 #ifdef USE_PVR
 	vertexFog = RB_VertexFog();
 #endif
-	R_DrawElements( input->numIndexes, input->indexes );
+	R_DrawTess( input );
 #ifdef USE_PVR
 	if ( vertexFog ) {
 		pvrglFogArray( NULL );
@@ -1757,7 +1814,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
 
-	R_DrawElements( input->numIndexes, input->indexes );
+	R_DrawTess( input );
 
 	//
 	// disable texturing on TEXTURE1, then select TEXTURE0

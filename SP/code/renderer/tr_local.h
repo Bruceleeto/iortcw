@@ -760,6 +760,7 @@ qboolean R_WorldNextTriangle( const srfWorld_t *srf, int *k, int *n, int tri[3] 
 #define BONE_CACHE_BONES    80
 
 glIndex_t *R_StripTriangles( const unsigned short *strips, int numTriangles, glIndex_t *out, int add );
+void R_TessStrips( const unsigned short *strips, int numTriangles, int add );
 int R_PackTriangles( void *triangles, int numTriangles, int numVerts );
 int R_StripsSize( const unsigned short *strips, int maxShorts, int numTriangles, int numVerts );
 
@@ -1050,12 +1051,32 @@ typedef struct {
 #define FUNCTABLE_SIZE2     10
 #define FUNCTABLE_MASK      ( FUNCTABLE_SIZE - 1 )
 
+#ifdef USE_SH4ZAM
+// sin and cos of a 16 bit angle (65536 a turn): fsca takes it as it is.
+// sh4zam's shz_sincosu16 with -ffast-math goes float, radians, then back
+// to an integer for fsca (10 instructions an angle, not 2)
+static ID_INLINE shz_sincos_t R_SinCosU16( unsigned a ) {
+#if defined( __sh__ )
+	float s, c;
+
+	__asm__( "lds	%2, fpul\n\t"
+			 "fsca	fpul, dr8\n\t"
+			 "fmov	fr8, %0\n\t"
+			 "fmov	fr9, %1"
+			 : "=&f" ( s ), "=&f" ( c ) : "r" ( a ) : "fpul", "fr8", "fr9" );
+	return (shz_sincos_t){ s, c };
+#else
+	return shz_sincosu16( (uint16_t)a );
+#endif
+}
+#endif
+
 // sin at a FUNCTABLE_SIZE step of its cycle, worked out where a table of it
 // was (tr.sinTable): sh4zam's, the SH4's fsca, which takes a 16 bit angle
 // (R_FuncValue's the rest of the waveforms)
 static ID_INLINE float R_SinIndex( int i ) {
 #ifdef USE_SH4ZAM
-	return shz_sincosu16( (uint16_t)( ( i & FUNCTABLE_MASK ) * ( 65536 / FUNCTABLE_SIZE ) ) ).sin;
+	return R_SinCosU16( ( i & FUNCTABLE_MASK ) * ( 65536 / FUNCTABLE_SIZE ) ).sin;
 #else
 	return sin( ( i & FUNCTABLE_MASK ) * ( 2 * M_PI / FUNCTABLE_SIZE ) );
 #endif
@@ -1302,6 +1323,8 @@ extern cvar_t   *r_allowExtensions;             // global enable/disable of Open
 #ifdef USE_PVR
 extern cvar_t   *r_pvrCull;
 extern cvar_t   *r_opDirect;
+extern cvar_t   *r_tessStrips;
+extern cvar_t   *r_dlightFast;
 extern cvar_t   *r_dlightMax;       // dynamic lights a scene, the biggest on screen (DC)
 extern cvar_t   *r_dlightMinSize;   // a dynamic light's radius over its distance, below which it's dropped (DC)
 extern int      pvrgl_hwCull;
@@ -1331,6 +1354,8 @@ int  pvrgl_FogColor( unsigned int rgba );
 void pvrglFogSkyDepth( float depth );
 void pvrglPackedBegin( void );
 void pvrglPackedEnd( void );
+void pvrglDrawStrips( const unsigned short *strips, int numStrips, int numVerts );
+void pvrglDlight( const float origin[3], float radius, const float color[3] );
 void RB_WorldDirectEnd( void );
 void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
 							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes,
@@ -1639,6 +1664,12 @@ typedef struct shaderCommands_s
 
 #ifndef USE_PVR	// (multitexture's only: pvr_gl has none)
 	color4ub_t	constantColor255[SHADER_MAX_VERTEXES] QALIGN(16);
+#else
+	// the triangles as the strips they came as (R_TessStrips), STRIP_START
+	// on each strip's first, for pvrglDrawStrips: while stripTris * 3 is
+	// numIndexes they're all of them (TESS_NO_STRIPS when tess is rewound)
+	unsigned short	strips[SHADER_MAX_VERTEXES * 2];
+	int			numStrips, stripTris;
 #endif
 
 	shader_t    *shader;
@@ -1663,6 +1694,12 @@ typedef struct shaderCommands_s
 } shaderCommands_t;
 
 extern shaderCommands_t tess;
+
+#ifdef USE_PVR
+#define TESS_NO_STRIPS()	( tess.stripTris = -0x10000000 )
+#else
+#define TESS_NO_STRIPS()	( (void)0 )
+#endif
 
 /*
 A vertex's diffuse lighting (rgbGen lightingDiffuse) from its normal and
@@ -2144,8 +2181,8 @@ void R_AddMDCSurfaces( trRefEntity_t *ent );
 // Y sin( lat ) * sin( long ), Z cos( long )
 static ID_INLINE void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
 #ifdef USE_SH4ZAM
-	shz_sincos_t lat = shz_sincosu16( (uint16_t)( latLong & 0xff00 ) );
-	shz_sincos_t lng = shz_sincosu16( (uint16_t)( ( latLong & 0xff ) << 8 ) );
+	shz_sincos_t lat = R_SinCosU16( latLong & 0xff00 );
+	shz_sincos_t lng = R_SinCosU16( ( latLong & 0xff ) << 8 );
 
 	outNormal[0] = lat.cos * lng.sin;
 	outNormal[1] = lat.sin * lng.sin;

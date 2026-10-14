@@ -383,6 +383,7 @@ void DeformText( const char *text ) {
 	// clear the shader indexes
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
+	TESS_NO_STRIPS();
 
 	color[0] = color[1] = color[2] = color[3] = 255;
 
@@ -446,6 +447,7 @@ static void AutospriteDeform( void ) {
 	oldVerts = tess.numVertexes;
 	tess.numVertexes = 0;
 	tess.numIndexes = 0;
+	TESS_NO_STRIPS();
 
 	if ( backEnd.currentEntity != &tr.worldEntity ) {
 		GlobalVectorToLocal( backEnd.viewParms.or.axis[1], leftDir );

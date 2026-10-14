@@ -107,6 +107,8 @@ cvar_t  *r_ext_compressed_textures;
 #ifdef USE_PVR
 cvar_t  *r_pvrCull;
 cvar_t  *r_opDirect;
+cvar_t  *r_tessStrips;
+cvar_t  *r_dlightFast;
 cvar_t  *r_dlightMax;
 cvar_t  *r_dlightMinSize;
 #endif
@@ -1185,6 +1187,8 @@ void R_Register( void ) {
 	// back faces culled by the PVR (1) or on the CPU (0)
 	r_pvrCull = ri.Cvar_Get( "r_pvrCull", "1", CVAR_ARCHIVE );
 	r_opDirect = ri.Cvar_Get( "r_opDirect", "1", 0 );
+	r_tessStrips = ri.Cvar_Get( "r_tessStrips", "1", 0 );
+	r_dlightFast = ri.Cvar_Get( "r_dlightFast", "1", 0 );
 #else
 	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
 #endif

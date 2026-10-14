@@ -232,14 +232,54 @@ static uint8_t opStageBlock[OP_STAGE] __attribute__( ( aligned( 32 ) ) );
    vertexes before its triangles (once a lock, while what it was made
    from stays the same) */
 typedef struct {
-	float		sx, sy, sz;		/* PVR screen space; clip x y w behind the near plane */
 	float		d;				/* clip z + w: < 0 behind the near plane */
-} posVert_t;
+	float		sx, sy, sz;		/* PVR screen space; clip x y w behind the near plane */
+} posVert_t;	/* d first: d sx and sy sz are pairs where a TA vertex's command x and y z are (VertCopy) */
+
+/* a TA vertex's words 0 to 5 from a vpos (d sx sy sz, 8 aligned) and an s t
+   (8 aligned), as pairs: 3 fmov.d in and out (word 0 gets d, which the
+   caller writes the command over). The SH4's FPU in pair mode for it alone:
+   only fr0 to fr5 are touched, and the memory it reads and writes named */
+static inline __attribute__((always_inline)) void VertCopy( uint32_t *w, const uint32_t *pos, const uint32_t *st ) {
+#if defined( __sh__ ) && defined( USE_SH4ZAM )
+	const uint32_t *p = pos;
+	uint32_t *o = w + 6;
+
+	__asm__(
+		"fschg\n\t"
+		"fmov.d	@%[p]+, dr0\n\t"
+		"fmov.d	@%[p], dr2\n\t"
+		"fmov.d	@%[s], dr4\n\t"
+		"fmov.d	dr4, @-%[o]\n\t"
+		"fmov.d	dr2, @-%[o]\n\t"
+		"fmov.d	dr0, @-%[o]\n\t"
+		"fschg"
+		: [p] "+&r" ( p ), [o] "+&r" ( o ), "=m" ( *(uint32_t (*)[6])w )
+		: [s] "r" ( st ), "m" ( *(const uint32_t (*)[4])pos ), "m" ( *(const uint32_t (*)[2])st )
+		: "fr0", "fr1", "fr2", "fr3", "fr4", "fr5" );
+#else
+	w[1] = pos[1];
+	w[2] = pos[2];
+	w[3] = pos[3];
+	w[4] = st[0];
+	w[5] = st[1];
+#endif
+}
 
 static posVert_t	*vpos;
 static uint8_t		*vcode;			/* 1 behind the near plane, 2 4 8 16 off the viewport's edges */
 static float		*vst;			/* the texture coordinates and colours, when not as DrawTriangles reads them */
 static uint32_t		*vcol;
+
+/* a dynamic light's pass (pvrglDlight): its texture coordinates and
+   colours worked out from the positions as they're transformed
+   (TransformVertsDlight), into vst and vcol; the arrays' own ignored */
+static struct {
+	int		on;
+	float	o[3];			/* the light, in the surface's space */
+	float	r, hr, scale;	/* radius, half of it, 1 / radius */
+	float	col[3];			/* 0 to 255 */
+} dlx;
 static int			vposSize;
 
 /* glLockArraysEXT's vertexes, and what vpos was made from for them */
@@ -1731,6 +1771,45 @@ static DC_HOT( "30" ) void __attribute__((noinline)) TransformVerts( int first, 
 	}
 }
 
+/* TransformVerts for a dynamic light's pass, its texture coordinates and
+   colours in the same loop (ProjectDlightTexture's): s t the light's
+   texture across x y, the colour full within half the radius up or down,
+   to nothing at the radius; the position's 4th float a fog amount it's
+   scaled by (1 none). Float arrays, 16 bytes a vertex */
+static DC_HOT( "30" ) void __attribute__((noinline)) TransformVertsDlight( int first, int end ) {
+	const float xLo = xf.xLo, xHi = xf.xHi, yLo = xf.yLo, yHi = xf.yHi, ds = xf.depthScale;
+	const float ox = dlx.o[0], oy = dlx.o[1], oz = dlx.o[2];
+	const float r = dlx.r, hr = dlx.hr, scale = dlx.scale, scale2 = 2.0f * dlx.scale;
+	const float cr = dlx.col[0], cg = dlx.col[1], cb = dlx.col[2];
+	const float *src = (const float *)( xf.pos + first * 16 );
+	posVert_t *o = vpos + first;
+	float *st = vst + first * 2;
+	uint32_t *col = vcol + first;
+	uint8_t *codes = vcode;
+	int i;
+
+	PROF_COUNT( STAT_VERTS, end - first );
+	for ( i = first; i < end; i++, src += 4, o++, st += 2, col++ ) {
+		const float x = src[0], y = src[1], z = src[2];
+		float dz = oz - z, m;
+
+#ifdef USE_SH4ZAM
+		SHZ_PREFETCH( src + 16 );
+		if ( !( i & 1 ) ) {
+			shz_dcache_alloc_line( o );
+		}
+#endif
+		ProjectVert( o, codes + i, xf.m, x, y, z, xLo, xHi, yLo, yHi, ds );
+		st[0] = 0.5f + ( ox - x ) * scale;
+		st[1] = 0.5f + ( oy - y ) * scale;
+		dz = dz < 0.0f ? -dz : dz;
+		m = dz < hr ? 1.0f : dz > r ? 0.0f : ( r - dz ) * scale2;
+		m *= src[3];
+		*col = (uint32_t)(int)( cr * m + 0.5f ) | (uint32_t)(int)( cg * m + 0.5f ) << 8
+			   | (uint32_t)(int)( cb * m + 0.5f ) << 16 | 0xff000000u;
+	}
+}
+
 /* vpos and vcode for n packed vertexes through m (the origin and step
    folded in; on the SH4 loaded into the matrix register by the caller):
    the shorts straight to the float unit */
@@ -1866,7 +1945,7 @@ static inline void ListSync( listBuffer_t *l, uint8_t *cur ) {
    away). */
 static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l, int count, indexFunc_t idx, const void *indices, int fixed ) {
 	uint8_t *cur = l->cur, *end = l->end;
-	const uint32_t *const pos = (const uint32_t *)vpos;		/* sx sy sz d, as words */
+	const uint32_t *const pos = (const uint32_t *)vpos;		/* d sx sy sz, as words */
 	const uint8_t *const codes = vcode;
 	const uint8_t *const st = xf.st, *const col = xf.col;
 	const uint8_t *const fog = xf.fogStride ? xf.fog : NULL;
@@ -1902,12 +1981,16 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 			const int e_n = ( n ); \
 			const uint32_t *e_p = pos + e_n * 4; \
 			const uint32_t *e_s = (const uint32_t *)( st + ( fixed ? e_n << 3 : e_n * stStride ) ); \
+			if ( fixed ) { \
+				VertCopy( w, e_p, e_s ); \
+			} else { \
+				w[1] = e_p[1]; \
+				w[2] = e_p[2]; \
+				w[3] = e_p[3]; \
+				w[4] = e_s[0]; \
+				w[5] = e_s[1]; \
+			} \
 			w[0] = cmd; \
-			w[1] = e_p[0]; \
-			w[2] = e_p[1]; \
-			w[3] = e_p[2]; \
-			w[4] = e_s[0]; \
-			w[5] = e_s[1]; \
 			w[6] = Argb( *(const uint32_t *)( col + ( fixed ? e_n << 2 : e_n * colStride ) ) ); \
 			w[7] = fog ? (uint32_t)fog[e_n] << 24 : 0; \
 		} \
@@ -1941,7 +2024,7 @@ static inline __attribute__((always_inline)) void DrawTriangles( listBuffer_t *l
 			}
 			continue;
 		}
-		if ( ( ca | cb | cc ) & 1 || ( cpuCull && Culled( (const float *)( pos + a * 4 ), (const float *)( pos + b * 4 ), (const float *)( pos + c * 4 ) ) ) ) {
+		if ( ( ca | cb | cc ) & 1 || ( cpuCull && Culled( (const float *)( pos + a * 4 + 1 ), (const float *)( pos + b * 4 + 1 ), (const float *)( pos + c * 4 + 1 ) ) ) ) {
 			int used;
 
 			if ( open ) {
@@ -1990,6 +2073,135 @@ static void __attribute__((noinline)) DrawTrianglesAny( listBuffer_t *l, int cou
 	DrawTriangles( l, count, idx, indices, 0 );
 }
 
+/* the renderer's strips as they are (pvrglDrawStrips): STRIP_START on each
+   one's first, a strip a b c d the triangles a b c, c b d (R_StripTriangles).
+   A PVR strip of its vertexes as they come, no triangles to look at to find
+   it; a triangle to be clipped or culled ends it, and one at an odd place
+   with no strip open goes on its own (a PVR strip's first is even). */
+#define PVRGL_STRIPS	0x7f01
+#define STRIP_FIRST		0x8000
+
+static inline __attribute__((always_inline)) void DrawStripList( listBuffer_t *l, int len, const GLushort *s, int fixed ) {
+	uint8_t *cur = l->cur, *end = l->end;
+	const uint32_t *const pos = (const uint32_t *)vpos;
+	const uint8_t *const codes = vcode;
+	const uint8_t *const st = xf.st, *const col = xf.col;
+	const uint8_t *const fog = xf.fogStride ? xf.fog : NULL;
+	const int stStride = xf.stStride, colStride = xf.colStride;
+	const int cpuCull = gl.cullFace && !pvrgl_hwCull;
+	const int used0 = l->used;
+	const GLushort *const se = s + len;
+	int open = 0;
+	static int tris, culled, clipped, clipBytes;
+
+	tris = culled = clipped = clipBytes = 0;
+
+#define EMIT( n, cmd ) \
+	do { \
+		uint32_t *w; \
+		if ( cur == end ) { \
+			ListSync( l, cur ); \
+			w = ListAllocBlock( l ); \
+			cur = l->cur; \
+			end = l->end; \
+			if ( !w ) { \
+				break; \
+			} \
+		} else { \
+			w = (uint32_t *)cur; \
+			cur += 32; \
+			SHZ_ALLOC_LINE( w ); \
+		} \
+		{ \
+			const int e_n = ( n ); \
+			const uint32_t *e_p = pos + e_n * 4; \
+			const uint32_t *e_s = (const uint32_t *)( st + ( fixed ? e_n << 3 : e_n * stStride ) ); \
+			if ( fixed ) { \
+				VertCopy( w, e_p, e_s ); \
+			} else { \
+				w[1] = e_p[1]; \
+				w[2] = e_p[2]; \
+				w[3] = e_p[3]; \
+				w[4] = e_s[0]; \
+				w[5] = e_s[1]; \
+			} \
+			w[0] = cmd; \
+			w[6] = Argb( *(const uint32_t *)( col + ( fixed ? e_n << 2 : e_n * colStride ) ) ); \
+			w[7] = fog ? (uint32_t)fog[e_n] << 24 : 0; \
+		} \
+	} while ( 0 )
+
+#define END_STRIP() \
+	do { \
+		if ( cur ) { \
+			*(uint32_t *)( cur - 32 ) = PVR_CMD_VERTEX_EOL; \
+			ListSync( l, cur ); \
+			l->whole = l->used; \
+		} \
+		open = 0; \
+	} while ( 0 )
+
+	while ( s + 2 < se ) {
+		int p0 = *s++ & ~STRIP_FIRST, p1 = *s++, odd = 0;
+
+		while ( s < se && !( *s & STRIP_FIRST ) ) {
+			const int p2 = *s++;
+			const int a = odd ? p1 : p0, b = odd ? p0 : p1;
+			const int ca = codes[p0], cb = codes[p1], cc = codes[p2];
+
+			tris++;
+			if ( ca & cb & cc ) {
+				culled++;
+				if ( open ) {
+					END_STRIP();
+				}
+			} else if ( ( ca | cb | cc ) & 1 || ( cpuCull && Culled( (const float *)( pos + a * 4 + 1 ), (const float *)( pos + b * 4 + 1 ), (const float *)( pos + p2 * 4 + 1 ) ) ) ) {
+				int used;
+
+				if ( open ) {
+					END_STRIP();
+				}
+				ListSync( l, cur );
+				used = l->used;
+				EmitTriangleIdx( l, a, b, p2 );
+				clipBytes += l->used - used;
+				clipped++;
+				cur = l->cur;
+				end = l->end;
+			} else if ( open ) {
+				EMIT( p2, PVR_CMD_VERTEX );
+			} else {
+				EMIT( a, PVR_CMD_VERTEX );
+				EMIT( b, PVR_CMD_VERTEX );
+				EMIT( p2, PVR_CMD_VERTEX );
+				open = 1;
+				if ( odd ) {
+					END_STRIP();
+				}
+			}
+			p0 = p1;
+			p1 = p2;
+			odd ^= 1;
+		}
+		if ( open ) {
+			END_STRIP();
+		}
+	}
+	ListSync( l, cur );
+	PROF_COUNT( STAT_TRIS, tris - clipped );
+	PROF_COUNT( STAT_CULLED, culled );
+	tris = ( l->used - used0 - clipBytes ) / 32;
+	if ( tris > 0 ) {
+		PROF_COUNT( STAT_EMITTED, tris );
+	}
+#undef EMIT
+#undef END_STRIP
+}
+
+static void __attribute__((noinline)) DrawStripListAny( listBuffer_t *l, int len, const GLushort *s ) {
+	DrawStripList( l, len, s, 0 );
+}
+
 /* vertexes lo to hi, the most it might use; locked, glLockArraysEXT's */
 /* xf.m and the viewport's edges from the matrices and the viewport, when
    they've changed since (a world surface a draw: most draws find them as
@@ -2026,7 +2238,7 @@ static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_
 		return;
 	}
 	if ( mode != GL_TRIANGLES && mode != GL_TRIANGLE_STRIP && mode != GL_TRIANGLE_FAN
-		 && mode != GL_QUADS && mode != GL_POLYGON && mode != GL_QUAD_STRIP ) {
+		 && mode != GL_QUADS && mode != GL_POLYGON && mode != GL_QUAD_STRIP && mode != PVRGL_STRIPS ) {
 		return;		/* TODO: lines and points */
 	}
 
@@ -2057,7 +2269,11 @@ static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_
 	if ( !( locked && lock.made && !memcmp( &lock.array, &gl.vertexArray, sizeof( lock.array ) )
 			&& !memcmp( lock.m, xf.m, sizeof( lock.m ) ) && lock.depthScale == xf.depthScale ) ) {
 		PROF_BEGIN( PROF_PVR_XFORM );
-		TransformVerts( lo, hi + 1 );
+		if ( dlx.on ) {
+			TransformVertsDlight( lo, hi + 1 );
+		} else {
+			TransformVerts( lo, hi + 1 );
+		}
 		PROF_END( PROF_PVR_XFORM );
 		lock.made = locked;
 		if ( locked ) {
@@ -2067,6 +2283,12 @@ static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_
 		}
 	}
 	SetAttribs( lo, hi );
+	if ( dlx.on ) {
+		xf.st = (const uint8_t *)vst;
+		xf.stStride = 8;
+		xf.col = (const uint8_t *)vcol;
+		xf.colStride = 4;
+	}
 
 #define V( n ) idx( indices, n )
 	switch ( mode ) {
@@ -2074,10 +2296,19 @@ static DC_HOT( "30" ) void DrawPrimitivesPVR( GLenum mode, int count, indexFunc_
 		/* the renderer's index type inlined; the others out of the way,
 		   to keep the loop in the instruction cache */
 		PROF_BEGIN( PROF_PVR_TRIS );
-		if ( idx == IndexUShort && xf.stStride == 8 && xf.colStride == 4 ) {
+		if ( idx == IndexUShort && xf.stStride == 8 && xf.colStride == 4 && !( (uintptr_t)xf.st & 7 ) ) {
 			DrawTriangles( l, count, IndexUShort, indices, 1 );
 		} else {
 			DrawTrianglesAny( l, count, idx, indices );
+		}
+		PROF_END( PROF_PVR_TRIS );
+		break;
+	case PVRGL_STRIPS:
+		PROF_BEGIN( PROF_PVR_TRIS );
+		if ( xf.stStride == 8 && xf.colStride == 4 && !( (uintptr_t)xf.st & 7 ) ) {
+			DrawStripList( l, count, indices, 1 );
+		} else {
+			DrawStripListAny( l, count, indices );
 		}
 		PROF_END( PROF_PVR_TRIS );
 		break;
@@ -2127,6 +2358,16 @@ DC_HOT( "30" ) void APIENTRY pvrglDrawArrays( GLenum mode, GLint first, GLsizei 
 	DrawPrimitives( mode, count, IndexDirect, (const void *)(intptr_t)first, first, first + count - 1, 0 );
 }
 
+/* the renderer's triangles as strips (R_TessStrips), len indexes of them,
+   of vertexes 0 to numVerts - 1, or what's locked */
+DC_HOT( "30" ) void pvrglDrawStrips( const unsigned short *strips, int len, int numVerts ) {
+	if ( lock.locked ) {
+		DrawPrimitives( PVRGL_STRIPS, len, IndexUShort, strips, lock.first, lock.first + lock.count - 1, 1 );
+	} else if ( numVerts > 0 ) {
+		DrawPrimitives( PVRGL_STRIPS, len, IndexUShort, strips, 0, numVerts - 1, 0 );
+	}
+}
+
 DC_HOT( "30" ) void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLenum type, const GLvoid *indices ) {
 	indexFunc_t f;
 	int i, minIndex, maxIndex = 0;
@@ -2165,7 +2406,7 @@ DC_HOT( "30" ) void APIENTRY pvrglDrawElements( GLenum mode, GLsizei count, GLen
    colour's alpha 1. */
 static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsPacked( listBuffer_t *l, const pvrglPackedVert_t *verts, const unsigned short *strips, int numIndexes ) {
 	uint8_t *cur = l->cur, *end = l->end;
-	const uint32_t *const pos = (const uint32_t *)vpos;		/* sx sy sz d, as words */
+	const uint32_t *const pos = (const uint32_t *)vpos;		/* d sx sy sz, as words */
 	const uint8_t *const codes = vcode;
 	const float s0 = xf.pStOrigin[0], t0 = xf.pStOrigin[1], ss = xf.pStStep;
 	const int cpuCull = gl.cullFace && !pvrgl_hwCull;
@@ -2200,9 +2441,9 @@ static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsPacked( listBuffe
 			const pvrglPackedVert_t *e_v = verts + e_n; \
 			float *e_f = (float *)w; \
 			w[0] = PVR_CMD_VERTEX; \
-			w[1] = e_p[0]; \
-			w[2] = e_p[1]; \
-			w[3] = e_p[2]; \
+			w[1] = e_p[1]; \
+			w[2] = e_p[2]; \
+			w[3] = e_p[3]; \
 			e_f[4] = s0 + ss * e_v->st[0]; \
 			e_f[5] = t0 + ss * e_v->st[1]; \
 			w[6] = Argb( *(const uint32_t *)e_v->rgba ) | 0xff000000; \
@@ -2241,7 +2482,7 @@ static DC_HOT( "20" ) void __attribute__((noinline)) DrawStripsPacked( listBuffe
 					END_STRIP();
 				}
 			} else if ( ( ca | cb | cc ) & 1
-						|| ( cpuCull && Culled( (const float *)( pos + wa * 4 ), (const float *)( pos + wb * 4 ), (const float *)( pos + c * 4 ) ) ) ) {
+						|| ( cpuCull && Culled( (const float *)( pos + wa * 4 + 1 ), (const float *)( pos + wb * 4 + 1 ), (const float *)( pos + c * 4 + 1 ) ) ) ) {
 				int used;
 
 				if ( open ) {
@@ -2658,6 +2899,28 @@ DC_HOT( "40" ) void APIENTRY pvrglLockArraysEXT( GLint first, GLsizei count ) {
 	lock.first = first;
 	lock.count = count;
 	lock.made = 0;
+}
+
+/* the draws after, of the locked arrays (float positions, 16 bytes each,
+   the 4th a fog amount 0 to 1 to scale the light by), are a dynamic
+   light's pass: texture coordinates and colours made with the positions'
+   transform (TransformVertsDlight). NULL: back to the arrays' own */
+void pvrglDlight( const float origin[3], float radius, const float color[3] ) {
+	lock.made = 0;
+	dlx.on = origin && gl.vertexArray.type == GL_FLOAT && gl.vertexArray.stride == 16
+			 && !( (uintptr_t)gl.vertexArray.ptr & 3 ) && radius > 0.0f;
+	if ( !dlx.on ) {
+		return;
+	}
+	dlx.o[0] = origin[0];
+	dlx.o[1] = origin[1];
+	dlx.o[2] = origin[2];
+	dlx.r = radius;
+	dlx.hr = radius * 0.5f;
+	dlx.scale = 1.0f / radius;
+	dlx.col[0] = color[0];
+	dlx.col[1] = color[1];
+	dlx.col[2] = color[2];
 }
 
 DC_HOT( "40" ) void APIENTRY pvrglUnlockArraysEXT( void ) {

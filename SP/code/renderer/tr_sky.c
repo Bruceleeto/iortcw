@@ -846,6 +846,7 @@ void R_BuildCloudData( shaderCommands_t *input ) {
 	// set up for drawing
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
+	TESS_NO_STRIPS();
 
 	if ( shader->sky.cloudHeight ) {
 		for ( i = 0; i < MAX_SHADER_STAGES; i++ )

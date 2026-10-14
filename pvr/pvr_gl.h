@@ -53,6 +53,8 @@ typedef struct {
  * GL_TRIANGLE_STRIPs with a restart). */
 void pvrglPackedBegin( void );
 void pvrglPackedEnd( void );
+void pvrglDrawStrips( const unsigned short *strips, int len, int numVerts );
+void pvrglDlight( const float origin[3], float radius, const float color[3] );
 void pvrglDrawPackedStrips( const void *verts, int numVerts, const float origin[3], float step,
 							const float stOrigin[2], float stStep, const unsigned short *strips, int numIndexes,
 							const float *mins, const float *maxs );

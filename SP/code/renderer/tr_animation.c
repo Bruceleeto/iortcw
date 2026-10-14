@@ -1110,8 +1110,7 @@ DC_HOT( "60" ) void RB_SurfaceAnim( mdsSurface_t *surface ) {
 //DBG_SHOWTIME
 
 	if ( render_count == surface->numVerts ) {
-		R_StripTriangles( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles,
-						  pIndexes, baseVertex );
+		R_TessStrips( (unsigned short *)( (byte *)surface + surface->ofsTriangles ), surface->numTriangles, baseVertex );
 		tess.numIndexes += indexes;
 	} else
 	{
@@ -1310,6 +1309,7 @@ DC_HOT( "60" ) void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	if ( r_bonesDebug->integer > 1 ) {
 		// dont draw the actual surface
 		tess.numIndexes = oldIndexes;
+		TESS_NO_STRIPS();
 		tess.numVertexes = baseVertex;
 		return;
 	}

@@ -786,6 +786,7 @@ void RB_ZombieFXFullAlpha( int oldNumVerts, int numSurfVerts ) {
 }
 
 void RB_ZombieFX( int part, drawSurf_t *drawSurf, int oldNumVerts, int oldNumIndex ) {
+	TESS_NO_STRIPS();	// its vertexes and indexes redone
 	int numSurfVerts;
 	float deltaTime;
 	char    *surfName;
